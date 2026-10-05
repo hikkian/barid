@@ -35,7 +35,14 @@ MAX_EVENTS = 500
 
 
 class RBError(Exception):
-    """A user-facing error: printed without a traceback, exit code 1."""
+    """A user-facing error: printed without a traceback, exit code 1.
+
+    `code` and `info` let a client (the panel) show the message in its own language."""
+
+    def __init__(self, message: str, code: str = "", **info):
+        super().__init__(message)
+        self.code = code
+        self.info = info
 
 
 # ----------------------------------------------------------------------------- time, actors
@@ -325,12 +332,12 @@ def get_item(d: dict, iid: str) -> dict:
     for i in d["items"]:
         if i["id"] == iid:
             return i
-    raise RBError(f"no such task: {iid}")
+    raise RBError(f"no such task: {iid}", "not_found", id=iid)
 
 
 def require_human(actor: Actor, what: str) -> None:
     if not actor.human:
-        raise RBError(f"only the person can {what} (agents can propose, claim, finish and note)")
+        raise RBError(f"only the person can {what} (agents can propose, claim, finish and note)", "human_only")
 
 
 def direct_allowed(d: dict, actor: Actor) -> bool:
@@ -350,22 +357,22 @@ def split_list(v) -> list:
 
 def check_refs(d: dict, lane, needs, uses) -> None:
     if lane is not None and lane not in [l["id"] for l in d["lanes"]]:
-        raise RBError(f"unknown lane {lane!r}; lanes: {', '.join(l['id'] for l in d['lanes'])} (add one with `rb lane add`)")
+        raise RBError(f"unknown lane {lane!r}; lanes: {', '.join(l['id'] for l in d['lanes'])} (add one with `rb lane add`)", "unknown_lane", lane=lane)
     ids = {i["id"] for i in d["items"]}
     for n in needs or []:
         if n not in ids:
-            raise RBError(f"unknown task in needs: {n}")
+            raise RBError(f"unknown task in needs: {n}", "unknown_task", id=n)
     for r in uses or []:
         if r not in d.get("resources", {}):
-            raise RBError(f"unknown resource {r!r}; define it with `rb resource add {r}`")
+            raise RBError(f"unknown resource {r!r}; define it with `rb resource add {r}`", "unknown_resource", name=r)
 
 
 def op_add(d: dict, actor: Actor, f: dict) -> dict:
     iid = f["id"]
     if not ID_RE.match(iid or ""):
-        raise RBError("task id: letters, digits, '.', '_' or '-', up to 32 characters, starting with a letter or digit")
+        raise RBError("task id: letters, digits, '.', '_' or '-', up to 32 characters, starting with a letter or digit", "bad_id")
     if any(i["id"] == iid for i in d["items"]):
-        raise RBError(f"task {iid} already exists")
+        raise RBError(f"task {iid} already exists", "exists", id=iid)
     lane = f.get("lane") or d["lanes"][0]["id"]
     needs, uses = split_list(f.get("needs")), split_list(f.get("uses"))
     check_refs(d, lane, needs, uses)
@@ -391,7 +398,7 @@ def op_edit(d: dict, actor: Actor, iid: str, f: dict) -> dict:
     if not (direct_allowed(d, actor) or own_proposal):
         raise RBError(f"you cannot edit {iid}: it is not your proposal (ask the person, or leave a note)")
     if it["status"] in ("done", "cancelled"):
-        raise RBError(f"{iid} is {it['status']}; restore or recreate it instead of editing")
+        raise RBError(f"{iid} is {it['status']}; restore or recreate it instead of editing", "wrong_state", id=iid, status=it["status"])
     if "lane" in f and f["lane"] is not None:
         check_refs(d, f["lane"], None, None)
         it["lane"] = f["lane"]
@@ -401,13 +408,13 @@ def op_edit(d: dict, actor: Actor, iid: str, f: dict) -> dict:
     if f.get("needs") is not None:
         needs = split_list(f["needs"])
         if iid in needs:
-            raise RBError("a task cannot need itself")
+            raise RBError("a task cannot need itself", "cycle")
         check_refs(d, None, needs, None)
         old = it["needs"]
         it["needs"] = needs
         if has_cycle({i["id"]: i for i in d["items"]}):
             it["needs"] = old
-            raise RBError("that would create a dependency cycle")
+            raise RBError("that would create a dependency cycle", "cycle")
     if f.get("uses") is not None:
         uses = split_list(f["uses"])
         check_refs(d, None, None, uses)
@@ -433,7 +440,7 @@ def op_edit(d: dict, actor: Actor, iid: str, f: dict) -> dict:
 def op_set_status(d: dict, actor: Actor, iid: str, status: str, detail: str = "") -> dict:
     require_human(actor, "set a status directly")
     if status not in STATUSES:
-        raise RBError(f"status must be one of: {', '.join(STATUSES)}")
+        raise RBError(f"status must be one of: {', '.join(STATUSES)}", "bad_status")
     it = get_item(d, iid)
     if status == "queued" and not it["text"].strip():
         status = "draft"
@@ -449,7 +456,7 @@ def op_approve(d: dict, actor: Actor, iid: str) -> dict:
     require_human(actor, "approve a proposal")
     it = get_item(d, iid)
     if it["status"] != "proposed":
-        raise RBError(f"{iid} is {it['status']}, not a proposal")
+        raise RBError(f"{iid} is {it['status']}, not a proposal", "wrong_state", id=iid, status=it["status"])
     it["status"] = "queued" if it["text"].strip() else "draft"
     it["updated"] = now_iso()
     log_event(d, actor, "approve", iid)
@@ -460,7 +467,7 @@ def op_reject(d: dict, actor: Actor, iid: str, reason: str = "") -> dict:
     require_human(actor, "reject a proposal")
     it = get_item(d, iid)
     if it["status"] != "proposed":
-        raise RBError(f"{iid} is {it['status']}, not a proposal")
+        raise RBError(f"{iid} is {it['status']}, not a proposal", "wrong_state", id=iid, status=it["status"])
     it["status"] = "cancelled"
     it["updated"] = now_iso()
     if reason:
@@ -491,7 +498,7 @@ def op_restore(d: dict, actor: Actor, iid: str) -> dict:
     require_human(actor, "restore a cancelled task")
     it = get_item(d, iid)
     if it["status"] != "cancelled":
-        raise RBError(f"{iid} is {it['status']}, not cancelled")
+        raise RBError(f"{iid} is {it['status']}, not cancelled", "wrong_state", id=iid, status=it["status"])
     it["status"] = "queued" if it["text"].strip() else "draft"
     it["updated"] = now_iso()
     log_event(d, actor, "restore", iid)
@@ -502,9 +509,9 @@ def op_sent(d: dict, actor: Actor, iid: str) -> dict:
     require_human(actor, "mark a task as sent")
     it = get_item(d, iid)
     if it["status"] not in ("queued", "draft"):
-        raise RBError(f"{iid} is {it['status']}, it cannot be marked as sent")
+        raise RBError(f"{iid} is {it['status']}, it cannot be marked as sent", "wrong_state", id=iid, status=it["status"])
     if not it["text"].strip():
-        raise RBError(f"{iid} has no prompt text yet (generate it first)")
+        raise RBError(f"{iid} has no prompt text yet (generate it first)", "no_text", id=iid)
     it["status"] = "sent"
     it["updated"] = now_iso()
     log_event(d, actor, "sent", iid)
@@ -514,7 +521,7 @@ def op_sent(d: dict, actor: Actor, iid: str) -> dict:
 def op_claim(d: dict, actor: Actor, iid: str, force: bool = False) -> list:
     it = get_item(d, iid)
     if it["status"] not in ("queued", "sent") and not force:
-        raise RBError(f"{iid} is {it['status']} and cannot be claimed (only queued or sent tasks can)")
+        raise RBError(f"{iid} is {it['status']} and cannot be claimed (only queued or sent tasks can)", "wrong_state", id=iid, status=it["status"])
     comp = {c["id"]: c for c in compute(d)}[iid]
     if comp["waiting_on"] and not force:
         raise RBError(f"{iid} must wait for: {', '.join(comp['waiting_on'])}")
@@ -544,7 +551,7 @@ def _owner_check(it: dict, actor: Actor, force: bool, verb: str) -> None:
 def op_finish(d: dict, actor: Actor, iid: str, report: str = "", note: str = "", force: bool = False) -> dict:
     it = get_item(d, iid)
     if it["status"] != "running" and not force:
-        raise RBError(f"{iid} is {it['status']}: claim it first")
+        raise RBError(f"{iid} is {it['status']}: claim it first", "wrong_state", id=iid, status=it["status"])
     _owner_check(it, actor, force, "finish")
     if not report and not force:
         raise RBError("a report path is required (use --report PATH, or --no-report if there is none)")
@@ -572,7 +579,7 @@ def op_heartbeat(d: dict, actor: Actor, iid: str) -> dict:
 def op_release(d: dict, actor: Actor, iid: str, force: bool = False) -> dict:
     it = get_item(d, iid)
     if it["status"] not in ("running", "sent"):
-        raise RBError(f"{iid} is {it['status']}: nothing to release")
+        raise RBError(f"{iid} is {it['status']}: nothing to release", "wrong_state", id=iid, status=it["status"])
     _owner_check(it, actor, force, "release")
     it["status"] = "queued"
     it["claim"] = None
@@ -585,7 +592,7 @@ def op_accept(d: dict, actor: Actor, iid: str) -> dict:
     require_human(actor, "accept a report")
     it = get_item(d, iid)
     if it["status"] != "review":
-        raise RBError(f"{iid} is {it['status']}, not waiting for review")
+        raise RBError(f"{iid} is {it['status']}, not waiting for review", "wrong_state", id=iid, status=it["status"])
     it["status"] = "done"
     it["updated"] = now_iso()
     log_event(d, actor, "accept", iid)
@@ -596,7 +603,7 @@ def op_note(d: dict, actor: Actor, iid: str, text: str) -> dict:
     it = get_item(d, iid)
     text = (text or "").strip()
     if not text:
-        raise RBError("empty note")
+        raise RBError("empty note", "empty_note")
     it["notes"].append({"t": now_iso(), "by": actor.name, "text": text[:2000]})
     it["updated"] = now_iso()
     log_event(d, actor, "note", iid)
@@ -736,7 +743,7 @@ def gen_request(d: dict, it: dict, board: Path) -> str:
     head_r = ("Reports of the tasks this one depends on (read them first):\n" if lang == "en" else "Отчёты задач, от которых зависит эта (прочитай сначала):\n")
     head_c = ("Project files worth reading:\n" if lang == "en" else "Файлы проекта, которые стоит прочитать:\n")
     return GEN.get(lang, GEN["en"]).format(
-        id=it["id"], title=it["title"], project=d.get("project", ""), lane=it["lane"], outline=it.get("outline") or it["title"],
+        id=it["id"], title=it["title"], project=d.get("project", ""), lane=next((l.get("title") or l["id"] for l in d["lanes"] if l["id"] == it["lane"]), it["lane"]), outline=it.get("outline") or it["title"],
         needs=", ".join(it.get("needs", [])) or "-", uses=", ".join(it.get("uses", [])) or "-",
         quiet="yes" if it.get("quiet") else "no", noisy="yes" if it.get("noisy") else "no",
         reports=(head_r + "\n".join(reports) + "\n") if reports else "",
@@ -837,7 +844,7 @@ def make_handler(board: Path, tracker: dict):
                     return self._send(200, {"text": text})
                 self._send(404, {"error": "not found"})
             except RBError as e:
-                self._send(400, {"error": str(e)})
+                self._send(400, {"error": str(e), "code": e.code, "info": e.info})
             except Exception as e:  # never kill the server on a bad request
                 self._send(500, {"error": f"{type(e).__name__}: {e}"})
 
@@ -857,7 +864,7 @@ def make_handler(board: Path, tracker: dict):
                 result = apply_action(board, req)
                 self._send(200, {"ok": True, "result": result})
             except RBError as e:
-                self._send(400, {"ok": False, "error": str(e)})
+                self._send(400, {"ok": False, "error": str(e), "code": e.code, "info": e.info})
             except (ValueError, KeyError, TypeError):
                 self._send(400, {"ok": False, "error": "bad request"})
             except Exception as e:

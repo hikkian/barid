@@ -138,34 +138,57 @@ details>summary{cursor:pointer;color:var(--mute);margin:6px 0}
 "use strict";
 (function () {
 var STR = {
- en: {now:"What to do now", flow:"Order and what can run together", inbox_p:"Agents proposed", inbox_r:"Reports to review", archive:"Archive", activity:"Activity",
-  add:"+ Add task", search:"Search…", lang:"Русский", idle:"Nothing to do in this lane.", nothing_ready:"Nothing is ready. Waiting for: ", running:"Running", by:"by",
-  since:"since", stale:"lease expired: is the session still alive?", copy:"Copy prompt", sent:"Mark as sent", release:"Release", approve:"Approve", reject:"Reject",
-  edit:"Edit", accept:"Accept report", sendback:"Send back", cancel:"Cancel task", restore:"Restore", gen:"Generate prompt", genhint:"Copies a request for your AI agent; it writes the prompt and stores it here.",
-  copied:"Copied", copied_gen:"Request copied: paste it into your AI agent", saved:"Saved", close:"Close", save:"Save", step:"Step", together:"can run at the same time", after:"after",
-  blocked_by:"blocked by", next:"Next", can:"These can run at the same time: ", cant:"Run one at a time (conflict): ", single:"Only one lane has work right now.",
-  status:"Status", notes:"Notes", addnote:"Add a note", history:"History", report:"Report", needs:"Needs", uses:"Uses", lane:"Lane", when:"When", created:"Created by", claim:"Held by",
-  prompt:"Prompt", noprompt:"No prompt text yet.", title:"Title", outline:"Outline (what the prompt must achieve)", needs_l:"Needs (comma list of ids)", uses_l:"Uses (comma list)",
-  quiet:"needs a quiet machine", noisy:"creates load", id:"ID", text:"Prompt text", create:"Create", proposals:"proposal", offline:"No connection to the board server. Retrying…",
-  copy_path:"Copy report path", reopen:"Reopen", turn:"its turn", draft_wait:"not its turn yet", empty_flow:"No planned tasks yet. Ask your agent to add some, or use + Add task.",
-  s:{ready:"ready",waiting:"waiting",blocked:"blocked",queued:"queued",draft:"draft",proposed:"proposed",sent:"sent",running:"running",review:"review",done:"done",cancelled:"cancelled"},
-  with_:"Can run with", wait_:"Waiting for", conf_:"Blocked by", why:{lane:"same session",quiet:"needs a quiet machine"}, rev:"rev"},
- ru: {now:"Что делать сейчас", flow:"Порядок и что можно вместе", inbox_p:"Агенты предложили", inbox_r:"Отчёты на проверку", archive:"Архив", activity:"Журнал",
-  add:"+ Добавить", search:"Поиск…", lang:"English", idle:"В этой дорожке сейчас нечего делать.", nothing_ready:"Нечего запускать. Ждёт: ", running:"Выполняется", by:"у",
-  since:"с", stale:"аренда истекла: сессия ещё жива?", copy:"Скопировать промпт", sent:"Отметить отправленным", release:"Освободить", approve:"Одобрить", reject:"Отклонить",
-  edit:"Править", accept:"Принять отчёт", sendback:"Вернуть", cancel:"Отменить задачу", restore:"Вернуть", gen:"Сгенерировать промпт", genhint:"Копирует запрос для вашего ИИ-агента: он напишет промпт и сохранит его здесь.",
-  copied:"Скопировано", copied_gen:"Запрос скопирован: вставьте его вашему ИИ-агенту", saved:"Сохранено", close:"Закрыть", save:"Сохранить", step:"Шаг", together:"можно запускать одновременно", after:"после",
-  blocked_by:"мешает", next:"Дальше", can:"Можно одновременно: ", cant:"По одному (конфликт): ", single:"Сейчас работа есть только в одной дорожке.",
-  status:"Статус", notes:"Заметки", addnote:"Добавить заметку", history:"История", report:"Отчёт", needs:"После", uses:"Ресурсы", lane:"Дорожка", when:"Когда", created:"Создал", claim:"Занял",
-  prompt:"Промпт", noprompt:"Текста промпта ещё нет.", title:"Заголовок", outline:"Набросок (чего должен достичь промпт)", needs_l:"После (id через запятую)", uses_l:"Ресурсы (через запятую)",
-  quiet:"нужна тишина", noisy:"создаёт нагрузку", id:"ID", text:"Текст промпта", create:"Создать", proposals:"предложение", offline:"Нет связи с сервером доски. Повтор…",
-  copy_path:"Скопировать путь отчёта", reopen:"Открыть снова", turn:"подошла очередь", draft_wait:"очередь ещё не подошла", empty_flow:"Пока нет задач. Попросите агента добавить или нажмите «Добавить».",
-  s:{ready:"можно",waiting:"ждёт",blocked:"мешает",queued:"в очереди",draft:"черновик",proposed:"предложен",sent:"отправлен",running:"идёт",review:"на проверке",done:"готово",cancelled:"отменён"},
-  with_:"Можно вместе с", wait_:"Ждёт", conf_:"Мешает", why:{lane:"та же сессия",quiet:"нужна тишина"}, rev:"версия"}
+ en: {now:"What to do now", flow:"Order, and what can run together", inbox_p:"Proposed by agents", inbox_r:"Reports to review", archive:"Archive", activity:"Activity log",
+  add:"+ New task", search:"Search…", lang:"Русский", idle:"Nothing to do for this session right now.", nothing_ready:"Nothing is ready yet. Waiting for: ",
+  running:"In progress", held_by:"held by {name} since {time}", proposed_by:"proposed by {name}",
+  stale:"the claim has expired: is the session still running?", copy:"Copy prompt", sent:"Mark as sent", release:"Return to queue", approve:"Approve", reject:"Reject",
+  edit:"Edit", accept:"Accept report", sendback:"Send back", cancel:"Cancel task", restore:"Restore", gen:"Generate prompt",
+  genhint:"Copies a request for your AI agent. The agent writes the prompt and stores it here.",
+  copied:"Copied", copied_gen:"Request copied. Paste it into your AI agent.", saved:"Saved", close:"Close", save:"Save", step:"Step", together:"can run at the same time", after:"after",
+  blocked_by:"waiting for", next:"Next", can:"These can run at the same time: ", cant:"Run them one after another (conflict): ",
+  status:"Status", notes:"Notes", addnote:"New note (Enter to save)", history:"History", report:"Report", needs:"Depends on", uses:"Resources", lane:"Session", when:"When", created:"Created by", claim:"Held by",
+  prompt:"Prompt", noprompt:"There is no prompt text yet.", title:"Title", outline:"Outline (what the prompt must achieve)", needs_l:"Depends on (IDs, comma separated)", uses_l:"Resources (comma separated)",
+  quiet:"needs a quiet machine", noisy:"creates load", id:"ID", text:"Prompt text", create:"Create", offline:"No connection to the board server. Retrying…",
+  copy_path:"Copy report path", reopen:"Reopen", turn:"its turn has come", empty_flow:"No tasks yet. Ask your agent to add some, or press “+ New task”.",
+  s:{ready:"ready to run",waiting:"waiting",blocked:"busy",queued:"queued",draft:"draft",proposed:"proposed",sent:"sent",running:"in progress",review:"to review",done:"done",cancelled:"cancelled"},
+  with_:"Can run with", wait_:"Depends on", conf_:"Waiting for", why:{lane:"same session",quiet:"quiet and load do not mix"}, rev:"rev", snapshot:"This is a read-only snapshot",
+  ok_sent:"Marked as sent", ok_release:"Returned to the queue", ok_approve:"Approved", ok_reject:"Rejected", ok_accept:"Report accepted", ok_cancel:"Task cancelled", ok_restore:"Task restored",
+  ok_status:"Status changed", ok_requeued:"Returned to the queue", ok_note:"Note added", ok_saved:"Saved", ok_created:"Task created",
+  ERR:{exists:"A task with ID {id} already exists", bad_id:"ID: letters, digits, “.”, “_” or “-”, up to 32 characters", unknown_lane:"Unknown session: {lane}", unknown_task:"Unknown task in the dependency list: {id}",
+   unknown_resource:"Unknown resource: {name}", cycle:"That would create a dependency loop", no_text:"{id} has no prompt text yet: generate or write it first", not_found:"No such task: {id}",
+   wrong_state:"{id} is now “{status}”: this action is not possible", human_only:"Only you can do this", empty_note:"The note is empty", bad_status:"Unknown status"}},
+ ru: {now:"Что делать сейчас", flow:"Порядок работ и что можно запускать вместе", inbox_p:"Предложения агентов", inbox_r:"Отчёты на проверку", archive:"Архив", activity:"Журнал действий",
+  add:"+ Новая задача", search:"Поиск…", lang:"English", idle:"Для этой сессии сейчас нет задач.", nothing_ready:"Пока нечего запускать. Ожидает: ",
+  running:"В работе", held_by:"у {name} с {time}", proposed_by:"предложил(а) {name}",
+  stale:"срок занятия истёк: сессия ещё работает?", copy:"Скопировать промпт", sent:"Отметить как отправленный", release:"Вернуть в очередь", approve:"Одобрить", reject:"Отклонить",
+  edit:"Редактировать", accept:"Принять отчёт", sendback:"Вернуть на доработку", cancel:"Отменить задачу", restore:"Восстановить", gen:"Сгенерировать промпт",
+  genhint:"Копирует запрос для вашего ИИ-агента. Агент напишет промпт и сохранит его здесь.",
+  copied:"Скопировано", copied_gen:"Запрос скопирован. Вставьте его в окно ИИ-агента.", saved:"Сохранено", close:"Закрыть", save:"Сохранить", step:"Шаг", together:"можно запускать одновременно", after:"после",
+  blocked_by:"ждёт завершения", next:"Следующая", can:"Можно запускать одновременно: ", cant:"Запускайте по очереди (конфликт): ",
+  status:"Статус", notes:"Заметки", addnote:"Новая заметка (Enter — сохранить)", history:"История", report:"Отчёт", needs:"Зависит от", uses:"Ресурсы", lane:"Сессия", when:"Когда", created:"Автор", claim:"В работе у",
+  prompt:"Промпт", noprompt:"Текста промпта ещё нет.", title:"Название", outline:"Суть (что должен сделать промпт)", needs_l:"Зависит от (ID через запятую)", uses_l:"Ресурсы (через запятую)",
+  quiet:"нужна тишина", noisy:"создаёт нагрузку", id:"ID", text:"Текст промпта", create:"Создать", offline:"Нет связи с сервером доски. Пробую снова…",
+  copy_path:"Скопировать путь к отчёту", reopen:"Открыть заново", turn:"подошла очередь", empty_flow:"Задач пока нет. Попросите агента добавить их или нажмите «+ Новая задача».",
+  s:{ready:"можно запускать",waiting:"ждёт",blocked:"занято",queued:"в очереди",draft:"черновик",proposed:"предложено",sent:"отправлено",running:"в работе",review:"на проверке",done:"выполнено",cancelled:"отменено"},
+  with_:"Можно вместе с", wait_:"Ждёт задачи", conf_:"Ждёт завершения", why:{lane:"та же сессия",quiet:"тишина и нагрузка несовместимы"}, rev:"версия", snapshot:"Это снимок только для чтения",
+  ok_sent:"Отмечено как отправленное", ok_release:"Возвращено в очередь", ok_approve:"Одобрено", ok_reject:"Отклонено", ok_accept:"Отчёт принят", ok_cancel:"Задача отменена", ok_restore:"Задача восстановлена",
+  ok_status:"Статус изменён", ok_requeued:"Возвращено в очередь", ok_note:"Заметка добавлена", ok_saved:"Сохранено", ok_created:"Задача создана",
+  ERR:{exists:"Задача с ID {id} уже существует", bad_id:"ID: латинские буквы, цифры, «.», «_» или «-», до 32 символов", unknown_lane:"Нет такой сессии: {lane}", unknown_task:"Нет такой задачи в зависимостях: {id}",
+   unknown_resource:"Нет такого ресурса: {name}", cycle:"Получился бы цикл зависимостей", no_text:"У {id} ещё нет текста промпта: сначала сгенерируйте или напишите его", not_found:"Задачи {id} нет",
+   wrong_state:"Задача {id} сейчас «{status}»: это действие невозможно", human_only:"Это может сделать только человек", empty_note:"Заметка пустая", bad_status:"Неизвестный статус"}}
 };
 var S = {board:null, lang:"en", lanes:{}, sel:null, q:"", laneOff:{}, arch:false, act:false, editing:false, rev:-1, offline:false};
 try { S.lang = localStorage.getItem("rb.lang") || ""; S.arch = localStorage.getItem("rb.arch") === "1"; S.act = localStorage.getItem("rb.act") === "1"; } catch (e) {}
 function t(k) { var d = STR[S.lang] || STR.en; return d[k] != null ? d[k] : (STR.en[k] != null ? STR.en[k] : k); }
+function fmt(str, vars) { return String(str).replace(/\{(\w+)\}/g, function (m, k) { return vars && vars[k] != null ? vars[k] : m; }); }
+function errText(e) {
+  if (e && e.code === "snapshot") return t("snapshot");
+  var d = STR[S.lang] || STR.en, tpl = e && e.code && d.ERR[e.code];
+  if (!tpl) return (e && e.message) || String(e);
+  var info = Object.assign({}, e.info || {}); if (info.status) info.status = st(info.status);
+  return fmt(tpl, info);
+}
+var ACT_OK = {sent: "ok_sent", approve: "ok_approve", reject: "ok_reject", accept: "ok_accept", cancel: "ok_cancel", restore: "ok_restore", release: "ok_release", note: "ok_note", edit: "ok_saved", add: "ok_created"};
 function st(s) { return (STR[S.lang] || STR.en).s[s] || s; }
 function $(id) { return document.getElementById(id); }
 function h(tag, attrs) {
@@ -183,10 +206,15 @@ function copy(text, msg) {
   function fb() { var ta = h("textarea"); ta.value = text; ta.style.cssText = "position:fixed;opacity:0"; document.body.appendChild(ta); ta.select(); try { document.execCommand("copy"); toast(msg || t("copied")); } catch (e) { toast("Copy failed", true); } ta.remove(); }
   if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(text).then(function () { toast(msg || t("copied")); }, fb); else fb();
 }
-function api(path, opts) { if (window.__RB_BOARD__) return Promise.reject(new Error("This is a read-only snapshot")); return fetch(path, Object.assign({cache: "no-store"}, opts || {})).then(function (r) { return r.json().then(function (j) { if (!r.ok) throw new Error(j.error || r.status); return j; }); }); }
+function api(path, opts) {
+  if (window.__RB_BOARD__) { var se = new Error("snapshot"); se.code = "snapshot"; return Promise.reject(se); }
+  return fetch(path, Object.assign({cache: "no-store"}, opts || {})).then(function (r) {
+    return r.json().then(function (j) { if (!r.ok) { var e = new Error(j.error || r.status); e.code = j.code; e.info = j.info; throw e; } return j; });
+  });
+}
 function act(action, id, args, ok) {
   return api("/api/act", {method: "POST", headers: {"Content-Type": "application/json", "X-RB-Edit": "1"}, body: JSON.stringify({action: action, id: id, args: args || {}})})
-    .then(function () { if (ok) toast(ok); return load(); }).catch(function (e) { toast(e.message, true); });
+    .then(function () { var key = action === "status" ? (args && args.status === "queued" ? "ok_requeued" : "ok_status") : ACT_OK[action]; if (key) toast(t(key)); return load(); }).catch(function (e) { toast(errText(e), true); });
 }
 function laneIndex(id) { var L = S.board.lanes; for (var i = 0; i < L.length; i++) if (L[i].id === id) return i; return 0; }
 function laneTitle(id) { var L = S.board.lanes; for (var i = 0; i < L.length; i++) if (L[i].id === id) return L[i].title || id; return id; }
@@ -198,7 +226,7 @@ function match(c) {
   var q = S.q.toLowerCase();
   return (c.id + " " + c.title + " " + (c.outline || "") + " " + (c.text || "")).toLowerCase().indexOf(q) >= 0;
 }
-function fmtTime(s) { if (!s) return ""; var d = new Date(s); return isNaN(d) ? s : d.toLocaleString([], {month: "short", day: "numeric", hour: "2-digit", minute: "2-digit"}); }
+function fmtTime(s) { if (!s) return ""; var d = new Date(s); return isNaN(d) ? s : d.toLocaleString(S.lang === "ru" ? "ru-RU" : "en-US", {month: "short", day: "numeric", hour: "2-digit", minute: "2-digit"}); }
 function chip(c) { return h("span", {class: "chip s-" + c.state, text: st(c.state)}); }
 function tags(c) {
   var out = [];
@@ -240,7 +268,7 @@ function renderNow() {
     running.forEach(function (c) {
       var cl = c.claim;
       card.appendChild(h("div", {style: "margin-bottom:8px"}, h("div", {class: "sub", text: t("running")}), h("div", {class: "big", text: c.id + " · " + c.title}),
-        h("div", {class: "sub", text: (cl ? t("by") + " " + cl.by + " " + t("since") + " " + fmtTime(cl.at) : st(c.state)) + (c.stale ? " · ⚠ " + t("stale") : "")}),
+        h("div", {class: "sub", text: (cl ? fmt(t("held_by"), {name: cl.by, time: fmtTime(cl.at)}) : st(c.state)) + (c.stale ? " · ⚠ " + t("stale") : "")}),
         h("div", {class: "row"}, h("button", {class: "btn sm", text: t("copy"), onclick: function () { copyPrompt(c.id); }}), h("button", {class: "btn sm", text: t("release"), onclick: function () { act("release", c.id); }}),
           h("button", {class: "btn sm", text: "…", onclick: function () { openDrawer(c.id); }}))));
     });
@@ -285,7 +313,7 @@ function renderInbox() {
     var l = h("div", {class: "inbox"});
     props.forEach(function (c) {
       l.appendChild(h("div", {class: "card ib", style: "border-left:4px solid var(--draft)"},
-        h("div", {class: "body"}, h("div", null, h("b", {text: c.id}), " · " + c.title + " ", chip(c), " ", h("span", {class: "sub", text: laneTitle(c.lane) + " · " + t("by") + " " + (c.created_by || "?")})), h("pre", {text: c.text || c.outline || ""})),
+        h("div", {class: "body"}, h("div", null, h("b", {text: c.id}), " · " + c.title + " ", chip(c), " ", h("span", {class: "sub", text: laneTitle(c.lane) + " · " + fmt(t("proposed_by"), {name: c.created_by || "?"})})), h("pre", {text: c.text || c.outline || ""})),
         h("div", {class: "row"}, h("button", {class: "btn ok", text: t("approve"), onclick: function () { act("approve", c.id, {}, t("approve")); }}), h("button", {class: "btn", text: t("edit"), onclick: function () { openDrawer(c.id, true); }}),
           h("button", {class: "btn bad", text: t("reject"), onclick: function () { act("reject", c.id); }}))));
     });
@@ -344,8 +372,8 @@ function renderActivity() {
   S.board.events.slice().reverse().slice(0, 40).forEach(function (e) { box.appendChild(h("div", {class: "ev"}, fmtTime(e.t) + " ", h("b", {text: e.by}), " " + e.action + " " + (e.id || "") + (e.detail ? " · " + e.detail : ""))); });
 }
 
-function copyPrompt(id) { api("/api/prompt/" + encodeURIComponent(id)).then(function (j) { if (!j.text) { toast(t("noprompt"), true); return; } copy(j.text); }).catch(function (e) { toast(e.message, true); }); }
-function copyGen(id) { api("/api/gen/" + encodeURIComponent(id)).then(function (j) { copy(j.text, t("copied_gen")); }).catch(function (e) { toast(e.message, true); }); }
+function copyPrompt(id) { api("/api/prompt/" + encodeURIComponent(id)).then(function (j) { if (!j.text) { toast(t("noprompt"), true); return; } copy(j.text); }).catch(function (e) { toast(errText(e), true); }); }
+function copyGen(id) { api("/api/gen/" + encodeURIComponent(id)).then(function (j) { copy(j.text, t("copied_gen")); }).catch(function (e) { toast(errText(e), true); }); }
 
 function openDrawer(id, edit) { S.sel = id; S.editing = !!edit; renderDrawer(); $("drawer").classList.add("open"); renderFlow(); }
 function closeDrawer(silent) { S.sel = null; S.editing = false; $("drawer").classList.remove("open"); if (!silent) { renderFlow(); } }
@@ -426,7 +454,7 @@ function openAdd() {
   box.appendChild(h("div", {class: "row", style: "margin-top:14px"}, h("button", {class: "btn pri", text: t("create"), onclick: function () {
     var a = formArgs(g._f); a.draft = !a.text.trim();
     api("/api/act", {method: "POST", headers: {"Content-Type": "application/json", "X-RB-Edit": "1"}, body: JSON.stringify({action: "add", id: g._f.id.value.trim(), args: a})})
-      .then(function () { $("modal").classList.remove("open"); toast(t("saved")); return load(); }).catch(function (e) { toast(e.message, true); });
+      .then(function () { $("modal").classList.remove("open"); toast(t("ok_created")); return load(); }).catch(function (e) { toast(errText(e), true); });
   }}), h("button", {class: "btn", text: t("close"), onclick: function () { $("modal").classList.remove("open"); }})));
   $("modal").classList.add("open");
 }

@@ -356,6 +356,62 @@ class CliTests(unittest.TestCase):
         self.assertNotIn("Traceback", p.stderr)
 
 
+class PanelI18nTests(unittest.TestCase):
+    """The panel's texts: both languages complete, every used key defined, placeholders match."""
+
+    @classmethod
+    def setUpClass(cls):
+        import shutil
+        cls.html = (RB_PATH.parent / "panel.html").read_text("utf-8")
+        node = shutil.which("node")
+        if not node:
+            raise unittest.SkipTest("node is not available")
+        block = cls.html[cls.html.index("var STR = {"): cls.html.index("var S = {board:null")]
+        out = subprocess.run([node, "-e", block + "\nconsole.log(JSON.stringify(STR))"], capture_output=True, text=True, check=True).stdout
+        cls.STR = json.loads(out)
+
+    def flat(self, d, prefix=""):
+        out = {}
+        for k, v in d.items():
+            if isinstance(v, dict):
+                out.update(self.flat(v, prefix + k + "."))
+            else:
+                out[prefix + k] = v
+        return out
+
+    def test_both_languages_have_the_same_keys_and_placeholders(self):
+        import re
+        en, ru = self.flat(self.STR["en"]), self.flat(self.STR["ru"])
+        self.assertEqual(sorted(en), sorted(ru))
+        for k in en:
+            self.assertTrue(en[k].strip() and ru[k].strip(), k)
+            self.assertEqual(sorted(re.findall(r"\{(\w+)\}", en[k])), sorted(re.findall(r"\{(\w+)\}", ru[k])), f"placeholders differ in {k}")
+
+    def test_every_key_used_by_the_panel_exists(self):
+        import re
+        keys = set(self.STR["en"]) | {"s"}
+        used = set(re.findall(r'\bt\("(\w+)"\)', self.html))
+        self.assertFalse(used - keys, f"undefined keys: {used - keys}")
+        for status in rb.STATUSES:
+            self.assertIn(status, self.STR["ru"]["s"])
+        for key in re.findall(r'"(ok_\w+)"', self.html):
+            self.assertIn(key, self.STR["en"], key)
+
+    def test_every_error_code_raised_by_rb_has_a_translation(self):
+        import re
+        codes = set(re.findall(r'RBError\([^\n]*?, "(\w+)"', RB_PATH.read_text("utf-8")))
+        self.assertTrue(codes)
+        for lang in ("en", "ru"):
+            self.assertFalse(codes - set(self.STR[lang]["ERR"]), f"{lang}: {codes - set(self.STR[lang]['ERR'])}")
+
+    def test_feedback_after_an_action_is_past_tense_not_the_button_label(self):
+        for lang in ("en", "ru"):
+            d = self.STR[lang]
+            self.assertNotEqual(d["ok_accept"], d["accept"])
+            self.assertNotEqual(d["ok_approve"], d["approve"])
+            self.assertNotEqual(d["ok_sent"], d["sent"])
+
+
 class ServerTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
@@ -416,6 +472,15 @@ class ServerTests(unittest.TestCase):
         self.assertEqual(code, 200)
         code, r = self.post({"action": "nonsense", "id": "A"})
         self.assertEqual(code, 400)
+
+    def test_errors_carry_a_code_for_translation(self):
+        code, r = self.post({"action": "add", "id": "A", "args": {"text": "x"}})
+        self.assertEqual((code, r["code"], r["info"]), (400, "exists", {"id": "A"}))
+        code, r = self.post({"action": "accept", "id": "A"})
+        self.assertEqual((code, r["code"]), (400, "wrong_state"))
+        self.assertEqual(r["info"]["id"], "A")
+        code, r = self.post({"action": "add", "id": "Z9", "args": {"lane": "nope", "text": "x"}})
+        self.assertEqual(r["code"], "unknown_lane")
 
     def test_security_checks(self):
         self.assertEqual(self.get("/api/board", {"Host": "evil.example.com"})[0], 403)
