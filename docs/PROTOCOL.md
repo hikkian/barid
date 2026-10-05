@@ -94,6 +94,10 @@ Active tasks are those in `sent` or `running`. `claim` is refused when it would 
 
 `rev` increases on every write. `events` keeps the last 500 entries. All writes go through `barid` (file lock plus atomic replace); do not edit the file by hand while agents are active.
 
+## Handoff
+
+Unless `policy.handoff` is false, the prompt of a task starts (before the footer) with a handoff block for every task it `needs` that is in `review` or `done`: the task, its outcome, who did it (lane title and agent), the report path, the branch and workdir, the number and names of changed files (first 8) and its last two notes. A lane whose `agent` is `local` also gets a one-line hint for smaller models.
+
 ## Prompt footer
 
 `barid show ID --text`, `barid next` and the panel's *Copy prompt* return the task text followed by a footer (English or Russian by `lang`, switch off with `policy.footer: false`) that contains the `claim`, `finish` and `note` commands with the absolute path of `barid.py` and of the board file. The footer is generated on the fly and never stored in `text`.

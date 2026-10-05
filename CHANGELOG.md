@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- Handoff between agents: the prompt of a task automatically includes what the tasks it builds on handed over (outcome, who and which agent, report, branch, changed files, last notes). A lane whose agent is `local` gets a short hint for smaller models.
+
 ## 0.3.0 (2026-10-05)
 
 - Sessions get their own colour, name and agent kind (`barid lane edit ID --color --agent`, or the Sessions section of the Appearance menu); the agent shows as a badge.

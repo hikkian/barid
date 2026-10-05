@@ -84,6 +84,22 @@ https://github.com/hikkian/barid and use `python3 <path>/barid.py` as described 
 draft -> queued -> sent -> running -> review -> done        (proposed -> queued on approval; cancelled anywhere before done)
 ```
 
+## Two (or more) different agents on one project
+
+Barid does not care which agent sits behind a session: Claude Code and Codex, Claude Code and a local model, three Codex windows. Give each its own lane and say which agent it is:
+
+```bash
+barid init --lanes "claude:Claude Code,codex:Codex,local:Local model"
+barid lane edit claude --agent claude --color "#ff8fb3" --human
+barid lane edit local  --agent local  --color "#86f9e4" --human
+```
+
+What makes them work as a team:
+- **Handoff.** When a task has finished, the prompt of every task that depends on it automatically starts with a short handoff: who did it (lane and agent), the outcome, the report path, the branch and worktree, how many files changed and which, and the last notes. The agent that continues the work does not need you to retell anything.
+- **Same rules for everyone.** The prompt itself carries the commands to claim and finish, the file scope and the protected paths, so it does not matter whether the agent reads `CLAUDE.md`, `AGENTS.md` or neither.
+- **A hint for small models.** A lane whose agent is `local` gets one extra line: work through the steps one at a time, run commands exactly as written, say so if a step is unclear.
+- **No collisions.** Exclusive resources, file scopes and separate worktrees apply across agents the same way (see above).
+
 ## Keeping sessions out of each other's way
 
 Two sessions rarely fight over a GPU alone: they also overwrite each other's files. Barid handles this on four levels:

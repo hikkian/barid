@@ -202,7 +202,7 @@ def new_board(project: str, lanes, lang: str = "en") -> dict:
             "gpu": {"label": "GPU", "exclusive": True},
             "user": {"label": "User present", "exclusive": True},
         },
-        "policy": {"direct_agents": [], "dependents_wait_for_accept": False, "lease_hours": 12, "footer": True},
+        "policy": {"direct_agents": [], "dependents_wait_for_accept": False, "lease_hours": 12, "footer": True, "handoff": True},
         "context": [], "protect": [], "items": [], "events": [],
     }
 
@@ -1007,10 +1007,63 @@ def footer_for(d: dict, it: dict, board: Path) -> str:
     return base + ("\n" + extra if extra else "")
 
 
+HANDOFF = {
+    "en": {"head": "Handoff from the tasks this one builds on (read it first):", "outcome": "outcome", "report": "report", "by": "done by", "branch": "branch",
+           "files": "files changed", "note": "note", "unstated": "not stated"},
+    "ru": {"head": "Передача от задач, на которых строится эта (прочитай сначала):", "outcome": "итог", "report": "отчёт", "by": "делал", "branch": "ветка",
+           "files": "изменено файлов", "note": "заметка", "unstated": "не указан"},
+}
+
+AGENT_HINT = {
+    "en": "You may be a smaller or local model: work through the steps one at a time, run the commands exactly as written, and say so in your report if a step is unclear instead of guessing.",
+    "ru": "Ты можешь быть небольшой или локальной моделью: выполняй шаги по одному, запускай команды ровно как написано, а если шаг неясен, скажи об этом в отчёте, а не угадывай.",
+}
+
+
+def handoff_text(d: dict, it: dict) -> str:
+    """What the finished tasks this one needs hand over: outcome, report, who did it, branch, changed files, last notes."""
+    if not d.get("policy", {}).get("handoff", True):
+        return ""
+    tx = HANDOFF.get(d.get("lang", "en"), HANDOFF["en"])
+    byid = {i["id"]: i for i in d["items"]}
+    lanes = {l["id"]: l for l in d["lanes"]}
+    blocks = []
+    for nid in it.get("needs", []):
+        n = byid.get(nid)
+        if not n or n["status"] not in ("review", "done"):
+            continue
+        lane = lanes.get(n["lane"], {})
+        who = lane.get("title") or n["lane"]
+        if lane.get("agent"):
+            who += f" ({lane['agent']})"
+        lines = [f"- {n['id']} {n['title']}: {tx['outcome']} {n.get('outcome') or tx['unstated']}, {tx['by']} {who}"]
+        if n.get("report"):
+            lines.append(f"    {tx['report']}: {n['report']}")
+        if n.get("branch"):
+            lines.append(f"    {tx['branch']}: {n['branch']}" + (f" ({n['workdir']})" if n.get("workdir") else ""))
+        ch = n.get("changed")
+        if ch and ch.get("count"):
+            lines.append(f"    {tx['files']}: {ch['count']}: " + ", ".join(ch.get("files", [])[:8]) + (" ..." if ch["count"] > 8 else ""))
+        for note in n.get("notes", [])[-2:]:
+            lines.append(f"    {tx['note']}: {note['text'][:300]}")
+        blocks.append("\n".join(lines))
+    return (tx["head"] + "\n" + "\n".join(blocks)) if blocks else ""
+
+
+def agent_hint(d: dict, it: dict) -> str:
+    lane = next((l for l in d["lanes"] if l["id"] == it["lane"]), {})
+    if str(lane.get("agent", "")).lower() in ("local", "local model", "llama", "qwen", "ollama"):
+        return AGENT_HINT.get(d.get("lang", "en"), AGENT_HINT["en"])
+    return ""
+
+
 def prompt_for(d: dict, it: dict, board: Path) -> str:
     text = it.get("text", "").strip()
     if not text:
         return ""
+    extra = [x for x in (handoff_text(d, it), agent_hint(d, it)) if x]
+    if extra:
+        text = text + "\n\n" + "\n\n".join(extra)
     if d.get("policy", {}).get("footer", True):
         return text + "\n\n" + footer_for(d, it, board)
     return text

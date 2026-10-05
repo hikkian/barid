@@ -240,6 +240,26 @@ class CoreTests(unittest.TestCase):
         self.assertIn("edit B --text-file", req)
         self.assertEqual(rb.prompt_for(d, {"id": "X", "text": ""}, self.path), "")
 
+    def test_handoff_between_agents_is_added_to_the_next_prompt(self):
+        rb.mutate(self.path, lambda d: rb.op_lane_edit(d, HUMAN, "main", agent="claude"))
+        rb.mutate(self.path, lambda d: rb.op_lane_edit(d, HUMAN, "second", agent="local"))
+        add(self.path, PLANNER, "A", lane="main", text="Build it.")
+        add(self.path, PLANNER, "B", lane="second", text="Test it.", needs="A")
+        rb.mutate(self.path, lambda d: rb.op_claim(d, AGENT, "A"))
+        rb.mutate(self.path, lambda d: rb.op_note(d, AGENT, "A", "API now needs a token"))
+        rb.mutate(self.path, lambda d: rb.op_finish(d, AGENT, "A", report="/r/build.md", outcome="complete"))
+        d = rb.load(self.path)
+        text = rb.prompt_for(d, d["items"][1], self.path)
+        self.assertIn("Handoff from the tasks this one builds on", text)
+        self.assertIn("/r/build.md", text)
+        self.assertIn("(claude)", text)
+        self.assertIn("API now needs a token", text)
+        self.assertIn("smaller or local model", text)  # the lane's agent is a local model
+        first = rb.prompt_for(d, d["items"][0], self.path)
+        self.assertNotIn("Handoff", first)  # nothing to hand over yet
+        rb.mutate(self.path, lambda d: d["policy"].update(handoff=False))
+        self.assertNotIn("Handoff", rb.prompt_for(rb.load(self.path), rb.load(self.path)["items"][1], self.path))
+
     def test_russian_footer(self):
         rb.mutate(self.path, lambda d: d.update(lang="ru"))
         add(self.path, PLANNER, "A", lane="main")
