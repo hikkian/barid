@@ -308,7 +308,7 @@ class CliTests(unittest.TestCase):
         e.pop("RB_BOARD", None)
         e.pop("RB_ACTOR", None)
         e.update(env or {})
-        p = subprocess.run([sys.executable, str(RB_PATH), *args], cwd=self.cwd, capture_output=True, text=True, env=e)
+        p = subprocess.run([sys.executable, str(RB_PATH), *args], cwd=self.cwd, capture_output=True, encoding="utf-8", errors="replace", env=e)
         if check and p.returncode != 0:
             self.fail(f"rb {' '.join(args)} failed: {p.stderr}")
         return p
@@ -341,11 +341,17 @@ class CliTests(unittest.TestCase):
         doctor = self.run_rb("doctor").stdout
         self.assertNotIn("FAIL", doctor)
 
+    def test_non_ascii_titles_do_not_crash_a_narrow_console(self):
+        self.run_rb("init", "--lang", "ru")
+        self.run_rb("add", "T1", "--title", "Проверка кириллицы", "--text", "текст", "--human")
+        p = self.run_rb("list", env={"PYTHONIOENCODING": "ascii"})
+        self.assertIn("T1", p.stdout)
+
     def test_board_is_found_from_a_subfolder(self):
         self.run_rb("init")
         sub = Path(self.cwd) / "deep" / "er"
         sub.mkdir(parents=True)
-        p = subprocess.run([sys.executable, str(RB_PATH), "where"], cwd=sub, capture_output=True, text=True)
+        p = subprocess.run([sys.executable, str(RB_PATH), "where"], cwd=sub, capture_output=True, encoding="utf-8", errors="replace")
         self.assertEqual(p.returncode, 0)
         self.assertTrue(p.stdout.strip().endswith("board.json"))
 
@@ -367,7 +373,7 @@ class PanelI18nTests(unittest.TestCase):
         if not node:
             raise unittest.SkipTest("node is not available")
         block = cls.html[cls.html.index("var STR = {"): cls.html.index("var S = {board:null")]
-        out = subprocess.run([node, "-e", block + "\nconsole.log(JSON.stringify(STR))"], capture_output=True, text=True, check=True).stdout
+        out = subprocess.run([node, "-e", block + "\nconsole.log(JSON.stringify(STR))"], capture_output=True, encoding="utf-8", check=True).stdout
         cls.STR = json.loads(out)
 
     def flat(self, d, prefix=""):
@@ -420,7 +426,7 @@ class ServerTests(unittest.TestCase):
         add(cls.path, PLANNER, "A", lane="main", text="hello", title="Alpha")
         add(cls.path, AGENT, "P", lane="second", text="proposal")
         add(cls.path, AGENT, "Q", lane="third", text="another proposal")
-        cls.proc = subprocess.Popen([sys.executable, str(RB_PATH), "--board", str(cls.path), "serve"], stdout=subprocess.PIPE, text=True)
+        cls.proc = subprocess.Popen([sys.executable, str(RB_PATH), "--board", str(cls.path), "serve"], stdout=subprocess.PIPE, encoding="utf-8", errors="replace")
         line = cls.proc.stdout.readline()
         cls.port = int(line.split("localhost:")[1].split("/")[0])
         cls.base = f"http://localhost:{cls.port}"
@@ -498,7 +504,7 @@ class ServerTests(unittest.TestCase):
         self.assertEqual(code, 200)
 
     def test_refuses_to_bind_a_public_address(self):
-        p = subprocess.run([sys.executable, str(RB_PATH), "--board", str(self.path), "serve", "--host", "0.0.0.0"], capture_output=True, text=True)
+        p = subprocess.run([sys.executable, str(RB_PATH), "--board", str(self.path), "serve", "--host", "0.0.0.0"], capture_output=True, encoding="utf-8", errors="replace")
         self.assertEqual(p.returncode, 1)
         self.assertIn("loopback", p.stderr)
 
