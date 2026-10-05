@@ -18,7 +18,7 @@ Stored `status`: `draft` (no prompt text yet), `proposed` (added by an untrusted
 
 Computed `state` for a queued task: `ready`, `waiting` (some `needs` are not finished; `waiting_on` lists them) or `blocked` (a conflicting task is active; `conflicts` lists `{id, why}`). For every other status `state` equals `status`.
 
-A need is *satisfied* when the task is `done`, or `review` unless `policy.dependents_wait_for_accept` is true.
+A need is *satisfied* when the task is `done` (the person accepted it, even a partial result), or when it is in `review` with `outcome: "complete"` unless `policy.dependents_wait_for_accept` is true. A report that ended `partial`, `failed` or without a stated outcome never unlocks dependents by itself: the person decides (accept as is, or send it back).
 
 ## Conflicts and parallelism
 
@@ -45,7 +45,8 @@ Active tasks are those in `sent` or `running`. `claim` is refused when it would 
 | `approve`, `reject` | person | `proposed` to `queued`/`draft`, or to `cancelled` |
 | `sent` | person | `queued` to `sent` |
 | `claim` | anyone | to `running`, refused on conflicts or unmet needs |
-| `finish` | the claimer or the person | to `review`; a report path is required |
+| `finish` | the claimer or the person | to `review`; a report path is required; `--outcome complete\|partial\|failed` says how it ended (be honest: stopping on a safety limit or a deadline is `partial`) |
+| `outcome` | person, trusted agents | corrects the outcome of a reported task |
 | `release` | the claimer or the person | back to `queued` |
 | `accept` | person | `review` to `done` |
 | `cancel` | person, trusted agents, the proposer (not while `running`, except the person) | to `cancelled`, kept |
@@ -69,7 +70,7 @@ Active tasks are those in `sent` or `running`. `claim` is refused when it would 
     "id": "T1", "lane": "main", "title": "Build", "status": "running",
     "needs": ["T0"], "uses": ["gpu"], "quiet": false, "noisy": true,
     "when": "", "outline": "", "text": "the prompt without the footer",
-    "report": "", "notes": [{"t": "...", "by": "agent", "text": "..."}],
+    "report": "", "outcome": "complete|partial|failed|", "notes": [{"t": "...", "by": "agent", "text": "..."}],
     "created": "...", "updated": "...", "created_by": "planner",
     "claim": {"by": "worker-a", "at": "...", "lease_until": "..."}
   }],

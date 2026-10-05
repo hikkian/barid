@@ -63,7 +63,7 @@ Read the dependency reports it lists before writing; the prompt should build on 
 1. `barid next --lane <your lane>` prints the next ready task and its prompt (exit code 2 and the reason if nothing is ready). When the person pasted a prompt to you, it already contains your task id and the exact commands: use those.
 2. `barid claim T1 --by "<you>"`. If it is refused (a conflicting task is running, or the task must wait), **stop and tell the person why**. Do not work around it and never use `--force`.
 3. Do the work. For long tasks run `barid heartbeat T1 --by "<you>"` now and then; an expired lease shows up as stale in the panel.
-4. Write your report file, then `barid finish T1 --report <path> --by "<you>"`. The task goes to *review*; the person accepts it.
+4. Write your report file, then `barid finish T1 --report <path> --outcome <complete|partial|failed> --by "<you>"`. Be honest about the outcome: `complete` only when every acceptance check was met and nothing is left; `partial` when you stopped early (a safety limit, the deadline, an error) or skipped parts; `failed` when the main goal was not reached. Only `complete` starts dependent tasks by itself, the person decides about the rest. The task goes to *review*; the person accepts it.
 5. If something blocks you, `barid note T1 "<what>" --by "<you>"`. If you think of a follow-up task, `barid add <ID> --lane <lane> --title ... --text-file ... --by "<you>"`; it arrives as a proposal.
 
 Touch only your own task. Never edit, cancel or delete other tasks.
@@ -94,7 +94,7 @@ Touch only your own task. Never edit, cancel or delete other tasks.
 | add / change / reorder task | `barid add ID ...`, `barid edit ID ...` (`--replace OLD NEW` swaps one exact fragment), `barid move ID POSITION` (earlier in the list = earlier slot in the plan) |
 | see order and parallelism | `barid plan`, `barid list` |
 | next task for a lane | `barid next --lane L` |
-| take / finish / give back | `barid claim ID`, `barid finish ID --report P`, `barid release ID` |
+| take / finish / give back | `barid claim ID`, `barid finish ID --report P --outcome complete\|partial\|failed`, `barid release ID` |
 | note, cancel | `barid note ID "text"`, `barid cancel ID --reason ...` |
 | prompt request for a draft | `barid gen ID` |
 | person's actions | `barid approve ID`, `barid accept ID`, `barid sent ID`, `barid status ID S` (with `--human`) |

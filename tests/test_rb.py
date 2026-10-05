@@ -70,16 +70,45 @@ class CoreTests(unittest.TestCase):
         add(self.path, PLANNER, "B", lane="second", needs="A")
         self.assertEqual(self.state("B")["state"], "waiting")
         rb.mutate(self.path, lambda d: rb.op_claim(d, AGENT, "A"))
-        rb.mutate(self.path, lambda d: rb.op_finish(d, AGENT, "A", report="r.md"))
+        rb.mutate(self.path, lambda d: rb.op_finish(d, AGENT, "A", report="r.md", outcome="complete"))
         self.assertEqual(self.state("A")["state"], "review")
-        self.assertEqual(self.state("B")["state"], "ready")  # default: a reported task unlocks dependents
+        self.assertEqual(self.state("B")["state"], "ready")  # a completely finished report unlocks dependents
+
+    def test_partial_failed_or_unstated_outcome_does_not_unlock_dependents(self):
+        add(self.path, PLANNER, "A", lane="main")
+        add(self.path, PLANNER, "B", lane="second", needs="A")
+        for outcome in ("partial", "failed", ""):
+            rb.mutate(self.path, lambda d: rb.op_claim(d, AGENT, "A"))
+            rb.mutate(self.path, lambda d, o=outcome: rb.op_finish(d, AGENT, "A", report="r.md", outcome=o))
+            b = self.state("B")
+            self.assertEqual(b["state"], "waiting", outcome)
+            self.assertEqual(b["waiting_info"]["A"], {"status": "review", "outcome": outcome})
+            rb.mutate(self.path, lambda d: rb.op_set_status(d, HUMAN, "A", "queued"))  # sent back
+        rb.mutate(self.path, lambda d: rb.op_claim(d, AGENT, "A"))
+        rb.mutate(self.path, lambda d: rb.op_finish(d, AGENT, "A", report="r.md", outcome="partial"))
+        rb.mutate(self.path, lambda d: rb.op_accept(d, HUMAN, "A"))  # the person accepts it as it is
+        self.assertEqual(self.state("B")["state"], "ready")
+
+    def test_outcome_can_be_corrected_by_the_person_but_not_by_a_worker(self):
+        add(self.path, PLANNER, "A", lane="main")
+        rb.mutate(self.path, lambda d: rb.op_claim(d, AGENT, "A"))
+        rb.mutate(self.path, lambda d: rb.op_finish(d, AGENT, "A", report="r.md", outcome="complete"))
+        with self.assertRaises(rb.RBError):
+            rb.mutate(self.path, lambda d: rb.op_outcome(d, AGENT, "A", "failed"))
+        rb.mutate(self.path, lambda d: rb.op_outcome(d, HUMAN, "A", "partial"))
+        self.assertEqual(self.state("A")["outcome"], "partial")
+        with self.assertRaises(rb.RBError):
+            rb.mutate(self.path, lambda d: rb.op_outcome(d, HUMAN, "A", "great"))
+        rb.mutate(self.path, lambda d: rb.op_set_status(d, HUMAN, "A", "queued"))
+        rb.mutate(self.path, lambda d: rb.op_claim(d, AGENT, "A"))
+        self.assertNotIn("outcome", rb.load(self.path)["items"][0])  # a new run starts without a verdict
 
     def test_dependents_can_wait_for_acceptance(self):
         rb.mutate(self.path, lambda d: d["policy"].update(dependents_wait_for_accept=True))
         add(self.path, PLANNER, "A", lane="main")
         add(self.path, PLANNER, "B", lane="second", needs="A")
         rb.mutate(self.path, lambda d: rb.op_claim(d, AGENT, "A"))
-        rb.mutate(self.path, lambda d: rb.op_finish(d, AGENT, "A", report="r.md"))
+        rb.mutate(self.path, lambda d: rb.op_finish(d, AGENT, "A", report="r.md", outcome="complete"))
         self.assertEqual(self.state("B")["state"], "waiting")
         rb.mutate(self.path, lambda d: rb.op_accept(d, HUMAN, "A"))
         self.assertEqual(self.state("B")["state"], "ready")

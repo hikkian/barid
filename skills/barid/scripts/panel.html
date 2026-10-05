@@ -60,6 +60,7 @@ h2 small{font-weight:500;letter-spacing:0;text-transform:none}
 .s-ready{color:var(--ok)}.s-running{color:var(--ac)}.s-sent{color:var(--ac)}.s-queued,.s-waiting{color:var(--mute)}
 .s-blocked{color:var(--warn)}.s-review{color:var(--warn)}.s-done{color:var(--ok)}.s-cancelled{color:var(--mute)}
 .s-draft,.s-proposed{color:var(--draft)}
+.o-partial,.o-none{color:var(--warn)}.o-failed{color:var(--bad)}
 .s-running::before{content:"● ";animation:pulse 1.4s ease-in-out infinite}
 @keyframes pulse{50%{opacity:.25}}
 @media (prefers-reduced-motion:reduce){.s-running::before{animation:none}}
@@ -150,14 +151,14 @@ var STR = {
   status:"Status", notes:"Notes", addnote:"New note (Enter to save)", history:"History", report:"Report", needs:"Depends on", uses:"Resources", lane:"Session", when:"When", created:"Created by", claim:"Held by",
   prompt:"Prompt", noprompt:"There is no prompt text yet.", title:"Title", outline:"Outline (what the prompt must achieve)", needs_l:"Depends on (IDs, comma separated)", uses_l:"Resources (comma separated)",
   quiet:"needs a quiet machine", noisy:"creates load", id:"ID", text:"Prompt text", create:"Create", offline:"No connection to the board server. Retrying…",
-  copy_path:"Copy report path", reopen:"Reopen", turn:"its turn has come", empty_flow:"No tasks yet. Ask your agent to add some, or press “+ New task”.",
+  copy_path:"Copy report path", reopen:"Reopen", out:"Outcome", out_complete:"complete", out_partial:"partial", out_failed:"failed", out_none:"outcome not stated", accept_asis:"Accept as is", partial_warn:"The session stopped early or did not finish everything. Dependent tasks wait for your decision.", turn:"its turn has come", empty_flow:"No tasks yet. Ask your agent to add some, or press “+ New task”.",
   s:{ready:"ready to run",waiting:"waiting",blocked:"busy",queued:"queued",draft:"draft",proposed:"proposed",sent:"sent",running:"in progress",review:"to review",done:"done",cancelled:"cancelled"},
   with_:"Can run with", wait_:"Depends on", conf_:"Waiting for", why:{lane:"same session",quiet:"quiet and load do not mix"}, rev:"rev", snapshot:"This is a read-only snapshot",
   ok_sent:"Marked as sent", ok_release:"Returned to the queue", ok_approve:"Approved", ok_reject:"Rejected", ok_accept:"Report accepted", ok_cancel:"Task cancelled", ok_restore:"Task restored",
-  ok_status:"Status changed", ok_requeued:"Returned to the queue", ok_note:"Note added", ok_saved:"Saved", ok_created:"Task created",
+  ok_status:"Status changed", ok_requeued:"Returned to the queue", ok_note:"Note added", ok_outcome:"Outcome changed", ok_saved:"Saved", ok_created:"Task created",
   ERR:{exists:"A task with ID {id} already exists", bad_id:"ID: letters, digits, “.”, “_” or “-”, up to 32 characters", unknown_lane:"Unknown session: {lane}", unknown_task:"Unknown task in the dependency list: {id}",
    unknown_resource:"Unknown resource: {name}", cycle:"That would create a dependency loop", no_text:"{id} has no prompt text yet: generate or write it first", not_found:"No such task: {id}",
-   wrong_state:"{id} is now “{status}”: this action is not possible", human_only:"Only you can do this", empty_note:"The note is empty", bad_status:"Unknown status"}},
+   wrong_state:"{id} is now “{status}”: this action is not possible", human_only:"Only you can do this", empty_note:"The note is empty", bad_status:"Unknown status", bad_outcome:"Unknown outcome"}},
  ru: {now:"Что делать сейчас", flow:"Порядок работ и что можно запускать вместе", inbox_p:"Предложения агентов", inbox_r:"Отчёты на проверку", archive:"Архив", activity:"Журнал действий",
   add:"+ Новая задача", search:"Поиск…", lang:"English", idle:"Для этой сессии сейчас нет задач.", nothing_ready:"Пока нечего запускать. Ожидает: ",
   running:"В работе", held_by:"у {name} с {time}", proposed_by:"предложил(а) {name}",
@@ -169,14 +170,14 @@ var STR = {
   status:"Статус", notes:"Заметки", addnote:"Новая заметка (Enter — сохранить)", history:"История", report:"Отчёт", needs:"Зависит от", uses:"Ресурсы", lane:"Сессия", when:"Когда", created:"Автор", claim:"В работе у",
   prompt:"Промпт", noprompt:"Текста промпта ещё нет.", title:"Название", outline:"Суть (что должен сделать промпт)", needs_l:"Зависит от (ID через запятую)", uses_l:"Ресурсы (через запятую)",
   quiet:"нужна тишина", noisy:"создаёт нагрузку", id:"ID", text:"Текст промпта", create:"Создать", offline:"Нет связи с сервером доски. Пробую снова…",
-  copy_path:"Скопировать путь к отчёту", reopen:"Открыть заново", turn:"подошла очередь", empty_flow:"Задач пока нет. Попросите агента добавить их или нажмите «+ Новая задача».",
+  copy_path:"Скопировать путь к отчёту", reopen:"Открыть заново", out:"Итог", out_complete:"выполнено полностью", out_partial:"выполнено частично", out_failed:"не удалось", out_none:"итог не указан", accept_asis:"Принять как есть", partial_warn:"Сессия остановилась раньше или сделала не всё. Зависимые задачи ждут вашего решения.", turn:"подошла очередь", empty_flow:"Задач пока нет. Попросите агента добавить их или нажмите «+ Новая задача».",
   s:{ready:"можно запускать",waiting:"ждёт",blocked:"занято",queued:"в очереди",draft:"черновик",proposed:"предложено",sent:"отправлено",running:"в работе",review:"на проверке",done:"выполнено",cancelled:"отменено"},
   with_:"Можно вместе с", wait_:"Ждёт задачи", conf_:"Ждёт завершения", why:{lane:"та же сессия",quiet:"тишина и нагрузка несовместимы"}, rev:"версия", snapshot:"Это снимок только для чтения",
   ok_sent:"Отмечено как отправленное", ok_release:"Возвращено в очередь", ok_approve:"Одобрено", ok_reject:"Отклонено", ok_accept:"Отчёт принят", ok_cancel:"Задача отменена", ok_restore:"Задача восстановлена",
-  ok_status:"Статус изменён", ok_requeued:"Возвращено в очередь", ok_note:"Заметка добавлена", ok_saved:"Сохранено", ok_created:"Задача создана",
+  ok_status:"Статус изменён", ok_requeued:"Возвращено в очередь", ok_note:"Заметка добавлена", ok_outcome:"Итог изменён", ok_saved:"Сохранено", ok_created:"Задача создана",
   ERR:{exists:"Задача с ID {id} уже существует", bad_id:"ID: латинские буквы, цифры, «.», «_» или «-», до 32 символов", unknown_lane:"Нет такой сессии: {lane}", unknown_task:"Нет такой задачи в зависимостях: {id}",
    unknown_resource:"Нет такого ресурса: {name}", cycle:"Получился бы цикл зависимостей", no_text:"У {id} ещё нет текста промпта: сначала сгенерируйте или напишите его", not_found:"Задачи {id} нет",
-   wrong_state:"Задача {id} сейчас «{status}»: это действие невозможно", human_only:"Это может сделать только человек", empty_note:"Заметка пустая", bad_status:"Неизвестный статус"}}
+   wrong_state:"Задача {id} сейчас «{status}»: это действие невозможно", human_only:"Это может сделать только человек", empty_note:"Заметка пустая", bad_status:"Неизвестный статус", bad_outcome:"Неизвестный итог"}}
 };
 var S = {board:null, lang:"en", lanes:{}, sel:null, q:"", laneOff:{}, arch:false, act:false, editing:false, rev:-1, offline:false};
 try { S.lang = localStorage.getItem("rb.lang") || ""; S.arch = localStorage.getItem("rb.arch") === "1"; S.act = localStorage.getItem("rb.act") === "1"; } catch (e) {}
@@ -189,7 +190,7 @@ function errText(e) {
   var info = Object.assign({}, e.info || {}); if (info.status) info.status = st(info.status);
   return fmt(tpl, info);
 }
-var ACT_OK = {sent: "ok_sent", approve: "ok_approve", reject: "ok_reject", accept: "ok_accept", cancel: "ok_cancel", restore: "ok_restore", release: "ok_release", note: "ok_note", edit: "ok_saved", add: "ok_created"};
+var ACT_OK = {sent: "ok_sent", approve: "ok_approve", reject: "ok_reject", accept: "ok_accept", cancel: "ok_cancel", restore: "ok_restore", release: "ok_release", note: "ok_note", outcome: "ok_outcome", edit: "ok_saved", add: "ok_created"};
 function st(s) { return (STR[S.lang] || STR.en).s[s] || s; }
 function $(id) { return document.getElementById(id); }
 function h(tag, attrs) {
@@ -228,7 +229,15 @@ function match(c) {
   return (c.id + " " + c.title + " " + (c.outline || "") + " " + (c.text || "")).toLowerCase().indexOf(q) >= 0;
 }
 function fmtTime(s) { if (!s) return ""; var d = new Date(s); return isNaN(d) ? s : d.toLocaleString(S.lang === "ru" ? "ru-RU" : "en-US", {month: "short", day: "numeric", hour: "2-digit", minute: "2-digit"}); }
-function chip(c) { return h("span", {class: "chip s-" + c.state, text: st(c.state)}); }
+function outLabel(o) { return o === "complete" ? t("out_complete") : o === "partial" ? t("out_partial") : o === "failed" ? t("out_failed") : t("out_none"); }
+function badOutcome(c) { return c.state === "review" && c.outcome !== "complete"; }
+function chip(c) {
+  if (badOutcome(c)) return h("span", {class: "chip o-" + (c.outcome || "none"), text: st("review") + " · " + outLabel(c.outcome)});
+  return h("span", {class: "chip s-" + c.state, text: st(c.state)});
+}
+function waitText(c) {
+  return c.waiting_on.map(function (id) { var i = (c.waiting_info || {})[id]; return i && i.status === "review" ? id + " (" + outLabel(i.outcome) + ")" : id; }).join(", ");
+}
 function tags(c) {
   var out = [];
   (c.uses || []).forEach(function (r) { out.push(h("span", {class: "tag res", text: (S.board.resources[r] && S.board.resources[r].label) || r})); });
@@ -290,7 +299,7 @@ function renderNow() {
         card.appendChild(h("div", {class: "row"}, h("button", {class: "btn pri", title: t("genhint"), text: t("gen"), onclick: function () { copyGen(d.id); }}), h("button", {class: "btn sm", text: t("edit"), onclick: function () { openDrawer(d.id, true); }})));
       } else if (wait.length) {
         var w = wait[0];
-        card.appendChild(h("div", {class: "sub", text: t("nothing_ready") + (w.waiting_on.length ? w.waiting_on.join(", ") : w.conflicts.map(function (x) { return x.id; }).join(", "))}));
+        card.appendChild(h("div", {class: "sub", text: t("nothing_ready") + (w.waiting_on.length ? waitText(w) : w.conflicts.map(function (x) { return x.id; }).join(", "))}));
         card.appendChild(h("div", {style: "margin-top:6px"}, w.id + " · " + w.title));
       } else card.appendChild(h("div", {class: "empty", text: t("idle")}));
     }
@@ -325,9 +334,10 @@ function renderInbox() {
     var l2 = h("div", {class: "inbox"});
     revs.forEach(function (c) {
       var lastNote = (c.notes || []).slice(-1)[0];
-      l2.appendChild(h("div", {class: "card ib", style: "border-left:4px solid var(--warn)"},
-        h("div", {class: "body"}, h("div", null, h("b", {text: c.id}), " · " + c.title), h("div", {class: "sub", text: t("report") + ": " + (c.report || "—")}), lastNote ? h("div", {class: "note"}, h("small", {text: lastNote.by + ": "}), lastNote.text) : null),
-        h("div", {class: "row"}, h("button", {class: "btn ok", text: t("accept"), onclick: function () { act("accept", c.id, {}, t("accept")); }}), c.report ? h("button", {class: "btn", text: t("copy_path"), onclick: function () { copy(c.report); }}) : null,
+      var bad = badOutcome(c);
+      l2.appendChild(h("div", {class: "card ib", style: "border-left:4px solid " + (bad ? (c.outcome === "failed" ? "var(--bad)" : "var(--warn)") : "var(--ok)")},
+        h("div", {class: "body"}, h("div", null, h("b", {text: c.id}), " · " + c.title + " ", chip(c)), h("div", {class: "sub", text: t("report") + ": " + (c.report || "—")}), bad ? h("div", {class: "note", style: "border-color:var(--warn)"}, "⚠ " + t("partial_warn")) : null, lastNote ? h("div", {class: "note"}, h("small", {text: lastNote.by + ": "}), lastNote.text) : null),
+        h("div", {class: "row"}, h("button", {class: bad ? "btn" : "btn ok", text: bad ? t("accept_asis") : t("accept"), onclick: function () { act("accept", c.id, {}, t("accept")); }}), c.report ? h("button", {class: "btn", text: t("copy_path"), onclick: function () { copy(c.report); }}) : null,
           h("button", {class: "btn", text: t("sendback"), onclick: function () { act("status", c.id, {status: "queued"}); }}), h("button", {class: "btn sm", text: "…", onclick: function () { openDrawer(c.id); }}))));
     });
     wrap.appendChild(l2);
@@ -339,7 +349,7 @@ function itemCard(c, step1) {
   el.appendChild(h("div", {class: "t"}, h("span", {class: "id", text: c.id}), h("span", {class: "title", text: c.title}), chip(c)));
   var m = h("div", {class: "m"}, h("span", {text: laneTitle(c.lane)}));
   tags(c).forEach(function (x) { m.appendChild(x); });
-  if (c.waiting_on.length) m.appendChild(h("span", {text: t("after") + " " + c.waiting_on.join(", ")}));
+  if (c.waiting_on.length) m.appendChild(h("span", {text: t("after") + " " + waitText(c)}));
   if (c.state === "blocked") m.appendChild(h("span", {style: "color:var(--warn)", text: t("blocked_by") + " " + c.conflicts.map(function (x) { return x.id + " (" + (t("why")[x.why] || x.why) + ")"; }).join(", ")}));
   if (turnOf(c)) m.appendChild(h("span", {style: "color:var(--draft);font-weight:700", text: "✎ " + t("turn")}));
   el.appendChild(m);
@@ -392,7 +402,8 @@ function renderDrawer() {
   row(t("lane"), laneTitle(c.lane)); row(t("needs"), c.needs.join(", ")); row(t("uses"), (c.uses || []).join(", ") + (c.quiet ? " 🔇" : "") + (c.noisy ? " 🔊" : ""));
   row(t("when"), c.when); row(t("created"), c.created_by + " · " + fmtTime(c.created)); row(t("claim"), c.claim ? c.claim.by + " · " + fmtTime(c.claim.at) + (c.stale ? " ⚠ " + t("stale") : "") : "");
   row(t("report"), c.report);
-  if (c.waiting_on.length) row(t("wait_"), c.waiting_on.join(", "));
+  if (c.waiting_on.length) row(t("wait_"), waitText(c));
+  if (c.state === "review" || c.state === "done") row(t("out"), outLabel(c.outcome));
   if (c.conflicts.length) row(t("conf_"), c.conflicts.map(function (x) { return x.id + " (" + (t("why")[x.why] || x.why) + ")"; }).join(", "));
   if (c.can_run_with.length) row(t("with_"), c.can_run_with.join(", "));
   db.appendChild(kv);
@@ -404,7 +415,7 @@ function renderDrawer() {
   if (s === "draft") b(t("gen"), turnOf(c) ? "pri" : "", function () { copyGen(c.id); });
   if (s === "proposed") { b(t("approve"), "ok", function () { act("approve", c.id, {}, t("approve")); }); b(t("reject"), "bad", function () { act("reject", c.id); }); }
   if (s === "sent" || s === "running") { b(t("copy"), "pri", function () { copyPrompt(c.id); }); b(t("release"), "", function () { act("release", c.id); }); }
-  if (s === "review") { b(t("accept"), "ok", function () { act("accept", c.id, {}, t("accept")); }); b(t("sendback"), "", function () { act("status", c.id, {status: "queued"}); }); if (c.report) b(t("copy_path"), "", function () { copy(c.report); }); }
+  if (s === "review") { b(badOutcome(c) ? t("accept_asis") : t("accept"), badOutcome(c) ? "" : "ok", function () { act("accept", c.id, {}, t("accept")); }); b(t("sendback"), "", function () { act("status", c.id, {status: "queued"}); }); if (c.report) b(t("copy_path"), "", function () { copy(c.report); }); }
   if (s === "done") b(t("reopen"), "", function () { act("status", c.id, {status: "queued"}); });
   if (s === "cancelled") b(t("restore"), "", function () { act("restore", c.id); });
   if (s !== "done" && s !== "cancelled") b(t("edit"), "", function () { S.editing = true; renderDrawer(); });
@@ -413,6 +424,12 @@ function renderDrawer() {
   if (c.status === "draft" && c.outline) db.appendChild(h("div", {class: "note"}, h("small", {text: t("outline") + ": "}), c.outline));
   db.appendChild(h("div", {class: "sub", style: "margin:6px 0", text: t("prompt")}));
   db.appendChild(c.text ? h("pre", {text: c.text}) : h("div", {class: "empty", text: t("noprompt")}));
+  if (s === "review" || s === "done") {
+    var osel = h("select", {onchange: function () { act("outcome", c.id, {outcome: osel.value}); }});
+    ["complete", "partial", "failed"].forEach(function (x) { var o = h("option", {value: x, text: outLabel(x)}); if (x === c.outcome) o.selected = true; osel.appendChild(o); });
+    if (!c.outcome) { var none = h("option", {value: "", text: outLabel("")}); none.selected = true; none.disabled = true; osel.insertBefore(none, osel.firstChild); }
+    db.appendChild(h("div", {style: "margin-top:14px"}, h("label", {text: t("out")}), osel));
+  }
   var sel = h("select", {onchange: function () { act("status", c.id, {status: sel.value}); }});
   ["draft", "proposed", "queued", "sent", "running", "review", "done", "cancelled"].forEach(function (x) { var o = h("option", {value: x, text: st(x)}); if (x === c.status) o.selected = true; sel.appendChild(o); });
   db.appendChild(h("div", {style: "margin-top:14px"}, h("label", {text: t("status")}), sel));

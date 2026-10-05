@@ -28,6 +28,7 @@ SCHEMA = 1
 HERE = Path(__file__).resolve().parent
 STATUSES = ("draft", "proposed", "queued", "sent", "running", "review", "done", "cancelled")
 ACTIVE = ("sent", "running")
+OUTCOMES = ("complete", "partial", "failed")  # how a finished task ended; only "complete" unlocks dependents by itself
 ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,31}$")
 DEFAULT_PORT = 8765
 DATA_DIRS = (".barid", ".relayboard")  # the second is the old name, still found
@@ -225,8 +226,8 @@ def _satisfied(d: dict, items: dict, nid: str) -> bool:
     if not n:
         return False
     if n["status"] == "done":
-        return True
-    return n["status"] == "review" and not d.get("policy", {}).get("dependents_wait_for_accept", False)
+        return True  # the person accepted it (even a partial result)
+    return n["status"] == "review" and n.get("outcome") == "complete" and not d.get("policy", {}).get("dependents_wait_for_accept", False)
 
 
 def _closure(items: dict, iid: str, seen=None) -> set:
@@ -247,6 +248,7 @@ def compute(d: dict, now=None) -> list:
     for i in d["items"]:
         c = dict(i)
         c["waiting_on"] = [n for n in i.get("needs", []) if not _satisfied(d, items, n)]
+        c["waiting_info"] = {n: {"status": items[n]["status"], "outcome": items[n].get("outcome", "")} for n in c["waiting_on"] if n in items}
         c["conflicts"] = []
         for a in active:
             if a["id"] != i["id"]:
@@ -543,6 +545,7 @@ def op_claim(d: dict, actor: Actor, iid: str, force: bool = False) -> list:
             raise RBError(f"refused: {msg}; wait for it to finish, or ask the person")
     hours = float(d.get("policy", {}).get("lease_hours", 12))
     it["status"] = "running"
+    it.pop("outcome", None)
     it["claim"] = {"by": actor.name, "at": now_iso(), "lease_until": (now_dt() + dt.timedelta(hours=hours)).isoformat()}
     it["updated"] = now_iso()
     log_event(d, actor, "claim", iid, "; ".join(warnings))
@@ -556,20 +559,38 @@ def _owner_check(it: dict, actor: Actor, force: bool, verb: str) -> None:
     raise RBError(f"{it['id']} is held by {claim.get('by')!r}, you ({actor.name!r}) cannot {verb} it")
 
 
-def op_finish(d: dict, actor: Actor, iid: str, report: str = "", note: str = "", force: bool = False) -> dict:
+def op_finish(d: dict, actor: Actor, iid: str, report: str = "", note: str = "", force: bool = False, outcome: str = "") -> dict:
     it = get_item(d, iid)
     if it["status"] != "running" and not force:
         raise RBError(f"{iid} is {it['status']}: claim it first", "wrong_state", id=iid, status=it["status"])
     _owner_check(it, actor, force, "finish")
     if not report and not force:
         raise RBError("a report path is required (use --report PATH, or --no-report if there is none)")
+    if outcome and outcome not in OUTCOMES:
+        raise RBError(f"outcome must be one of: {', '.join(OUTCOMES)}", "bad_outcome")
     it["status"] = "review"
+    it["outcome"] = outcome
     it["report"] = report or it.get("report", "")
     it["claim"] = None
     it["updated"] = now_iso()
     if note:
         it["notes"].append({"t": now_iso(), "by": actor.name, "text": note})
-    log_event(d, actor, "finish", iid, report)
+    log_event(d, actor, "finish", iid, f"{outcome or 'no outcome stated'}: {report}")
+    return it
+
+
+def op_outcome(d: dict, actor: Actor, iid: str, outcome: str) -> dict:
+    """Correct how a finished task ended (the person, or a trusted planner who read the report)."""
+    if not direct_allowed(d, actor):
+        raise RBError("only the person (or a trusted planner agent) can change the outcome of a report", "human_only")
+    if outcome not in OUTCOMES:
+        raise RBError(f"outcome must be one of: {', '.join(OUTCOMES)}", "bad_outcome")
+    it = get_item(d, iid)
+    if it["status"] not in ("review", "done"):
+        raise RBError(f"{iid} is {it['status']}: only reported tasks have an outcome", "wrong_state", id=iid, status=it["status"])
+    it["outcome"] = outcome
+    it["updated"] = now_iso()
+    log_event(d, actor, "outcome", iid, outcome)
     return it
 
 
@@ -648,8 +669,11 @@ FOOTER = {
         Barid tracking: this task ({id}) lives on a shared board. Use Python 3, nothing to install.
         1. Before you start:  {py} "{rb}" --board "{board}" claim {id} --by "<your agent name>"
            If this is refused, STOP and tell the user why.
-        2. When you are done and your report is written:
-           {py} "{rb}" --board "{board}" finish {id} --report "<path of your report>" --by "<your agent name>"
+        2. When you stop and your report is written:
+           {py} "{rb}" --board "{board}" finish {id} --report "<path of your report>" --outcome <complete|partial|failed> --by "<your agent name>"
+           Be honest about the outcome: complete = every acceptance check was met and nothing is left undone; partial = you stopped early
+           (a safety limit, a deadline, an error) or some parts were not done; failed = the main goal was not reached. Only "complete" lets
+           dependent tasks start by themselves.
         3. Optional progress note:  {py} "{rb}" --board "{board}" note {id} "<text>" --by "<your agent name>"
         Touch only task {id}: never edit, cancel or delete other tasks. To suggest a follow-up task:
         {py} "{rb}" --board "{board}" add <NEWID> --lane <lane> --title "<title>" --text-file <file> --by "<your agent name>"
@@ -659,8 +683,10 @@ FOOTER = {
         Учёт в Barid: эта задача ({id}) лежит на общей доске. Нужен Python 3, ничего ставить не надо.
         1. Перед началом работы:  {py} "{rb}" --board "{board}" claim {id} --by "<имя твоего агента>"
            Если команда отказала, ОСТАНОВИСЬ и сообщи пользователю причину.
-        2. Когда закончил и записал отчёт:
-           {py} "{rb}" --board "{board}" finish {id} --report "<путь к твоему отчёту>" --by "<имя твоего агента>"
+        2. Когда остановился и записал отчёт:
+           {py} "{rb}" --board "{board}" finish {id} --report "<путь к твоему отчёту>" --outcome <complete|partial|failed> --by "<имя твоего агента>"
+           Честно оцени итог: complete = все критерии приёмки выполнены и ничего не осталось; partial = остановился раньше (порог безопасности,
+           срок, ошибка) или часть не сделана; failed = главная цель не достигнута. Только complete сам запускает зависимые задачи.
         3. Заметка по ходу работы (необязательно):  {py} "{rb}" --board "{board}" note {id} "<текст>" --by "<имя твоего агента>"
         Трогай только задачу {id}: чужие задачи не меняй, не отменяй и не удаляй. Чтобы предложить следующую задачу:
         {py} "{rb}" --board "{board}" add <НОВЫЙ_ID> --lane <дорожка> --title "<заголовок>" --text-file <файл> --by "<имя твоего агента>"
@@ -904,6 +930,8 @@ def apply_action(board: Path, req: dict):
             return op_reject(d, h, iid, str(args.get("reason", "")))["status"]
         if a == "cancel":
             return op_cancel(d, h, iid, str(args.get("reason", "")))["status"]
+        if a == "outcome":
+            return op_outcome(d, h, iid, str(args.get("outcome", "")))["outcome"]
         if a == "restore":
             return op_restore(d, h, iid)["status"]
         if a == "sent":
@@ -1130,7 +1158,7 @@ def cmd_claim(args):
 
 def cmd_finish(args):
     board = find_board(getattr(args, "board", None))
-    it = mutate(board, lambda d: op_finish(d, cli_actor(args), args.id, "" if args.no_report else (args.report or ""), args.note or "", args.force or args.no_report))
+    it = mutate(board, lambda d: op_finish(d, cli_actor(args), args.id, "" if args.no_report else (args.report or ""), args.note or "", args.force or args.no_report, getattr(args, "outcome", "") or ""))
     out(args, it, f"{args.id} finished: waiting for the person to review the report")
 
 
@@ -1363,8 +1391,12 @@ def build_parser() -> argparse.ArgumentParser:
     s.add_argument("id")
     s.add_argument("--report", help="path of the report file")
     s.add_argument("--no-report", action="store_true")
+    s.add_argument("--outcome", choices=OUTCOMES, default="", help="how it ended; only 'complete' unlocks dependents by itself")
     s.add_argument("--note")
     s.add_argument("--force", action="store_true")
+    s = add("outcome", simple(lambda d, a, g: op_outcome(d, a, g.id, g.value), "{id} outcome changed"), "correct how a finished task ended (person or trusted planner)")
+    s.add_argument("id")
+    s.add_argument("value", choices=OUTCOMES)
     s = add("heartbeat", simple(lambda d, a, g: op_heartbeat(d, a, g.id), "{id} lease extended"), "agent: extend the lease of a running task")
     s.add_argument("id")
     s = add("release", simple(lambda d, a, g: op_release(d, a, g.id, g.force), "{id} released"), "give a task back to the queue")
