@@ -458,7 +458,8 @@ def compute(d: dict, now=None) -> list:
         c["stale"] = bool(i["status"] == "running" and ts and ts < now)
         c["can_run_with"], c["cannot_run_with"] = [], []
         out.append(c)
-    live = [c for c in out if c["state"] in ("ready", "blocked", "sent", "running")]
+    # everything that could be started now or already runs; a draft whose turn has come (nothing it needs is open) counts too
+    live = [c for c in out if c["state"] in ("ready", "blocked", "sent", "running") or (c["status"] == "draft" and not c["waiting_on"])]
     for a in live:
         for b in live:
             if a["id"] == b["id"]:

@@ -235,6 +235,17 @@ class CoreTests(unittest.TestCase):
         with self.assertRaises(rb.RBError):
             rb.mutate(self.path, lambda d: rb.op_board_lang(d, AGENT, "en"))
 
+    def test_a_draft_whose_turn_has_come_is_compared_with_the_ready_tasks(self):
+        rb.mutate(self.path, lambda d: d["resources"].update({"gpu": {"label": "GPU", "exclusive": True}}))
+        add(self.path, PLANNER, "R1", lane="main", text="ready one", uses="gpu")
+        add(self.path, PLANNER, "D1", lane="second", text="", outline="a draft", uses="gpu")
+        add(self.path, PLANNER, "D2", lane="third", text="", outline="another draft")
+        by = {c["id"]: c for c in rb.compute(rb.load(self.path))}
+        self.assertEqual(by["D1"]["status"], "draft")
+        self.assertIn("R1", [x["id"] for x in by["D1"]["cannot_run_with"]])
+        self.assertIn("D1", [x["id"] for x in by["R1"]["cannot_run_with"]])
+        self.assertIn("D2", by["D1"]["can_run_with"])
+
     def test_system_language_picks_the_default_board_language(self):
         old = {k: os.environ.get(k) for k in ("LC_ALL", "LC_MESSAGES", "LANG")}
         try:
