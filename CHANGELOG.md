@@ -3,7 +3,7 @@
 ## Unreleased
 
 - `barid init` takes the language of the agent texts from the system language when `--lang` is not given, and the skill tells the agent to pass the language the user writes in.
-- The language of the texts Barid writes for agents (footer, connection text, handoff) can now be changed: three buttons in the Connect window, or `barid lang en|ru|kk`. It is separate from the panel language.
+- The language of the texts Barid writes for agents (footer, connection text, handoff) can now be changed: `barid lang en|ru|kk`. It is separate from the panel language.
 - "What to do now": every next task (ready or waiting for its prompt) now says whether it can start next to what is already running ("✓ Can start now alongside: M6") or must wait ("⏳ Wait, conflict: M6 (GPU)").
 - README (all three languages): adding sessions, the Connect button and `barid connect`, Kazakh; a new demo GIF and panel screenshots. Deep links also work in the live panel (`#newlane`, `#connect:LANE`, `#lang`, `#T3`); session cards no longer wrap their Connect button.
 
