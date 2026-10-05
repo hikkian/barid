@@ -115,6 +115,11 @@ label{font-size:12px;color:var(--mute);display:block;margin-bottom:3px}
 .themewrap{position:relative}
 #themepop{position:fixed;width:min(330px,calc(100vw - 16px));max-height:82vh;overflow:auto;background:var(--panel);border:1px solid var(--line);border-radius:14px;box-shadow:var(--shadow);padding:12px;z-index:50}
 #themepop[hidden]{display:none}
+#langpop{position:fixed;min-width:170px;background:var(--panel);border:1px solid var(--line);border-radius:14px;box-shadow:var(--shadow);padding:6px;z-index:50}
+#langpop[hidden]{display:none}
+#langpop button{display:flex;width:100%;justify-content:space-between;align-items:center;gap:12px;border:0;background:none;color:var(--tx);padding:8px 10px;border-radius:9px;font-size:14px;text-align:left;cursor:pointer}
+#langpop button:hover{background:var(--panel2)}
+#langpop button.on{font-weight:700;color:var(--ac)}
 #themepop h4{margin:0 0 6px;font-size:12px;letter-spacing:.06em;text-transform:uppercase;color:var(--mute)}
 .seg{display:flex;border:1px solid var(--line);border-radius:10px;overflow:hidden;margin-bottom:12px}
 .seg button{flex:1;background:var(--panel2);border:0;padding:6px 4px;font-size:13px;color:var(--tx)}
@@ -148,7 +153,7 @@ details>summary{cursor:pointer;color:var(--mute);margin:6px 0}
   <span id="lanefilters" style="display:flex;gap:6px;flex-wrap:wrap"></span>
   <input type="search" id="q" autocomplete="off">
   <button class="btn pri" id="addbtn"></button>
-  <button class="pill" id="langbtn"></button>
+  <span class="themewrap"><button class="pill" id="langbtn" aria-haspopup="true" aria-expanded="false"></button><div id="langpop" hidden></div></span>
   <span class="themewrap"><button class="pill" id="themebtn" aria-haspopup="true" aria-expanded="false"></button><div id="themepop" hidden></div></span>
 </header>
 <main>
@@ -228,6 +233,7 @@ var STR = {
    unknown_resource:"Белгісіз ресурс: {name}", cycle:"Бұл тәуелділік циклін тудырар еді", no_text:"{id} тапсырмасында промпт мәтіні әлі жоқ: алдымен оны жасатыңыз немесе жазыңыз", not_found:"Мұндай тапсырма жоқ: {id}",
    wrong_state:"{id} тапсырмасы қазір «{status}» күйінде: бұл әрекет мүмкін емес", human_only:"Мұны тек сіз істей аласыз", empty_note:"Жазба бос", bad_status:"Белгісіз күй", bad_outcome:"Белгісіз нәтиже", no_git:"Бұл қалта git репозиторийі емес", bad_color:"Түс #feb83b сияқты болуы керек", bad_agent:"Агент атауы: әріптер, цифрлар, бос орын, . _ + - (24 таңбаға дейін)"}}
 };
+var LANGNAME = {en: "English", ru: "Русский", kk: "Қазақша"};
 var S = {board:null, lang:"en", lanes:{}, sel:null, q:"", laneOff:{}, arch:false, act:false, editing:false, rev:-1, offline:false};
 try { S.lang = localStorage.getItem("rb.lang") || ""; S.arch = localStorage.getItem("rb.arch") === "1"; S.act = localStorage.getItem("rb.act") === "1"; } catch (e) {}
 function t(k) { var d = STR[S.lang] || STR.en; return d[k] != null ? d[k] : (STR.en[k] != null ? STR.en[k] : k); }
@@ -339,7 +345,7 @@ function turnOf(c) { return c.status === "draft" && c.waiting_on.length === 0; }
 
 function setStatic() {
   document.documentElement.lang = S.lang;
-  $("h-now").textContent = t("now"); $("h-flow").textContent = t("flow"); $("q").placeholder = t("search"); $("addbtn").textContent = t("add"); $("langbtn").textContent = t("lang");
+  $("h-now").textContent = t("now"); $("h-flow").textContent = t("flow"); $("q").placeholder = t("search"); $("addbtn").textContent = t("add"); $("langbtn").textContent = LANGNAME[S.lang] + " ▾";
   $("themebtn").textContent = "◐ " + t("theme"); $("themebtn").title = t("theme"); $("archbtn").textContent = (S.arch ? "▾ " : "▸ ") + t("archive"); $("actbtn").textContent = (S.act ? "▾ " : "▸ ") + t("activity");
   $("archive").hidden = !S.arch; $("activity").hidden = !S.act;
 }
@@ -613,7 +619,7 @@ function stamp() {
   $("live").style.color = "var(--ok)";
 }
 function load() {
-  if (window.__RB_BOARD__) { S.board = window.__RB_BOARD__; S.rev = S.board.rev; render(); var hs = decodeURIComponent(location.hash.slice(1)); if (hs === "add") openAdd(); else if (hs === "theme") toggleThemePop(true); else if (hs === "newlane") openLaneAdd(); else if (hs.indexOf("connect:") === 0) openConnect(hs.slice(8)); else if (hs.slice(-5) === "!edit" && byId(hs.slice(0, -5))) openDrawer(hs.slice(0, -5), true); else if (byId(hs)) openDrawer(hs); return Promise.resolve(); }
+  if (window.__RB_BOARD__) { S.board = window.__RB_BOARD__; S.rev = S.board.rev; render(); var hs = decodeURIComponent(location.hash.slice(1)); if (hs === "add") openAdd(); else if (hs === "theme") toggleThemePop(true); else if (hs === "lang") toggleLangPop(true); else if (hs === "newlane") openLaneAdd(); else if (hs.indexOf("connect:") === 0) openConnect(hs.slice(8)); else if (hs.slice(-5) === "!edit" && byId(hs.slice(0, -5))) openDrawer(hs.slice(0, -5), true); else if (byId(hs)) openDrawer(hs); return Promise.resolve(); }
   return api("/api/board").then(function (b) { stamp(); S.board = b; S.rev = b.rev; if (S.offline) { S.offline = false; $("banner").hidden = true; } render(); })
     .catch(function () { if (!S.offline) { S.offline = true; $("banner").textContent = t("offline"); $("banner").hidden = false; } });
 }
@@ -625,7 +631,18 @@ function poll() {
 
 $("q").addEventListener("input", function () { S.q = $("q").value; render(); });
 $("addbtn").addEventListener("click", openAdd);
-$("langbtn").addEventListener("click", function () { S.lang = S.lang === "en" ? "ru" : (S.lang === "ru" ? "kk" : "en"); try { localStorage.setItem("rb.lang", S.lang); } catch (e) {} render(); });
+function toggleLangPop(open) {
+  var pop = $("langpop"), show = open === undefined ? pop.hidden : open;
+  if (show) {
+    toggleThemePop(false); clear(pop);
+    Object.keys(LANGNAME).forEach(function (k) {
+      pop.appendChild(h("button", {class: S.lang === k ? "on" : "", onclick: function () { S.lang = k; try { localStorage.setItem("rb.lang", k); } catch (e) {} toggleLangPop(false); render(); }}, h("span", {text: LANGNAME[k]}), h("span", {text: S.lang === k ? "✓" : ""})));
+    });
+  }
+  pop.hidden = !show; $("langbtn").setAttribute("aria-expanded", show ? "true" : "false");
+  if (show) { var r = $("langbtn").getBoundingClientRect(), w = pop.offsetWidth || 170; pop.style.left = Math.max(8, Math.min(r.left, window.innerWidth - w - 8)) + "px"; pop.style.top = (r.bottom + 8) + "px"; }
+}
+$("langbtn").addEventListener("click", function (e) { e.stopPropagation(); toggleLangPop(); });
 $("archbtn").addEventListener("click", function () { S.arch = !S.arch; try { localStorage.setItem("rb.arch", S.arch ? "1" : "0"); } catch (e) {} setStatic(); });
 $("actbtn").addEventListener("click", function () { S.act = !S.act; try { localStorage.setItem("rb.act", S.act ? "1" : "0"); } catch (e) {} setStatic(); });
 function renderThemePop() {
@@ -668,6 +685,7 @@ function renderThemePop() {
 }
 function toggleThemePop(open) {
   var pop = $("themepop"); var show = open === undefined ? pop.hidden : open;
+  if (show) $("langpop").hidden = true;
   if (show) renderThemePop();
   pop.hidden = !show; $("themebtn").setAttribute("aria-expanded", show ? "true" : "false");
   if (show) placeThemePop();
@@ -681,10 +699,10 @@ function placeThemePop() {
 window.addEventListener("resize", function () { if (!$("themepop").hidden) placeThemePop(); });
 window.addEventListener("scroll", function () { if (!$("themepop").hidden) placeThemePop(); }, true);
 $("themebtn").addEventListener("click", function (e) { e.stopPropagation(); toggleThemePop(); });
-document.addEventListener("click", function (e) { var pop = $("themepop"); if (!pop.hidden && e.target.isConnected && !pop.contains(e.target) && e.target !== $("themebtn") && !$("themebtn").contains(e.target)) toggleThemePop(false); });
+document.addEventListener("click", function (e) { if (!$("langpop").hidden && e.target.isConnected && !$("langpop").contains(e.target)) toggleLangPop(false); var pop = $("themepop"); if (!pop.hidden && e.target.isConnected && !pop.contains(e.target) && e.target !== $("themebtn") && !$("themebtn").contains(e.target)) toggleThemePop(false); });
 $("modal").addEventListener("click", function (e) { if (e.target === $("modal")) $("modal").classList.remove("open"); });
 document.addEventListener("keydown", function (e) {
-  if (e.key === "Escape") { toggleThemePop(false); $("modal").classList.remove("open"); closeDrawer(); }
+  if (e.key === "Escape") { toggleThemePop(false); toggleLangPop(false); $("modal").classList.remove("open"); closeDrawer(); }
   else if (e.key === "/" && document.activeElement.tagName !== "INPUT" && document.activeElement.tagName !== "TEXTAREA") { e.preventDefault(); $("q").focus(); }
 });
 document.addEventListener("visibilitychange", function () { if (!document.hidden) poll(); });
