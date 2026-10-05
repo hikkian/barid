@@ -22,7 +22,7 @@ Run `python3 .../barid.py doctor` in the project folder; it must print no `FAIL`
 Ask the user: *how many agent sessions do you run, and what do they do?* Then:
 
 ```bash
-barid init --project "<name>" --lanes "<id>:<title>,<id>:<title>"     # one lane per session
+barid init --project "<name>" --lanes "<id>:<title>,<id>:<title>" --lang <en|ru|kk>   # one lane per session; --lang = the language your user writes in
 barid resource add gpu --label "GPU"                                   # anything exclusive (a GPU, a test server, "user present")
 barid context add README.md                                            # files a prompt-writer should read
 ```

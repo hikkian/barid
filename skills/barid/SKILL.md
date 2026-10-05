@@ -30,7 +30,7 @@ Always identify yourself: `--by "<your name>"` (or set `BARID_AGENT`). Use the s
 
 ## Setting up a board (planner, first time)
 
-1. `barid init --project "<name>" --lanes "<id>:<title>,<id>:<title>"`: one lane for every agent session that will receive prompts. Add `--lang ru` for Russian footers.
+1. `barid init --project "<name>" --lanes "<id>:<title>,<id>:<title>"`: one lane for every agent session that will receive prompts. Add `--lang en|ru|kk` for the language the user writes in: it is the language of the footers and connection texts the board writes for agents (without it the system language is used, else English). It can be changed later with `barid lang`.
 2. Define the shared things tasks compete for: `barid resource add gpu --label "GPU"` (exclusive by default). Two tasks that use the same exclusive resource never run together.
 3. `barid context add <path>`: files that anyone writing a prompt should read (README, architecture notes).
 4. Ask the person whether you may add tasks without approval. If yes, they run `barid trust add "<your name>" --human`.

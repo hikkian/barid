@@ -196,6 +196,12 @@ def mutate(path: Path, fn):
         return out
 
 
+def system_lang() -> str:
+    """en, ru or kk from the usual locale variables; anything else means en."""
+    loc = (os.environ.get("LC_ALL") or os.environ.get("LC_MESSAGES") or os.environ.get("LANG") or "").lower()
+    return "ru" if loc.startswith("ru") else "kk" if loc.startswith(("kk", "kz")) else "en"
+
+
 def new_board(project: str, lanes, lang: str = "en") -> dict:
     return {
         "schema": SCHEMA, "project": project, "rev": 1, "created": now_iso(), "updated": now_iso(), "lang": "kk" if lang == "kz" else lang,
@@ -1485,7 +1491,7 @@ def cmd_init(args):
             raise RBError(f"bad lane id {i!r}")
         lanes.append((i, t or i))
     base.parent.mkdir(parents=True, exist_ok=True)
-    save(base, new_board(args.project or Path.cwd().name, lanes, args.lang))
+    save(base, new_board(args.project or Path.cwd().name, lanes, args.lang or system_lang()))
     print(f"created {base}")
     print("next: add tasks with `barid add`, then look at them with `barid open`")
 
@@ -1874,7 +1880,7 @@ def build_parser() -> argparse.ArgumentParser:
     s = add("init", cmd_init, "create a board in .barid/ of the current folder")
     s.add_argument("--project")
     s.add_argument("--lanes", default="main,second", help="comma list, id or id:Title (one lane per agent session)")
-    s.add_argument("--lang", default="en", choices=["en", "ru", "kk", "kz"])
+    s.add_argument("--lang", default=None, choices=["en", "ru", "kk", "kz"], help="language of the texts written for agents (default: from your system language, else en)")
     s.add_argument("--force", action="store_true")
     add("where", cmd_where, "print the board file in use")
 

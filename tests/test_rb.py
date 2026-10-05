@@ -235,6 +235,21 @@ class CoreTests(unittest.TestCase):
         with self.assertRaises(rb.RBError):
             rb.mutate(self.path, lambda d: rb.op_board_lang(d, AGENT, "en"))
 
+    def test_system_language_picks_the_default_board_language(self):
+        old = {k: os.environ.get(k) for k in ("LC_ALL", "LC_MESSAGES", "LANG")}
+        try:
+            for var, val, want in (("LANG", "ru_RU.UTF-8", "ru"), ("LANG", "kk_KZ.UTF-8", "kk"), ("LANG", "de_DE.UTF-8", "en")):
+                for k in old:
+                    os.environ.pop(k, None)
+                os.environ[var] = val
+                self.assertEqual(rb.system_lang(), want)
+        finally:
+            for k, v in old.items():
+                if v is None:
+                    os.environ.pop(k, None)
+                else:
+                    os.environ[k] = v
+
     def test_connect_text_names_the_lane_and_the_next_command(self):
         rb.mutate(self.path, lambda d: rb.op_lane_edit(d, HUMAN, "main", agent="local"))
         d = rb.load(self.path)
