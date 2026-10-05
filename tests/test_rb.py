@@ -370,6 +370,21 @@ class CliTests(unittest.TestCase):
         doctor = self.run_rb("doctor").stdout
         self.assertNotIn("FAIL", doctor)
 
+    def test_documented_command_forms_work(self):
+        """Every command shown in the README and the skill must parse (found by a clean-room run)."""
+        self.run_rb("init", "--lanes", "a,b")
+        self.run_rb("resource", "add", "staging", "--label", "Staging server", "--human")
+        self.run_rb("resource", "tpu", "--shared", "--human")  # the short form too
+        self.assertIn("staging", self.run_rb("resource", "list").stdout)
+        self.run_rb("lane", "add", "c", "--title", "Third", "--human")
+        self.assertIn("Third", self.run_rb("lane", "list").stdout)
+        self.run_rb("context", "add", "README.md", "--human")
+        self.run_rb("trust", "add", "planner", "--human")
+        self.run_rb("add", "T1", "--lane", "a", "--text", "x", "--uses", "staging", "--by", "planner")
+        bad = self.run_rb("lane", "add", "x", "y", "--human", check=False)
+        self.assertEqual(bad.returncode, 1)
+        self.assertIn("usage", bad.stderr)
+
     def test_non_ascii_titles_do_not_crash_a_narrow_console(self):
         self.run_rb("init", "--lang", "ru")
         self.run_rb("add", "T1", "--title", "Проверка кириллицы", "--text", "текст", "--human")

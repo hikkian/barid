@@ -1205,9 +1205,26 @@ def cmd_export(args):
     print(f"wrote {args.file} (read-only snapshot, open it in any browser)")
 
 
+def _add_word(words, what: str):
+    """`add NAME` or just `NAME`; returns None for `list`."""
+    ws = list(words)
+    if ws and ws[0] == "list":
+        return None
+    if ws and ws[0] == "add":
+        ws = ws[1:]
+    if len(ws) != 1:
+        raise RBError(f"usage: barid {what} add NAME [--title/--label ...]  or  barid {what} list")
+    return ws[0]
+
+
 def cmd_lane(args):
     board = find_board(getattr(args, "board", None))
     actor = cli_actor(args)
+    lane_id = _add_word(args.words, "lane")
+    if lane_id is None:
+        print("\n".join(f"{l['id']:<12} {l.get('title', '')}" for l in load(board)["lanes"]))
+        return
+    args.lane_id = lane_id
 
     def fn(d):
         require_human_or_direct(d, actor)
@@ -1229,6 +1246,11 @@ def require_human_or_direct(d, actor):
 def cmd_resource(args):
     board = find_board(getattr(args, "board", None))
     actor = cli_actor(args)
+    name = _add_word(args.words, "resource")
+    if name is None:
+        print("\n".join(f"{k:<12} {v.get('label', k)}{'' if v.get('exclusive', True) else ' (shared)'}" for k, v in load(board).get("resources", {}).items()))
+        return
+    args.name = name
 
     def fn(d):
         require_human_or_direct(d, actor)
@@ -1431,11 +1453,11 @@ def build_parser() -> argparse.ArgumentParser:
     s = add("export", cmd_export, "write a read-only HTML snapshot of the board (for sharing or screenshots)")
     s.add_argument("file")
     s.add_argument("--no-text", action="store_true", help="leave prompt texts out of the snapshot")
-    s = add("lane", cmd_lane, "add a lane (a session that receives prompts)")
-    s.add_argument("lane_id")
+    s = add("lane", cmd_lane, "add a lane (a session that receives prompts): `lane add ID --title T`, or `lane list`")
+    s.add_argument("words", nargs="+", metavar="[add] ID")
     s.add_argument("--title")
-    s = add("resource", cmd_resource, "define a resource tasks can use")
-    s.add_argument("name")
+    s = add("resource", cmd_resource, "define a resource tasks can use: `resource add NAME --label L`, or `resource list`")
+    s.add_argument("words", nargs="+", metavar="[add] NAME")
     s.add_argument("--label")
     s.add_argument("--shared", action="store_true", help="not exclusive")
     s = add("context", cmd_context, "files agents should read when generating prompts")
