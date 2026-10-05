@@ -113,7 +113,7 @@ label{font-size:12px;color:var(--mute);display:block;margin-bottom:3px}
 #toast.show{opacity:1}#toast.err{background:var(--bad);color:#fff}
 .empty{color:var(--mute);font-style:italic;padding:8px 2px}
 .themewrap{position:relative}
-#themepop{position:absolute;right:0;top:calc(100% + 8px);width:260px;background:var(--panel);border:1px solid var(--line);border-radius:14px;box-shadow:var(--shadow);padding:12px;z-index:50}
+#themepop{position:fixed;width:min(260px,calc(100vw - 16px));background:var(--panel);border:1px solid var(--line);border-radius:14px;box-shadow:var(--shadow);padding:12px;z-index:50}
 #themepop[hidden]{display:none}
 #themepop h4{margin:0 0 6px;font-size:12px;letter-spacing:.06em;text-transform:uppercase;color:var(--mute)}
 .seg{display:flex;border:1px solid var(--line);border-radius:10px;overflow:hidden;margin-bottom:12px}
@@ -506,7 +506,7 @@ function openAdd() {
 }
 
 function load() {
-  if (window.__RB_BOARD__) { S.board = window.__RB_BOARD__; S.rev = S.board.rev; render(); var hs = decodeURIComponent(location.hash.slice(1)); if (hs === "add") openAdd(); else if (hs.slice(-5) === "!edit" && byId(hs.slice(0, -5))) openDrawer(hs.slice(0, -5), true); else if (byId(hs)) openDrawer(hs); return Promise.resolve(); }
+  if (window.__RB_BOARD__) { S.board = window.__RB_BOARD__; S.rev = S.board.rev; render(); var hs = decodeURIComponent(location.hash.slice(1)); if (hs === "add") openAdd(); else if (hs === "theme") toggleThemePop(true); else if (hs.slice(-5) === "!edit" && byId(hs.slice(0, -5))) openDrawer(hs.slice(0, -5), true); else if (byId(hs)) openDrawer(hs); return Promise.resolve(); }
   return api("/api/board").then(function (b) { S.board = b; S.rev = b.rev; if (S.offline) { S.offline = false; $("banner").hidden = true; } render(); })
     .catch(function () { if (!S.offline) { S.offline = true; $("banner").textContent = t("offline"); $("banner").hidden = false; } });
 }
@@ -540,7 +540,16 @@ function toggleThemePop(open) {
   var pop = $("themepop"); var show = open === undefined ? pop.hidden : open;
   if (show) renderThemePop();
   pop.hidden = !show; $("themebtn").setAttribute("aria-expanded", show ? "true" : "false");
+  if (show) placeThemePop();
 }
+function placeThemePop() {
+  // anchor under the button but never outside the window, whatever the header layout is
+  var pop = $("themepop"), r = $("themebtn").getBoundingClientRect(), w = pop.offsetWidth || 260;
+  pop.style.left = Math.max(8, Math.min(r.right - w, window.innerWidth - w - 8)) + "px";
+  pop.style.top = (r.bottom + 8) + "px";
+}
+window.addEventListener("resize", function () { if (!$("themepop").hidden) placeThemePop(); });
+window.addEventListener("scroll", function () { if (!$("themepop").hidden) placeThemePop(); }, true);
 $("themebtn").addEventListener("click", function (e) { e.stopPropagation(); toggleThemePop(); });
 document.addEventListener("click", function (e) { if (!$("themepop").hidden && !$("themepop").contains(e.target)) toggleThemePop(false); });
 $("modal").addEventListener("click", function (e) { if (e.target === $("modal")) $("modal").classList.remove("open"); });
