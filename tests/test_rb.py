@@ -233,6 +233,156 @@ class CoreTests(unittest.TestCase):
         self.assertIn("Перед началом работы", rb.prompt_for(d, d["items"][0], self.path))
 
 
+def _git_available():
+    import shutil
+    return shutil.which("git") is not None
+
+
+def _run_git(cwd, *args):
+    return subprocess.run(["git", "-c", "user.name=t", "-c", "user.email=t@example.com", *args], cwd=cwd, capture_output=True,
+                          encoding="utf-8", errors="replace", check=True).stdout
+
+
+class ScopeTests(unittest.TestCase):
+    """File scopes, protected paths and the git check at the end of a task."""
+
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self._tmp.cleanup)
+        self.root = Path(self._tmp.name)
+        self.path = board_with(self._tmp.name, direct_agents=["planner"])  # board in <root>/.relayboard/board.json
+        self.d = rb.load(self.path)
+
+    def test_scope_overlap_rules(self):
+        n = lambda x: rb.norm_scope(self.d, x)
+        yes = [("src", "src/a.py"), ("src/a.py", "src/a.py"), ("src/*.py", "src/a.py"), ("src", "src/*.py"), ("src/**", "src/x/y.txt"), ("**", "a/b"), ("src/*.py", "src/**")]
+        no = [("src", "docs"), ("src/a.py", "src/b.py"), ("src/*.py", "src/b.txt"), ("src/sub", "src/subtle"), ("src/a", "src/a2/x")]
+        for a, b in yes:
+            self.assertTrue(rb.scopes_overlap(n(a), n(b)), (a, b))
+        for a, b in no:
+            self.assertFalse(rb.scopes_overlap(n(a), n(b)), (a, b))
+
+    def test_tasks_with_overlapping_scopes_never_run_together(self):
+        add(self.path, PLANNER, "A", lane="main", touches="src/gateway")
+        add(self.path, PLANNER, "B", lane="second", touches="src/gateway/monitor.py")
+        add(self.path, PLANNER, "C", lane="third", touches="docs")
+        rb.mutate(self.path, lambda d: rb.op_claim(d, AGENT, "A"))
+        d = rb.load(self.path)
+        comp = {c["id"]: c for c in rb.compute(d)}
+        self.assertEqual(comp["B"]["state"], "blocked")
+        self.assertTrue(comp["B"]["conflicts"][0]["why"].startswith("paths:"))
+        self.assertEqual(comp["C"]["state"], "ready")  # a different folder runs in parallel
+        with self.assertRaises(rb.RBError):
+            rb.mutate(self.path, lambda d: rb.op_claim(d, AGENT, "B"))
+
+    def test_changing_a_protected_file_is_flagged_and_blocks_dependents(self):
+        live = self.root / "live.json"
+        live.write_text('{"a": 1}')
+        rb.mutate(self.path, lambda d: rb.op_protect(d, HUMAN, "add", "live.json"))
+        add(self.path, PLANNER, "A", lane="main")
+        add(self.path, PLANNER, "B", lane="second", needs="A")
+        rb.mutate(self.path, lambda d: rb.op_claim(d, AGENT, "A"))
+        live.write_text('{"a": 2}')  # the session breaks the rule
+        rb.mutate(self.path, lambda d: rb.op_finish(d, AGENT, "A", report="r.md", outcome="complete"))
+        it = rb.load(self.path)["items"][0]
+        self.assertEqual([v["type"] for v in it["violations"]], ["protected"])
+        self.assertEqual(it["violations"][0]["path"], "live.json")
+        b = {c["id"]: c for c in rb.compute(rb.load(self.path))}["B"]
+        self.assertEqual(b["state"], "waiting")  # "complete" with a broken rule does not unlock anything
+        rb.mutate(self.path, lambda d: rb.op_accept(d, HUMAN, "A"))
+        self.assertEqual({c["id"]: c for c in rb.compute(rb.load(self.path))}["B"]["state"], "ready")
+
+    def test_untouched_protected_files_pass(self):
+        (self.root / "live.json").write_text("x")
+        rb.mutate(self.path, lambda d: rb.op_protect(d, HUMAN, "add", "live.json"))
+        add(self.path, PLANNER, "A", lane="main")
+        rb.mutate(self.path, lambda d: rb.op_claim(d, AGENT, "A"))
+        rb.mutate(self.path, lambda d: rb.op_finish(d, AGENT, "A", report="r.md", outcome="complete"))
+        self.assertEqual(rb.load(self.path)["items"][0]["violations"], [])
+
+    def test_only_trusted_may_change_the_protected_list(self):
+        with self.assertRaises(rb.RBError):
+            rb.mutate(self.path, lambda d: rb.op_protect(d, AGENT, "add", "x"))
+
+    @unittest.skipUnless(_git_available(), "git is not available")
+    def test_git_changes_outside_the_declared_scope_are_flagged(self):
+        repo = self.root
+        _run_git(repo, "init", "-q")
+        (repo / "src").mkdir()
+        (repo / "docs").mkdir()
+        (repo / "src" / "a.py").write_text("1")
+        (repo / "docs" / "d.md").write_text("1")
+        _run_git(repo, "add", "-A")
+        _run_git(repo, "commit", "-q", "-m", "init")
+        add(self.path, PLANNER, "A", lane="main", touches="src")
+        rb.mutate(self.path, lambda d: rb.op_claim(d, AGENT, "A"))
+        (repo / "src" / "a.py").write_text("2")        # inside the scope
+        (repo / "docs" / "d.md").write_text("2")       # outside
+        (repo / "src" / "new.py").write_text("n")      # new file inside
+        rb.mutate(self.path, lambda d: rb.op_finish(d, AGENT, "A", report="r.md", outcome="complete"))
+        it = rb.load(self.path)["items"][0]
+        self.assertEqual(it["changed"]["count"], 3)
+        outside = [v for v in it["violations"] if v["type"] == "outside_scope"]
+        self.assertEqual([v["path"] for v in outside], ["docs/d.md"])
+
+    @unittest.skipUnless(_git_available(), "git is not available")
+    def test_collision_with_another_running_task_is_reported(self):
+        repo = self.root
+        _run_git(repo, "init", "-q")
+        (repo / "x.txt").write_text("1")
+        (repo / "y.txt").write_text("1")
+        _run_git(repo, "add", "-A")
+        _run_git(repo, "commit", "-q", "-m", "init")
+        add(self.path, PLANNER, "A", lane="main", touches="x.txt")
+        add(self.path, PLANNER, "B", lane="second", touches="y.txt")
+        rb.mutate(self.path, lambda d: rb.op_claim(d, AGENT, "A"))
+        rb.mutate(self.path, lambda d: rb.op_claim(d, rb.Actor("agent", "b"), "B"))
+        (repo / "y.txt").write_text("2")  # A edits the file that B owns
+        rb.mutate(self.path, lambda d: rb.op_finish(d, AGENT, "A", report="r.md", outcome="complete"))
+        kinds = {(v["type"], v.get("with")) for v in rb.load(self.path)["items"][0]["violations"]}
+        self.assertIn(("collision", "B"), kinds)
+        self.assertIn(("outside_scope", None), kinds)
+
+    @unittest.skipUnless(_git_available(), "git is not available")
+    def test_worktree_command_and_footer(self):
+        repo = self.root
+        _run_git(repo, "init", "-q")
+        (repo / "f.txt").write_text("1")
+        _run_git(repo, "add", "-A")
+        _run_git(repo, "commit", "-q", "-m", "init")
+        add(self.path, PLANNER, "A", lane="main", touches="f.txt")
+        wt = self.root.parent / (self.root.name + "-barid-A")
+        self.addCleanup(lambda: __import__("shutil").rmtree(wt, ignore_errors=True))
+        p = subprocess.run([sys.executable, str(RB_PATH), "--board", str(self.path), "worktree", "A", "--human"], capture_output=True, encoding="utf-8", errors="replace")
+        self.assertEqual(p.returncode, 0, p.stderr)
+        d = rb.load(self.path)
+        it = d["items"][0]
+        self.assertTrue(Path(it["workdir"]).is_dir())
+        self.assertEqual(it["branch"], "barid/A")
+        footer = rb.prompt_for(d, it, self.path)
+        self.assertIn("Work only in", footer)
+        self.assertIn("f.txt", footer)
+        # changes made in the worktree are attributed to the task, changes elsewhere are not
+        rb.mutate(self.path, lambda d: rb.op_claim(d, AGENT, "A"))
+        (Path(it["workdir"]) / "f.txt").write_text("2")
+        (repo / "other.txt").write_text("not mine")
+        rb.mutate(self.path, lambda d: rb.op_finish(d, AGENT, "A", report="r.md", outcome="complete"))
+        done = rb.load(self.path)["items"][0]
+        self.assertEqual(done["changed"]["count"], 1)
+        self.assertEqual(done["violations"], [])
+
+    def test_check_command_and_documented_forms(self):
+        add(self.path, PLANNER, "A", lane="main", touches="src")
+        add(self.path, PLANNER, "B", lane="second", touches="src/x.py")
+        p = subprocess.run([sys.executable, str(RB_PATH), "--board", str(self.path), "check", "B"], capture_output=True, encoding="utf-8", errors="replace")
+        self.assertEqual(p.returncode, 0, p.stderr)
+        self.assertIn("overlaps with A", p.stdout)
+        for args in (["protect", "add", "secrets.env", "--human"], ["protect", "list"]):
+            q = subprocess.run([sys.executable, str(RB_PATH), "--board", str(self.path), *args], capture_output=True, encoding="utf-8", errors="replace")
+            self.assertEqual(q.returncode, 0, q.stderr)
+        self.assertIn("secrets.env", q.stdout)
+
+
 class SchedulerTests(unittest.TestCase):
     def setUp(self):
         self._tmp = tempfile.TemporaryDirectory()

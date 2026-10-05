@@ -10,6 +10,9 @@ from __future__ import annotations
 import argparse
 import contextlib
 import datetime as dt
+import fnmatch
+import glob
+import hashlib
 import json
 import os
 import re
@@ -23,7 +26,7 @@ import webbrowser
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
-__version__ = "0.1.0"
+__version__ = "0.2.0"
 SCHEMA = 1
 HERE = Path(__file__).resolve().parent
 STATUSES = ("draft", "proposed", "queued", "sent", "running", "review", "done", "cancelled")
@@ -164,13 +167,15 @@ def load(path: Path) -> dict:
         raise RBError(f"board file is not valid JSON ({path}): {e}")
     if d.get("schema") != SCHEMA:
         raise RBError(f"unsupported board schema {d.get('schema')!r} (this barid understands {SCHEMA})")
+    d["_root"] = str(path.parent.parent)  # the project folder; lives in memory only
     return d
 
 
 def save(path: Path, d: dict) -> None:
     d["updated"] = now_iso()
     tmp = path.with_name(f"{path.name}.tmp{os.getpid()}")
-    tmp.write_text(json.dumps(d, ensure_ascii=False, indent=1) + "\n", "utf-8")
+    clean = {k: v for k, v in d.items() if not k.startswith("_")}
+    tmp.write_text(json.dumps(clean, ensure_ascii=False, indent=1) + "\n", "utf-8")
     try:
         _retry_io(lambda: os.replace(tmp, path))
     except PermissionError:
@@ -196,7 +201,7 @@ def new_board(project: str, lanes, lang: str = "en") -> dict:
             "user": {"label": "User present", "exclusive": True},
         },
         "policy": {"direct_agents": [], "dependents_wait_for_accept": False, "lease_hours": 12, "footer": True},
-        "context": [], "items": [], "events": [],
+        "context": [], "protect": [], "items": [], "events": [],
     }
 
 
@@ -208,6 +213,177 @@ def log_event(d: dict, actor: Actor, action: str, iid: str = "", detail: str = "
 
 # ----------------------------------------------------------------------------- scheduling
 
+# ----------------------------------------------------------------------------- file scopes, protected paths, git
+
+GLOB_CHARS = re.compile(r"[*?\[]")
+
+
+def project_root(d: dict) -> Path:
+    return Path(d.get("_root") or Path.cwd())
+
+
+def _case(p: str) -> str:
+    return p.lower() if os.name == "nt" else p
+
+
+def task_root(d: dict, it: dict) -> Path:
+    """Where a task's relative scopes live: its own worktree, else the project folder."""
+    return Path(it["workdir"]).expanduser() if it.get("workdir") else project_root(d)
+
+
+def norm_scope(d: dict, s: str, root=None) -> str:
+    """A scope is a file, a folder or a glob; relative ones are relative to the task's checkout (default: the project folder)."""
+    s = os.path.expanduser(str(s).strip())
+    p = s if os.path.isabs(s) else str(Path(root) / s if root else project_root(d) / s)
+    return _case(os.path.normpath(p).replace("\\", "/"))
+
+
+def show_scope(d: dict, p: str, root=None) -> str:
+    base = _case(Path(root or project_root(d)).as_posix())
+    return p[len(base) + 1:] if p.startswith(base + "/") else p
+
+
+def own_scopes(d: dict, it: dict) -> list:
+    return [norm_scope(d, x, task_root(d, it)) for x in it.get("touches", [])]
+
+
+def _static_prefix(p: str) -> str:
+    m = GLOB_CHARS.search(p)
+    if not m:
+        return p
+    head = p[: m.start()]
+    return head[: head.rfind("/")] if "/" in head else ""
+
+
+def _contains(a: str, b: str) -> bool:
+    """Is b the same as a, or inside folder a?"""
+    return a == b or b.startswith(a.rstrip("/") + "/")
+
+
+def scopes_overlap(a: str, b: str) -> bool:
+    """Conservative: two scopes overlap if they could name the same file."""
+    ga, gb = bool(GLOB_CHARS.search(a)), bool(GLOB_CHARS.search(b))
+    if not ga and not gb:
+        return _contains(a, b) or _contains(b, a)
+    if ga != gb:
+        lit, pat = (b, a) if ga else (a, b)
+        return fnmatch.fnmatchcase(lit, pat) or _contains(lit, _static_prefix(pat))
+    pa, pb = _static_prefix(a), _static_prefix(b)
+    return not pa or not pb or _contains(pa, pb) or _contains(pb, pa)
+
+
+def path_in_scope(path: str, scope: str) -> bool:
+    if GLOB_CHARS.search(scope):
+        return fnmatch.fnmatchcase(path, scope)
+    return _contains(scope, path)
+
+
+def hash_paths(paths, limit: int = 800) -> dict:
+    """SHA-256 of every file under the given paths (None for a path that does not exist yet)."""
+    res = {}
+
+    def one(fp):
+        try:
+            h = hashlib.sha256()
+            with open(fp, "rb") as fh:
+                for chunk in iter(lambda: fh.read(1 << 20), b""):
+                    h.update(chunk)
+            return h.hexdigest()
+        except OSError:
+            return None
+
+    for p in paths:
+        if len(res) >= limit:
+            break
+        if p.is_dir():
+            for root, _dirs, files in os.walk(p):
+                for fn in sorted(files):
+                    if len(res) >= limit:
+                        break
+                    fp = Path(root) / fn
+                    res[_case(fp.as_posix())] = one(fp)
+        else:
+            res[_case(p.as_posix())] = one(p) if p.exists() else None
+    return res
+
+
+def expand_protected(d: dict) -> list:
+    out = []
+    for pat in d.get("protect", []):
+        n = norm_scope(d, pat)
+        out += [Path(x) for x in sorted(glob.glob(n, recursive=True))] if GLOB_CHARS.search(n) else [Path(n)]
+    return out
+
+
+def _git(args, cwd, timeout: int = 30):
+    try:
+        r = subprocess.run(["git", *args], cwd=str(cwd), capture_output=True, encoding="utf-8", errors="replace", timeout=timeout)
+    except (OSError, subprocess.TimeoutExpired):
+        return None
+    return r.stdout.strip() if r.returncode == 0 else None
+
+
+def git_state(workdir):
+    if not Path(workdir).is_dir():
+        return None
+    top = _git(["rev-parse", "--show-toplevel"], workdir)
+    if not top:
+        return None
+    return {"repo": Path(top).as_posix(), "head": _git(["rev-parse", "HEAD"], workdir) or "", "branch": _git(["rev-parse", "--abbrev-ref", "HEAD"], workdir) or ""}
+
+
+def git_changed(state: dict) -> list:
+    """Files that differ from the commit the task started at, plus new untracked files (absolute paths)."""
+    repo, base = state["repo"], state.get("head")
+    files = set()
+    for args in ((["diff", "--name-only", base] if base else ["diff", "--name-only"]), ["ls-files", "--others", "--exclude-standard"]):
+        files |= {ln for ln in (_git(args, repo) or "").splitlines() if ln}
+    return sorted((Path(repo) / f).as_posix() for f in files)
+
+
+def snapshot_for_claim(d: dict, it: dict) -> dict:
+    snap = {}
+    prot = expand_protected(d)
+    if prot:
+        snap["protected"] = hash_paths(prot)
+    if d.get("policy", {}).get("git_check", True):
+        st = git_state(it.get("workdir") or project_root(d))
+        if st:
+            snap["git"] = st
+    return snap
+
+
+def verify_at_finish(d: dict, it: dict) -> tuple:
+    """Compare the claim-time snapshot with the present state: returns (violations, changed summary or None)."""
+    claim = it.get("claim") or {}
+    viol, changed = [], None
+    before = claim.get("protected")
+    if before is not None:
+        after = hash_paths(expand_protected(d))
+        for p in sorted(set(before) | set(after)):
+            if before.get(p) != after.get(p):
+                viol.append({"type": "protected", "path": show_scope(d, p)})
+    st = claim.get("git")
+    if st:
+        root = task_root(d, it)
+        mine = _case(str(root))
+        skip = [_case((project_root(d) / n).as_posix()) for n in DATA_DIRS]  # the board's own files are not project changes
+        files = [f for f in git_changed(st) if not any(_contains(sk, _case(f)) for sk in skip)]
+        scopes = own_scopes(d, it)
+        others = [(o["id"], own_scopes(d, o)) for o in d["items"]
+                  if o["id"] != it["id"] and o["status"] in ACTIVE and _case(str(task_root(d, o))) == mine]
+        for f in files:
+            fc = _case(f)
+            if scopes and not any(path_in_scope(fc, sc) for sc in scopes):
+                viol.append({"type": "outside_scope", "path": show_scope(d, fc, root)})
+            for oid, osc in others:
+                if any(path_in_scope(fc, sc) for sc in osc):
+                    viol.append({"type": "collision", "path": show_scope(d, fc, root), "with": oid})
+        changed = {"count": len(files), "files": [show_scope(d, _case(f), root) for f in files[:100]], "truncated": len(files) > 100,
+                   "repo": st["repo"], "branch": st["branch"]}
+    return viol[:60], changed
+
+
 def conflict_reason(d: dict, a: dict, b: dict):
     """Why two tasks must not run at the same time (None if they can)."""
     if a["lane"] == b["lane"]:
@@ -218,6 +394,12 @@ def conflict_reason(d: dict, a: dict, b: dict):
             return r
     if (a.get("quiet") and b.get("noisy")) or (a.get("noisy") and b.get("quiet")):
         return "quiet"
+    # different checkouts (git worktrees) cannot overwrite each other's files; their changes meet at merge time
+    if a.get("touches") and b.get("touches") and _case(str(task_root(d, a))) == _case(str(task_root(d, b))):
+        for x in own_scopes(d, a):
+            for y in own_scopes(d, b):
+                if scopes_overlap(x, y):
+                    return "paths:" + show_scope(d, x if len(x) >= len(y) else y, task_root(d, a))
     return None
 
 
@@ -227,7 +409,8 @@ def _satisfied(d: dict, items: dict, nid: str) -> bool:
         return False
     if n["status"] == "done":
         return True  # the person accepted it (even a partial result)
-    return n["status"] == "review" and n.get("outcome") == "complete" and not d.get("policy", {}).get("dependents_wait_for_accept", False)
+    return (n["status"] == "review" and n.get("outcome") == "complete" and not n.get("violations")
+            and not d.get("policy", {}).get("dependents_wait_for_accept", False))
 
 
 def _closure(items: dict, iid: str, seen=None) -> set:
@@ -395,6 +578,7 @@ def op_add(d: dict, actor: Actor, f: dict) -> dict:
     item = {
         "id": iid, "lane": lane, "title": (f.get("title") or iid).strip(), "status": status, "needs": needs, "uses": uses,
         "quiet": bool(f.get("quiet")), "noisy": bool(f.get("noisy")), "when": f.get("when") or "", "outline": f.get("outline") or "",
+        "touches": split_list(f.get("touches")), "workdir": f.get("workdir") or "", "branch": f.get("branch") or "",
         "text": text, "report": "", "notes": [], "created": now_iso(), "updated": now_iso(), "created_by": actor.name, "claim": None,
     }
     d["items"].append(item)
@@ -429,6 +613,11 @@ def op_edit(d: dict, actor: Actor, iid: str, f: dict) -> dict:
         uses = split_list(f["uses"])
         check_refs(d, None, None, uses)
         it["uses"] = uses
+    if f.get("touches") is not None:
+        it["touches"] = split_list(f["touches"])
+    for k in ("workdir", "branch"):
+        if f.get(k) is not None:
+            it[k] = f[k]
     for k in ("quiet", "noisy"):
         if f.get(k) is not None:
             it[k] = bool(f[k])
@@ -547,6 +736,9 @@ def op_claim(d: dict, actor: Actor, iid: str, force: bool = False) -> list:
     it["status"] = "running"
     it.pop("outcome", None)
     it["claim"] = {"by": actor.name, "at": now_iso(), "lease_until": (now_dt() + dt.timedelta(hours=hours)).isoformat()}
+    it["claim"].update(snapshot_for_claim(d, it))
+    it.pop("violations", None)
+    it.pop("changed", None)
     it["updated"] = now_iso()
     log_event(d, actor, "claim", iid, "; ".join(warnings))
     return warnings
@@ -568,6 +760,10 @@ def op_finish(d: dict, actor: Actor, iid: str, report: str = "", note: str = "",
         raise RBError("a report path is required (use --report PATH, or --no-report if there is none)")
     if outcome and outcome not in OUTCOMES:
         raise RBError(f"outcome must be one of: {', '.join(OUTCOMES)}", "bad_outcome")
+    violations, changed = verify_at_finish(d, it)
+    it["violations"] = violations
+    if changed is not None:
+        it["changed"] = changed
     it["status"] = "review"
     it["outcome"] = outcome
     it["report"] = report or it.get("report", "")
@@ -575,7 +771,7 @@ def op_finish(d: dict, actor: Actor, iid: str, report: str = "", note: str = "",
     it["updated"] = now_iso()
     if note:
         it["notes"].append({"t": now_iso(), "by": actor.name, "text": note})
-    log_event(d, actor, "finish", iid, f"{outcome or 'no outcome stated'}: {report}")
+    log_event(d, actor, "finish", iid, f"{outcome or 'no outcome stated'}: {report}" + (f" ({len(violations)} file warnings)" if violations else ""))
     return it
 
 
@@ -650,6 +846,18 @@ def op_move(d: dict, actor: Actor, iid: str, position: int) -> dict:
     d["items"].insert(position - 1, it)
     log_event(d, actor, "move", iid, str(position))
     return it
+
+
+def op_protect(d: dict, actor: Actor, action: str, path: str = "") -> list:
+    if not direct_allowed(d, actor):
+        raise RBError("only the person (or a trusted planner agent) can change the protected paths", "human_only")
+    lst = d.setdefault("protect", [])
+    if action == "add" and path and path not in lst:
+        lst.append(path)
+    elif action == "remove" and path in lst:
+        lst.remove(path)
+    log_event(d, actor, "protect", path, action)
+    return lst
 
 
 def op_purge(d: dict, actor: Actor, iid: str) -> None:
@@ -745,10 +953,34 @@ def py_cmd() -> str:
     return "python" if os.name == "nt" else "python3"
 
 
+SCOPE_FOOTER = {
+    "en": ("Files and safety (set by the board):", "- Change only these files and folders: {touches}", "- Never change these protected paths: {protect}",
+           "- Work only in {workdir} (branch {branch}); do not touch other checkouts.",
+           "At the end Barid compares the files and flags anything outside this list for the person."),
+    "ru": ("Файлы и безопасность (задано доской):", "- Меняй только эти файлы и папки: {touches}", "- Никогда не меняй защищённые пути: {protect}",
+           "- Работай только в {workdir} (ветка {branch}); другие копии проекта не трогай.",
+           "В конце Barid сверит файлы и отметит для человека всё, что вне этого списка."),
+}
+
+
+def scope_footer(d: dict, it: dict) -> str:
+    head, t_touch, t_prot, t_work, tail = SCOPE_FOOTER.get(d.get("lang", "en"), SCOPE_FOOTER["en"])
+    lines = []
+    if it.get("touches"):
+        lines.append(t_touch.format(touches=", ".join(it["touches"])))
+    if d.get("protect"):
+        lines.append(t_prot.format(protect=", ".join(d["protect"])))
+    if it.get("workdir"):
+        lines.append(t_work.format(workdir=it["workdir"], branch=it.get("branch") or "-"))
+    return "\n".join([head, *lines, tail]) if lines else ""
+
+
 def footer_for(d: dict, it: dict, board: Path) -> str:
     lang = d.get("lang", "en")
     tpl = FOOTER.get(lang, FOOTER["en"])
-    return tpl.format(id=it["id"], py=py_cmd(), rb=str(Path(__file__).resolve()), board=str(board))
+    base = tpl.format(id=it["id"], py=py_cmd(), rb=str(Path(__file__).resolve()), board=str(board))
+    extra = scope_footer(d, it)
+    return base + ("\n" + extra if extra else "")
 
 
 def prompt_for(d: dict, it: dict, board: Path) -> str:
@@ -920,7 +1152,7 @@ def apply_action(board: Path, req: dict):
             f["id"] = iid
             return op_add(d, h, f)["id"]
         if a == "edit":
-            f = {k: args.get(k) for k in ("title", "lane", "needs", "uses", "quiet", "noisy", "when", "outline", "text") if k in args}
+            f = {k: args.get(k) for k in ("title", "lane", "needs", "uses", "quiet", "noisy", "when", "outline", "text", "touches", "workdir", "branch") if k in args}
             return op_edit(d, h, iid, f)["id"]
         if a == "status":
             return op_set_status(d, h, iid, str(args.get("status", "")))["status"]
@@ -1071,7 +1303,8 @@ def cmd_where(args):
 def cmd_add(args):
     board = find_board(getattr(args, "board", None))
     f = {"id": args.id, "lane": args.lane, "title": args.title, "needs": args.needs, "uses": args.uses, "quiet": args.quiet,
-         "noisy": args.noisy, "when": args.when, "outline": args.outline, "text": read_text_arg(args), "draft": args.draft}
+         "noisy": args.noisy, "when": args.when, "outline": args.outline, "text": read_text_arg(args), "draft": args.draft,
+         "touches": args.touches, "workdir": args.workdir}
     item = mutate(board, lambda d: op_add(d, cli_actor(args), f))
     out(args, item, f"{item['id']} added as {item['status']}" + (" (waiting for the person to approve it)" if item["status"] == "proposed" else ""))
 
@@ -1079,7 +1312,7 @@ def cmd_add(args):
 def cmd_edit(args):
     board = find_board(getattr(args, "board", None))
     f = {"title": args.title, "lane": args.lane, "needs": args.needs, "uses": args.uses, "when": args.when, "outline": args.outline,
-         "quiet": args.quiet, "noisy": args.noisy, "text": read_text_arg(args)}
+         "quiet": args.quiet, "noisy": args.noisy, "text": read_text_arg(args), "touches": args.touches, "workdir": args.workdir}
     if args.replace:
         f["replace"] = args.replace
     f = {k: v for k, v in f.items() if v is not None}
@@ -1215,6 +1448,69 @@ def _add_word(words, what: str):
     if len(ws) != 1:
         raise RBError(f"usage: barid {what} add NAME [--title/--label ...]  or  barid {what} list")
     return ws[0]
+
+
+def cmd_protect(args):
+    board = find_board(getattr(args, "board", None))
+    actor = cli_actor(args)
+    action = args.words[0]
+    if action == "list":
+        print("\n".join(load(board).get("protect", [])) or "(nothing is protected)")
+        return
+    if action not in ("add", "remove") or len(args.words) != 2:
+        raise RBError("usage: barid protect add PATH  |  barid protect remove PATH  |  barid protect list")
+    lst = mutate(board, lambda d: op_protect(d, actor, action, args.words[1]))
+    print("protected: " + (", ".join(lst) or "(nothing)"))
+
+
+def cmd_worktree(args):
+    """Create an isolated git worktree and branch for a task, so sessions cannot overwrite each other's files."""
+    board = find_board(getattr(args, "board", None))
+    actor = cli_actor(args)
+    d = load(board)
+    it = get_item(d, args.id)
+    if not direct_allowed(d, actor):
+        raise RBError("only the person (or a trusted planner agent) can create a worktree for a task", "human_only")
+    repo = Path(args.repo).expanduser().resolve() if args.repo else project_root(d)
+    top = _git(["rev-parse", "--show-toplevel"], repo)
+    if not top:
+        raise RBError(f"{repo} is not inside a git repository (use --repo PATH)", "no_git")
+    branch = args.branch or f"barid/{it['id']}"
+    wt = Path(args.path).expanduser() if args.path else Path(top).parent / f"{Path(top).name}-barid-{it['id']}"
+    r = subprocess.run(["git", "worktree", "add", "-b", branch, str(wt), args.base or "HEAD"], cwd=top, capture_output=True, encoding="utf-8", errors="replace")
+    if r.returncode != 0:
+        raise RBError("git worktree failed: " + (r.stderr.strip() or r.stdout.strip()))
+
+    def fn(b):
+        t = get_item(b, args.id)
+        t["workdir"], t["branch"] = str(wt), branch
+        t["updated"] = now_iso()
+        log_event(b, actor, "worktree", args.id, f"{wt} ({branch})")
+    mutate(board, fn)
+    print(f"worktree {wt} on branch {branch}; the task's footer now tells the session to work only there")
+
+
+def cmd_check(args):
+    """Show what could collide with a task: overlapping scopes of other open tasks, and the protected paths."""
+    board = find_board(getattr(args, "board", None))
+    d = load(board)
+    it = get_item(d, args.id)
+    mine = own_scopes(d, it)
+    print(f"{it['id']}: scope = {', '.join(it.get('touches', [])) or '(not declared)'}" + (f"  in {it['workdir']}" if it.get("workdir") else ""))
+    found = 0
+    for o in d["items"]:
+        if o["id"] == it["id"] or o["status"] in ("done", "cancelled") or not o.get("touches"):
+            continue
+        if _case(str(task_root(d, o))) != _case(str(task_root(d, it))):
+            continue  # another checkout: no shared working files
+        for x in mine:
+            for y in own_scopes(d, o):
+                if scopes_overlap(x, y):
+                    print(f"  overlaps with {o['id']} ({o['status']}): {show_scope(d, x, task_root(d, it))} <-> {show_scope(d, y, task_root(d, o))}")
+                    found += 1
+    if not found:
+        print("  no overlap with other open tasks")
+    print("protected: " + (", ".join(d.get("protect", [])) or "(nothing)"))
 
 
 def cmd_lane(args):
@@ -1379,6 +1675,8 @@ def build_parser() -> argparse.ArgumentParser:
     s.add_argument("--uses", help="comma list of exclusive resources, e.g. gpu,user")
     s.add_argument("--quiet", action="store_true", help="needs a quiet machine (no noisy task in parallel)")
     s.add_argument("--noisy", action="store_true", help="loads CPU or the desktop (blocks quiet tasks)")
+    s.add_argument("--touches", help="comma list of files, folders or globs this task may change; tasks with overlapping scopes never run together")
+    s.add_argument("--workdir", help="the only checkout this task may work in (see `worktree`)")
     s.add_argument("--when")
     s.add_argument("--outline", help="short goal; used to generate the full prompt later")
     s.add_argument("--text", help="prompt text, or - for stdin")
@@ -1387,7 +1685,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     s = add("edit", cmd_edit, "change a task")
     s.add_argument("id")
-    for k in ("title", "lane", "needs", "uses", "when", "outline", "text", "text-file"):
+    for k in ("title", "lane", "needs", "uses", "when", "outline", "text", "text-file", "touches", "workdir"):
         s.add_argument("--" + k)
     s.add_argument("--quiet", action=argparse.BooleanOptionalAction, default=None)
     s.add_argument("--noisy", action=argparse.BooleanOptionalAction, default=None)
@@ -1453,6 +1751,16 @@ def build_parser() -> argparse.ArgumentParser:
     s = add("export", cmd_export, "write a read-only HTML snapshot of the board (for sharing or screenshots)")
     s.add_argument("file")
     s.add_argument("--no-text", action="store_true", help="leave prompt texts out of the snapshot")
+    s = add("protect", cmd_protect, "paths no task may change (verified by checksum when a task finishes): `protect add PATH`, `remove PATH`, `list`")
+    s.add_argument("words", nargs="+", metavar="add|remove|list [PATH]")
+    s = add("worktree", cmd_worktree, "create an isolated git worktree and branch for a task")
+    s.add_argument("id")
+    s.add_argument("--repo", help="the git repository (default: the project folder)")
+    s.add_argument("--branch", help="default: barid/<ID>")
+    s.add_argument("--path", help="default: <repo>-barid-<ID> next to the repository")
+    s.add_argument("--base", help="start point, default HEAD")
+    s = add("check", cmd_check, "show what could collide with a task (overlapping scopes, protected paths)")
+    s.add_argument("id")
     s = add("lane", cmd_lane, "add a lane (a session that receives prompts): `lane add ID --title T`, or `lane list`")
     s.add_argument("words", nargs="+", metavar="[add] ID")
     s.add_argument("--title")

@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.2.0 (2026-10-05)
+
+Sessions no longer collide on files either.
+
+- File scopes (`--touches`): tasks whose scopes overlap never run together; the panel and `barid plan` say why.
+- Protected paths (`barid protect`): checksums at claim, verified at finish.
+- Isolated checkouts (`barid worktree`): a git worktree and branch per task, written into its prompt; tasks in different worktrees do not conflict on paths.
+- Git check at finish: files changed outside the declared scope, inside another running task's scope or in protected paths are listed in the inbox and keep dependents locked until the person decides.
+- `barid check`, `barid lane list`, `barid resource list`; fixed `barid resource add` and `barid lane add` as documented.
+- Panel: Appearance button (light/dark/auto, four palettes), last-updated indicator, scopes and file warnings.
+
 ## 0.1.0 (2026-10-05)
 
 First public version.

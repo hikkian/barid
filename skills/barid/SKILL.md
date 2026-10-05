@@ -45,6 +45,9 @@ barid add T2 --lane <lane> --title "<title>" --outline "<what the prompt must ac
 - A task with text is *queued*. A task with only an `--outline` is a *draft*: its prompt is written when its turn comes (see below).
 - `--needs A,B` lists tasks that must be finished first. `--uses` lists exclusive resources. `--quiet` marks a task that needs a quiet machine (nothing noisy in parallel, e.g. a user-rated comfort test or a precise benchmark). `--noisy` marks a task that loads the CPU or the desktop (tests, builds, a browser).
 - Tasks in the same lane never run together: a lane is one session.
+- **Declare what a task may change:** `--touches src/api,tests/api` (files, folders or globs). Tasks with overlapping scopes never run together, and at the end Barid flags every changed file outside the scope. Do this for every task that edits files.
+- **Protect what must never change** (live configuration, secrets, production data): `barid protect add <path>`. Barid compares checksums when a task finishes.
+- **Parallel code work needs separate checkouts:** `barid worktree T1` creates a git worktree and branch for the task and puts "work only in ..." into its prompt. Run `barid check T1` to see what could collide before you queue it.
 - Write prompts so that a session with no memory of this conversation can act on them: concrete steps, exact paths and commands, a hard deadline, acceptance checks, what must not be touched, where the report goes. `barid template` shows skeletons. Do **not** write the tracking footer; the board appends it when the prompt is copied.
 - Check the result with `barid plan`: steps, and which tasks may run at the same time. Explain it to the person in a sentence or two.
 
@@ -66,7 +69,7 @@ Read the dependency reports it lists before writing; the prompt should build on 
 4. Write your report file, then `barid finish T1 --report <path> --outcome <complete|partial|failed> --by "<you>"`. Be honest about the outcome: `complete` only when every acceptance check was met and nothing is left; `partial` when you stopped early (a safety limit, the deadline, an error) or skipped parts; `failed` when the main goal was not reached. Only `complete` starts dependent tasks by itself, the person decides about the rest. The task goes to *review*; the person accepts it.
 5. If something blocks you, `barid note T1 "<what>" --by "<you>"`. If you think of a follow-up task, `barid add <ID> --lane <lane> --title ... --text-file ... --by "<you>"`; it arrives as a proposal.
 
-Touch only your own task. Never edit, cancel or delete other tasks.
+Touch only your own task. Never edit, cancel or delete other tasks. If the prompt lists files you may change, change nothing else; if you need another file, write a note (`barid note`) and stop instead of editing it. Never change the protected paths listed in the prompt.
 
 ## Planner loop
 
@@ -94,6 +97,7 @@ Touch only your own task. Never edit, cancel or delete other tasks.
 | add / change / reorder task | `barid add ID ...`, `barid edit ID ...` (`--replace OLD NEW` swaps one exact fragment), `barid move ID POSITION` (earlier in the list = earlier slot in the plan) |
 | see order and parallelism | `barid plan`, `barid list` |
 | next task for a lane | `barid next --lane L` |
+| scopes, protection, isolation | `barid add ID --touches P`, `barid protect add P`, `barid worktree ID`, `barid check ID` |
 | take / finish / give back | `barid claim ID`, `barid finish ID --report P --outcome complete\|partial\|failed`, `barid release ID` |
 | note, cancel | `barid note ID "text"`, `barid cancel ID --reason ...` |
 | prompt request for a draft | `barid gen ID` |

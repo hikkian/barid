@@ -84,6 +84,19 @@ https://github.com/hikkian/barid and use `python3 <path>/barid.py` as described 
 draft -> queued -> sent -> running -> review -> done        (proposed -> queued on approval; cancelled anywhere before done)
 ```
 
+## Keeping sessions out of each other's way
+
+Two sessions rarely fight over a GPU alone: they also overwrite each other's files. Barid handles this on four levels:
+
+1. **Exclusive resources** (`--uses gpu`): only one task at a time (as above).
+2. **File scopes** (`--touches src/gateway,tests`): files, folders or globs a task may change. Tasks whose scopes overlap never run together, and the panel says why ("waiting for T1, same files: src/gateway.py"). The overlap test is conservative: it may block two tasks that would not really clash, never the other way round.
+3. **Protected paths** (`barid protect add config/live.json`): files no task may change. Barid takes a checksum when a task is claimed and compares it when the task finishes.
+4. **Isolated checkouts** (`barid worktree T1`): a git worktree and branch of its own for the task, written into its prompt ("work only in ..."). Tasks in different worktrees cannot overwrite each other, their work meets at merge time.
+
+When a task finishes, Barid also asks git what changed since the claim and flags anything **outside the task's scope**, anything inside **another running task's scope**, and any **protected file** that changed. A report with such flags never unlocks dependent tasks by itself, even when it says *complete*: it waits in your inbox with the list of files. `barid check T1` shows what could collide before you start.
+
+This is **detection plus convention, not a sandbox**: an agent can still write any file it has permission to write. The prompt tells it the rules, the worktree keeps its changes apart, and Barid makes violations impossible to miss. For hard guarantees combine it with OS-level permissions or containers.
+
 ## The panel
 
 | | |
@@ -112,6 +125,10 @@ barid claim T1 --by worker-a                 # refused when a conflicting task i
 barid finish T1 --report reports/t1.md --by worker-a
 barid gen T2                                 # request that makes an agent write T2's prompt
 barid move T3 1                              # priority: earlier in the list = earlier slot in the plan
+barid add T3 --lane a --touches src/api --text-file p.md   # file scope: overlapping scopes never run together
+barid protect add config/live.json        # no task may change it (verified at finish)
+barid worktree T3                         # an isolated git worktree and branch for the task
+barid check T3                            # what could collide with it
 barid open                                   # panel;  barid export board.html  = read-only snapshot
 ```
 
@@ -123,6 +140,7 @@ Barid prevents accidents, not malice. Identities are self-declared (`--by`), so 
 
 - all writes are atomic and serialised by a file lock; two agents racing for one GPU cannot both win (tested with threads and processes);
 - agents cannot approve, accept, set arbitrary statuses, purge, or finish a task another agent holds;
+- file changes outside a task's declared scope, in another running task's scope or in protected paths are detected at the end of the task and keep dependents locked until you decide;
 - tasks are never deleted by agents, only cancelled; the event log is append-only;
 - the panel server binds to loopback only, rejects foreign `Host` and `Origin` headers and writes only through one guarded endpoint (a custom header, so another website cannot post to it);
 - the panel never reads files named in tasks (report paths are shown, not opened).

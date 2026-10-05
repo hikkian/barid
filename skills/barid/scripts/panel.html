@@ -171,14 +171,14 @@ var STR = {
   status:"Status", notes:"Notes", addnote:"New note (Enter to save)", history:"History", report:"Report", needs:"Depends on", uses:"Resources", lane:"Session", when:"When", created:"Created by", claim:"Held by",
   prompt:"Prompt", noprompt:"There is no prompt text yet.", title:"Title", outline:"Outline (what the prompt must achieve)", needs_l:"Depends on (IDs, comma separated)", uses_l:"Resources (comma separated)",
   quiet:"needs a quiet machine", noisy:"creates load", id:"ID", text:"Prompt text", create:"Create", offline:"No connection to the board server. Retrying…",
-  copy_path:"Copy report path", reopen:"Reopen", updated:"updated", theme:"Appearance", mode_auto:"Auto", mode_light:"Light", mode_dark:"Dark", palette:"Colors", pal_forest:"Forest", pal_teal:"Teal", pal_graphite:"Graphite", pal_midnight:"Midnight", out:"Outcome", out_complete:"complete", out_partial:"partial", out_failed:"failed", out_none:"outcome not stated", accept_asis:"Accept as is", partial_warn:"The session stopped early or did not finish everything. Dependent tasks wait for your decision.", turn:"its turn has come", empty_flow:"No tasks yet. Ask your agent to add some, or press “+ New task”.",
+  copy_path:"Copy report path", reopen:"Reopen", why_paths:"same files", touches_l:"Files and folders it may change (comma separated)", files:"Files", workdir:"Checkout", branch:"Branch", viol_chip:"files need a look", viol_protected:"changed a protected file", viol_outside:"changed a file outside its scope", viol_collision:"touched a file that {id} is working on", changed_n:"{n} files changed on {branch}", viol_warn:"Barid found file changes you should look at before accepting.", updated:"updated", theme:"Appearance", mode_auto:"Auto", mode_light:"Light", mode_dark:"Dark", palette:"Colors", pal_forest:"Forest", pal_teal:"Teal", pal_graphite:"Graphite", pal_midnight:"Midnight", out:"Outcome", out_complete:"complete", out_partial:"partial", out_failed:"failed", out_none:"outcome not stated", accept_asis:"Accept as is", partial_warn:"The session stopped early or did not finish everything. Dependent tasks wait for your decision.", turn:"its turn has come", empty_flow:"No tasks yet. Ask your agent to add some, or press “+ New task”.",
   s:{ready:"ready to run",waiting:"waiting",blocked:"busy",queued:"queued",draft:"draft",proposed:"proposed",sent:"sent",running:"in progress",review:"to review",done:"done",cancelled:"cancelled"},
   with_:"Can run with", wait_:"Depends on", conf_:"Waiting for", why:{lane:"same session",quiet:"quiet and load do not mix"}, rev:"rev", snapshot:"This is a read-only snapshot",
   ok_sent:"Marked as sent", ok_release:"Returned to the queue", ok_approve:"Approved", ok_reject:"Rejected", ok_accept:"Report accepted", ok_cancel:"Task cancelled", ok_restore:"Task restored",
   ok_status:"Status changed", ok_requeued:"Returned to the queue", ok_note:"Note added", ok_outcome:"Outcome changed", ok_saved:"Saved", ok_created:"Task created",
   ERR:{exists:"A task with ID {id} already exists", bad_id:"ID: letters, digits, “.”, “_” or “-”, up to 32 characters", unknown_lane:"Unknown session: {lane}", unknown_task:"Unknown task in the dependency list: {id}",
    unknown_resource:"Unknown resource: {name}", cycle:"That would create a dependency loop", no_text:"{id} has no prompt text yet: generate or write it first", not_found:"No such task: {id}",
-   wrong_state:"{id} is now “{status}”: this action is not possible", human_only:"Only you can do this", empty_note:"The note is empty", bad_status:"Unknown status", bad_outcome:"Unknown outcome"}},
+   wrong_state:"{id} is now “{status}”: this action is not possible", human_only:"Only you can do this", empty_note:"The note is empty", bad_status:"Unknown status", bad_outcome:"Unknown outcome", no_git:"This folder is not a git repository"}},
  ru: {now:"Что делать сейчас", flow:"Порядок работ и что можно запускать вместе", inbox_p:"Предложения агентов", inbox_r:"Отчёты на проверку", archive:"Архив", activity:"Журнал действий",
   add:"+ Новая задача", search:"Поиск…", lang:"English", idle:"Для этой сессии сейчас нет задач.", nothing_ready:"Пока нечего запускать. Ожидает: ",
   running:"В работе", held_by:"у {name} с {time}", proposed_by:"предложил(а) {name}",
@@ -190,14 +190,14 @@ var STR = {
   status:"Статус", notes:"Заметки", addnote:"Новая заметка (Enter — сохранить)", history:"История", report:"Отчёт", needs:"Зависит от", uses:"Ресурсы", lane:"Сессия", when:"Когда", created:"Автор", claim:"В работе у",
   prompt:"Промпт", noprompt:"Текста промпта ещё нет.", title:"Название", outline:"Суть (что должен сделать промпт)", needs_l:"Зависит от (ID через запятую)", uses_l:"Ресурсы (через запятую)",
   quiet:"нужна тишина", noisy:"создаёт нагрузку", id:"ID", text:"Текст промпта", create:"Создать", offline:"Нет связи с сервером доски. Пробую снова…",
-  copy_path:"Скопировать путь к отчёту", reopen:"Открыть заново", updated:"обновлено", theme:"Оформление", mode_auto:"Авто", mode_light:"Светлая", mode_dark:"Тёмная", palette:"Цвета", pal_forest:"Лес", pal_teal:"Бирюза", pal_graphite:"Графит", pal_midnight:"Полночь", out:"Итог", out_complete:"выполнено полностью", out_partial:"выполнено частично", out_failed:"не удалось", out_none:"итог не указан", accept_asis:"Принять как есть", partial_warn:"Сессия остановилась раньше или сделала не всё. Зависимые задачи ждут вашего решения.", turn:"подошла очередь", empty_flow:"Задач пока нет. Попросите агента добавить их или нажмите «+ Новая задача».",
+  copy_path:"Скопировать путь к отчёту", reopen:"Открыть заново", why_paths:"те же файлы", touches_l:"Какие файлы и папки можно менять (через запятую)", files:"Файлы", workdir:"Рабочая копия", branch:"Ветка", viol_chip:"проверьте файлы", viol_protected:"изменён защищённый файл", viol_outside:"изменён файл вне своей области", viol_collision:"тронут файл, с которым работает {id}", changed_n:"изменено файлов: {n} (ветка {branch})", viol_warn:"Barid нашёл изменения файлов, которые стоит проверить перед принятием.", updated:"обновлено", theme:"Оформление", mode_auto:"Авто", mode_light:"Светлая", mode_dark:"Тёмная", palette:"Цвета", pal_forest:"Лес", pal_teal:"Бирюза", pal_graphite:"Графит", pal_midnight:"Полночь", out:"Итог", out_complete:"выполнено полностью", out_partial:"выполнено частично", out_failed:"не удалось", out_none:"итог не указан", accept_asis:"Принять как есть", partial_warn:"Сессия остановилась раньше или сделала не всё. Зависимые задачи ждут вашего решения.", turn:"подошла очередь", empty_flow:"Задач пока нет. Попросите агента добавить их или нажмите «+ Новая задача».",
   s:{ready:"можно запускать",waiting:"ждёт",blocked:"занято",queued:"в очереди",draft:"черновик",proposed:"предложено",sent:"отправлено",running:"в работе",review:"на проверке",done:"выполнено",cancelled:"отменено"},
   with_:"Можно вместе с", wait_:"Ждёт задачи", conf_:"Ждёт завершения", why:{lane:"та же сессия",quiet:"тишина и нагрузка несовместимы"}, rev:"версия", snapshot:"Это снимок только для чтения",
   ok_sent:"Отмечено как отправленное", ok_release:"Возвращено в очередь", ok_approve:"Одобрено", ok_reject:"Отклонено", ok_accept:"Отчёт принят", ok_cancel:"Задача отменена", ok_restore:"Задача восстановлена",
   ok_status:"Статус изменён", ok_requeued:"Возвращено в очередь", ok_note:"Заметка добавлена", ok_outcome:"Итог изменён", ok_saved:"Сохранено", ok_created:"Задача создана",
   ERR:{exists:"Задача с ID {id} уже существует", bad_id:"ID: латинские буквы, цифры, «.», «_» или «-», до 32 символов", unknown_lane:"Нет такой сессии: {lane}", unknown_task:"Нет такой задачи в зависимостях: {id}",
    unknown_resource:"Нет такого ресурса: {name}", cycle:"Получился бы цикл зависимостей", no_text:"У {id} ещё нет текста промпта: сначала сгенерируйте или напишите его", not_found:"Задачи {id} нет",
-   wrong_state:"Задача {id} сейчас «{status}»: это действие невозможно", human_only:"Это может сделать только человек", empty_note:"Заметка пустая", bad_status:"Неизвестный статус", bad_outcome:"Неизвестный итог"}}
+   wrong_state:"Задача {id} сейчас «{status}»: это действие невозможно", human_only:"Это может сделать только человек", empty_note:"Заметка пустая", bad_status:"Неизвестный статус", bad_outcome:"Неизвестный итог", no_git:"Эта папка не является git-репозиторием"}}
 };
 var S = {board:null, lang:"en", lanes:{}, sel:null, q:"", laneOff:{}, arch:false, act:false, editing:false, rev:-1, offline:false};
 try { S.lang = localStorage.getItem("rb.lang") || ""; S.arch = localStorage.getItem("rb.arch") === "1"; S.act = localStorage.getItem("rb.act") === "1"; } catch (e) {}
@@ -259,9 +259,23 @@ function match(c) {
 }
 function fmtTime(s) { if (!s) return ""; var d = new Date(s); return isNaN(d) ? s : d.toLocaleString(S.lang === "ru" ? "ru-RU" : "en-US", {month: "short", day: "numeric", hour: "2-digit", minute: "2-digit"}); }
 function outLabel(o) { return o === "complete" ? t("out_complete") : o === "partial" ? t("out_partial") : o === "failed" ? t("out_failed") : t("out_none"); }
-function badOutcome(c) { return c.state === "review" && c.outcome !== "complete"; }
+function hasViol(c) { return !!(c.violations && c.violations.length); }
+function badOutcome(c) { return c.state === "review" && (c.outcome !== "complete" || hasViol(c)); }
+function whyText(w) {
+  if (w.indexOf("paths:") === 0) return t("why_paths") + ": " + w.slice(6);
+  var m = t("why")[w]; if (m) return m;
+  var r = S.board.resources[w]; return r && r.label ? r.label : w;
+}
+function violText(v) { return t("viol_" + (v.type === "outside_scope" ? "outside" : v.type)).replace("{id}", v.with || "") + ": " + v.path; }
+function violBox(c) {
+  var box = h("div", {class: "note", style: "border-color:var(--warn)"}, "⚠ " + t("viol_warn"));
+  c.violations.slice(0, 6).forEach(function (v) { box.appendChild(h("div", {class: "sub", text: violText(v)})); });
+  if (c.violations.length > 6) box.appendChild(h("div", {class: "sub", text: "… +" + (c.violations.length - 6)}));
+  return box;
+}
+function changedText(c) { return c.changed ? fmt(t("changed_n"), {n: c.changed.count, branch: c.changed.branch || "-"}) : ""; }
 function chip(c) {
-  if (badOutcome(c)) return h("span", {class: "chip o-" + (c.outcome || "none"), text: st("review") + " · " + outLabel(c.outcome)});
+  if (badOutcome(c)) return h("span", {class: "chip o-" + (c.outcome && c.outcome !== "complete" ? c.outcome : "partial"), text: st("review") + " · " + (c.outcome !== "complete" ? outLabel(c.outcome) : t("viol_chip"))});
   return h("span", {class: "chip s-" + c.state, text: st(c.state)});
 }
 function waitText(c) {
@@ -270,6 +284,7 @@ function waitText(c) {
 function tags(c) {
   var out = [];
   (c.uses || []).forEach(function (r) { out.push(h("span", {class: "tag res", text: (S.board.resources[r] && S.board.resources[r].label) || r})); });
+  if ((c.touches || []).length) out.push(h("span", {class: "tag", title: c.touches.join(", "), text: "📁 " + c.touches[0] + (c.touches.length > 1 ? " +" + (c.touches.length - 1) : "")}));
   if (c.quiet) out.push(h("span", {class: "tag", text: "🔇 " + t("quiet")}));
   if (c.noisy) out.push(h("span", {class: "tag", text: "🔊 " + t("noisy")}));
   return out;
@@ -337,7 +352,7 @@ function renderNow() {
   // can the picked tasks run together?
   if (picks.length > 1) {
     var conflicts = [];
-    picks.forEach(function (a) { a.cannot_run_with.forEach(function (x) { if (picks.some(function (p) { return p.id === x.id; }) && a.id < x.id) conflicts.push(a.id + " ✖ " + x.id + " (" + (t("why")[x.why] || ((S.board.resources[x.why] && S.board.resources[x.why].label) || x.why)) + ")"); }); });
+    picks.forEach(function (a) { a.cannot_run_with.forEach(function (x) { if (picks.some(function (p) { return p.id === x.id; }) && a.id < x.id) conflicts.push(a.id + " ✖ " + x.id + " (" + whyText(x.why) + ")"); }); });
     var ids = picks.map(function (p) { return p.id; }).join(" ∥ ");
     if (!conflicts.length) tog.appendChild(h("div", {class: "together good"}, "✔ " + t("can") + ids));
     else tog.appendChild(h("div", {class: "together warn"}, "⚠ " + t("cant") + conflicts.join("; ")));
@@ -365,7 +380,7 @@ function renderInbox() {
       var lastNote = (c.notes || []).slice(-1)[0];
       var bad = badOutcome(c);
       l2.appendChild(h("div", {class: "card ib", style: "border-left:4px solid " + (bad ? (c.outcome === "failed" ? "var(--bad)" : "var(--warn)") : "var(--ok)")},
-        h("div", {class: "body"}, h("div", null, h("b", {text: c.id}), " · " + c.title + " ", chip(c)), h("div", {class: "sub", text: t("report") + ": " + (c.report || "—")}), bad ? h("div", {class: "note", style: "border-color:var(--warn)"}, "⚠ " + t("partial_warn")) : null, lastNote ? h("div", {class: "note"}, h("small", {text: lastNote.by + ": "}), lastNote.text) : null),
+        h("div", {class: "body"}, h("div", null, h("b", {text: c.id}), " · " + c.title + " ", chip(c)), h("div", {class: "sub", text: t("report") + ": " + (c.report || "—")}), bad && c.outcome !== "complete" ? h("div", {class: "note", style: "border-color:var(--warn)"}, "⚠ " + t("partial_warn")) : null, hasViol(c) ? violBox(c) : null, c.changed ? h("div", {class: "sub", text: changedText(c)}) : null, lastNote ? h("div", {class: "note"}, h("small", {text: lastNote.by + ": "}), lastNote.text) : null),
         h("div", {class: "row"}, h("button", {class: bad ? "btn" : "btn ok", text: bad ? t("accept_asis") : t("accept"), onclick: function () { act("accept", c.id, {}, t("accept")); }}), c.report ? h("button", {class: "btn", text: t("copy_path"), onclick: function () { copy(c.report); }}) : null,
           h("button", {class: "btn", text: t("sendback"), onclick: function () { act("status", c.id, {status: "queued"}); }}), h("button", {class: "btn sm", text: "…", onclick: function () { openDrawer(c.id); }}))));
     });
@@ -379,7 +394,7 @@ function itemCard(c, step1) {
   var m = h("div", {class: "m"}, h("span", {text: laneTitle(c.lane)}));
   tags(c).forEach(function (x) { m.appendChild(x); });
   if (c.waiting_on.length) m.appendChild(h("span", {text: t("after") + " " + waitText(c)}));
-  if (c.state === "blocked") m.appendChild(h("span", {style: "color:var(--warn)", text: t("blocked_by") + " " + c.conflicts.map(function (x) { return x.id + " (" + (t("why")[x.why] || x.why) + ")"; }).join(", ")}));
+  if (c.state === "blocked") m.appendChild(h("span", {style: "color:var(--warn)", text: t("blocked_by") + " " + c.conflicts.map(function (x) { return x.id + " (" + whyText(x.why) + ")"; }).join(", ")}));
   if (turnOf(c)) m.appendChild(h("span", {style: "color:var(--draft);font-weight:700", text: "✎ " + t("turn")}));
   el.appendChild(m);
   return el;
@@ -431,9 +446,12 @@ function renderDrawer() {
   row(t("lane"), laneTitle(c.lane)); row(t("needs"), c.needs.join(", ")); row(t("uses"), (c.uses || []).join(", ") + (c.quiet ? " 🔇" : "") + (c.noisy ? " 🔊" : ""));
   row(t("when"), c.when); row(t("created"), c.created_by + " · " + fmtTime(c.created)); row(t("claim"), c.claim ? c.claim.by + " · " + fmtTime(c.claim.at) + (c.stale ? " ⚠ " + t("stale") : "") : "");
   row(t("report"), c.report);
+  row(t("files"), (c.touches || []).join(", ")); row(t("workdir"), c.workdir); row(t("branch"), c.branch);
+  if (c.changed) row("✎", changedText(c));
+  if (hasViol(c)) row("⚠", c.violations.slice(0, 8).map(violText).join(" · "));
   if (c.waiting_on.length) row(t("wait_"), waitText(c));
   if (c.state === "review" || c.state === "done") row(t("out"), outLabel(c.outcome));
-  if (c.conflicts.length) row(t("conf_"), c.conflicts.map(function (x) { return x.id + " (" + (t("why")[x.why] || x.why) + ")"; }).join(", "));
+  if (c.conflicts.length) row(t("conf_"), c.conflicts.map(function (x) { return x.id + " (" + whyText(x.why) + ")"; }).join(", "));
   if (c.can_run_with.length) row(t("with_"), c.can_run_with.join(", "));
   db.appendChild(kv);
   var bar = h("div", {class: "row", style: "margin:0 0 12px"});
@@ -479,17 +497,18 @@ function editForm(c, isNew) {
   f.lane = laneSelect(c.lane);
   f.needs = h("input", {type: "text", value: (c.needs || []).join(", ")});
   f.uses = h("input", {type: "text", value: (c.uses || []).join(", ")});
+  f.touches = h("input", {type: "text", value: (c.touches || []).join(", ")});
   f.when = h("input", {type: "text", value: c.when || ""});
   f.outline = h("input", {type: "text", value: c.outline || ""});
   f.quiet = h("input", {type: "checkbox"}); f.quiet.checked = !!c.quiet;
   f.noisy = h("input", {type: "checkbox"}); f.noisy.checked = !!c.noisy;
   f.text = h("textarea"); f.text.value = c.text || "";
-  var g = h("div", {class: "formgrid"}, field(t("id"), f.id), field(t("lane"), f.lane), field(t("title"), f.title, true), field(t("needs_l"), f.needs), field(t("uses_l"), f.uses),
+  var g = h("div", {class: "formgrid"}, field(t("id"), f.id), field(t("lane"), f.lane), field(t("title"), f.title, true), field(t("needs_l"), f.needs), field(t("uses_l"), f.uses), field(t("touches_l"), f.touches, true),
     field(t("when"), f.when, true), field(t("outline"), f.outline, true),
     h("div", null, h("label", null, f.quiet, " " + t("quiet"))), h("div", null, h("label", null, f.noisy, " " + t("noisy"))), field(t("text"), f.text, true));
   g._f = f; return g;
 }
-function formArgs(f) { return {title: f.title.value, lane: f.lane.value, needs: f.needs.value, uses: f.uses.value, when: f.when.value, outline: f.outline.value, quiet: f.quiet.checked, noisy: f.noisy.checked, text: f.text.value}; }
+function formArgs(f) { return {title: f.title.value, lane: f.lane.value, needs: f.needs.value, uses: f.uses.value, touches: f.touches.value, when: f.when.value, outline: f.outline.value, quiet: f.quiet.checked, noisy: f.noisy.checked, text: f.text.value}; }
 function renderEdit(c, db) {
   var g = editForm(c, false); db.appendChild(g);
   db.appendChild(h("div", {class: "row", style: "margin-top:14px"}, h("button", {class: "btn pri", text: t("save"), onclick: function () { S.editing = false; act("edit", c.id, formArgs(g._f), t("saved")); }}),

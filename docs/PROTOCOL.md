@@ -26,11 +26,20 @@ Two tasks conflict (must not be active together) when any of these holds:
 
 1. they are in the same lane (`why: "lane"`): a lane is one session;
 2. they share an exclusive resource in `uses` (`why: "<resource>"`);
-3. one has `quiet: true` and the other `noisy: true` (`why: "quiet"`).
+3. one has `quiet: true` and the other `noisy: true` (`why: "quiet"`);
+4. their file scopes overlap (`why: "paths:<path>"`): both tasks declare `touches` (files, folders or globs, relative ones resolved against the task's checkout: its `workdir`, else the project folder) and the scopes could name the same file. The test is conservative. Tasks with different `workdir`s never conflict on paths: they work in different checkouts.
 
 Active tasks are those in `sent` or `running`. `claim` is refused when it would conflict with an active task, unless the task is already `sent` (the person chose it, a warning is returned) or `--force` is used.
 
 `can_run_with` lists active/ready tasks that do not conflict and are unrelated by dependencies. `steps` (from `barid plan`) is a greedy schedule in list order: each task goes into the earliest step after its unfinished needs where nothing it conflicts with is placed.
+
+## Files: scopes, protected paths, the git check
+
+- `touches` (per task) and `workdir`/`branch` (set by `barid worktree`) describe where a task may work. `protect` (per board) lists paths no task may change.
+- On `claim` Barid stores in the claim a SHA-256 of every file under the protected paths and, when the checkout is a git repository, its `HEAD`.
+- On `finish` it recomputes the checksums and asks git for the files that differ from the claim-time `HEAD` plus new untracked files (the board's own `.barid` folder is ignored). It records `changed` (count, first 100 files, repo, branch) and `violations`: `protected` (a protected file changed), `outside_scope` (a changed file is outside the task's declared `touches`, only when it declared any), `collision` (a changed file lies in the scope of another active task that works in the same checkout).
+- A task with `violations` is never *satisfied* by `outcome: "complete"` alone; the person accepts it or sends it back.
+- Limits: with several sessions in one shared checkout, git cannot tell whose uncommitted change is whose, so use `barid worktree` for parallel code work. This is detection, not enforcement.
 
 ## Leases
 
@@ -66,11 +75,12 @@ Active tasks are those in `sent` or `running`. `claim` is refused when it would 
   "resources": {"gpu": {"label": "GPU", "exclusive": true}},
   "policy": {"direct_agents": ["planner"], "dependents_wait_for_accept": false, "lease_hours": 12, "footer": true},
   "context": ["README.md"],
+  "protect": ["config/live.json"],
   "items": [{
     "id": "T1", "lane": "main", "title": "Build", "status": "running",
     "needs": ["T0"], "uses": ["gpu"], "quiet": false, "noisy": true,
     "when": "", "outline": "", "text": "the prompt without the footer",
-    "report": "", "outcome": "complete|partial|failed|", "notes": [{"t": "...", "by": "agent", "text": "..."}],
+    "touches": ["src/api"], "workdir": "", "branch": "", "report": "", "outcome": "complete|partial|failed|", "violations": [], "changed": {}, "notes": [{"t": "...", "by": "agent", "text": "..."}],
     "created": "...", "updated": "...", "created_by": "planner",
     "claim": {"by": "worker-a", "at": "...", "lease_until": "..."}
   }],
