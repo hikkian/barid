@@ -1,0 +1,397 @@
+{
+ "schema": 1,
+ "project": "Ship v1.0 of a CLI tool",
+ "rev": 17,
+ "created": "2026-10-05T23:17:22+00:00",
+ "updated": "2026-10-05T23:17:23+00:00",
+ "lang": "en",
+ "lanes": [
+  {
+   "id": "build",
+   "title": "Build agent"
+  },
+  {
+   "id": "docs",
+   "title": "Docs agent"
+  },
+  {
+   "id": "qa",
+   "title": "QA agent"
+  }
+ ],
+ "resources": {
+  "staging": {
+   "label": "Staging server",
+   "exclusive": true
+  },
+  "user": {
+   "label": "User present",
+   "exclusive": true
+  }
+ },
+ "policy": {
+  "direct_agents": [
+   "planner"
+  ],
+  "dependents_wait_for_accept": false,
+  "lease_hours": 12,
+  "footer": true
+ },
+ "context": [
+  "README.md",
+  "docs/architecture.md"
+ ],
+ "protect": [],
+ "items": [
+  {
+   "id": "T0",
+   "lane": "build",
+   "title": "Audit the dependencies",
+   "status": "done",
+   "needs": [],
+   "uses": [],
+   "quiet": false,
+   "noisy": false,
+   "when": "",
+   "outline": "",
+   "touches": [],
+   "workdir": "",
+   "branch": "",
+   "text": "List outdated and vulnerable dependencies. Write the result to docs/reports/deps-audit.md.",
+   "report": "docs/reports/deps-audit.md",
+   "notes": [
+    {
+     "t": "2026-10-05T23:17:22+00:00",
+     "by": "build-agent",
+     "text": "3 outdated, 0 vulnerable"
+    }
+   ],
+   "created": "2026-10-05T23:17:22+00:00",
+   "updated": "2026-10-05T23:17:22+00:00",
+   "created_by": "planner",
+   "claim": null,
+   "violations": [],
+   "outcome": ""
+  },
+  {
+   "id": "T1",
+   "lane": "build",
+   "title": "Refactor the config loader",
+   "status": "running",
+   "needs": [
+    "T0"
+   ],
+   "uses": [],
+   "quiet": false,
+   "noisy": false,
+   "when": "",
+   "outline": "",
+   "touches": [],
+   "workdir": "",
+   "branch": "",
+   "text": "Split the config loader into parse and validate steps.\nDeadline: 90 minutes.\nDo not touch the public CLI flags.\nReport: docs/reports/config-refactor.md.",
+   "report": "",
+   "notes": [
+    {
+     "t": "2026-10-05T23:17:22+00:00",
+     "by": "build-agent",
+     "text": "Parser is split, validation next."
+    }
+   ],
+   "created": "2026-10-05T23:17:22+00:00",
+   "updated": "2026-10-05T23:17:22+00:00",
+   "created_by": "planner",
+   "claim": {
+    "by": "build-agent",
+    "at": "2026-10-05T23:17:22+00:00",
+    "lease_until": "2026-10-06T11:17:22+00:00"
+   }
+  },
+  {
+   "id": "T2",
+   "lane": "docs",
+   "title": "Update the README for the new config format",
+   "status": "queued",
+   "needs": [
+    "T1"
+   ],
+   "uses": [],
+   "quiet": false,
+   "noisy": false,
+   "when": "",
+   "outline": "",
+   "touches": [],
+   "workdir": "",
+   "branch": "",
+   "text": "Rewrite the configuration section of the README for the refactored loader.",
+   "report": "",
+   "notes": [],
+   "created": "2026-10-05T23:17:22+00:00",
+   "updated": "2026-10-05T23:17:22+00:00",
+   "created_by": "planner",
+   "claim": null
+  },
+  {
+   "id": "T3",
+   "lane": "qa",
+   "title": "Write the regression test suite",
+   "status": "review",
+   "needs": [],
+   "uses": [],
+   "quiet": false,
+   "noisy": true,
+   "when": "",
+   "outline": "",
+   "touches": [],
+   "workdir": "",
+   "branch": "",
+   "text": "Cover the 12 user-reported bugs with tests. Deadline: 2 hours. Report: docs/reports/regression.md.",
+   "report": "r.md",
+   "notes": [],
+   "created": "2026-10-05T23:17:22+00:00",
+   "updated": "2026-10-05T23:17:23+00:00",
+   "created_by": "planner",
+   "claim": null,
+   "violations": [],
+   "outcome": "partial"
+  },
+  {
+   "id": "T4",
+   "lane": "build",
+   "title": "Fix the failing tests",
+   "status": "draft",
+   "needs": [
+    "T3"
+   ],
+   "uses": [],
+   "quiet": false,
+   "noisy": false,
+   "when": "",
+   "outline": "Fix every test that the regression suite found failing; keep the diff minimal.",
+   "touches": [],
+   "workdir": "",
+   "branch": "",
+   "text": "",
+   "report": "",
+   "notes": [],
+   "created": "2026-10-05T23:17:22+00:00",
+   "updated": "2026-10-05T23:17:22+00:00",
+   "created_by": "planner",
+   "claim": null
+  },
+  {
+   "id": "T5",
+   "lane": "qa",
+   "title": "Staging smoke test",
+   "status": "draft",
+   "needs": [
+    "T4"
+   ],
+   "uses": [
+    "staging"
+   ],
+   "quiet": true,
+   "noisy": false,
+   "when": "",
+   "outline": "Install the release candidate on staging and run the smoke checklist.",
+   "touches": [],
+   "workdir": "",
+   "branch": "",
+   "text": "",
+   "report": "",
+   "notes": [],
+   "created": "2026-10-05T23:17:22+00:00",
+   "updated": "2026-10-05T23:17:22+00:00",
+   "created_by": "planner",
+   "claim": null
+  },
+  {
+   "id": "T6",
+   "lane": "docs",
+   "title": "Write the release notes",
+   "status": "draft",
+   "needs": [
+    "T2"
+   ],
+   "uses": [],
+   "quiet": false,
+   "noisy": false,
+   "when": "",
+   "outline": "Release notes from the merged pull requests since v0.9.",
+   "touches": [],
+   "workdir": "",
+   "branch": "",
+   "text": "",
+   "report": "",
+   "notes": [],
+   "created": "2026-10-05T23:17:22+00:00",
+   "updated": "2026-10-05T23:17:22+00:00",
+   "created_by": "planner",
+   "claim": null
+  },
+  {
+   "id": "T7",
+   "lane": "build",
+   "title": "Tag and publish v1.0",
+   "status": "draft",
+   "needs": [
+    "T5",
+    "T6"
+   ],
+   "uses": [
+    "staging",
+    "user"
+   ],
+   "quiet": false,
+   "noisy": false,
+   "when": "",
+   "outline": "Tag, publish to the package index, announce.",
+   "touches": [],
+   "workdir": "",
+   "branch": "",
+   "text": "",
+   "report": "",
+   "notes": [],
+   "created": "2026-10-05T23:17:22+00:00",
+   "updated": "2026-10-05T23:17:22+00:00",
+   "created_by": "planner",
+   "claim": null
+  },
+  {
+   "id": "T8",
+   "lane": "build",
+   "title": "Add a --dry-run flag",
+   "status": "proposed",
+   "needs": [],
+   "uses": [],
+   "quiet": false,
+   "noisy": false,
+   "when": "",
+   "outline": "",
+   "touches": [],
+   "workdir": "",
+   "branch": "",
+   "text": "Several users asked for a --dry-run flag. Suggested scope: print what would change, change nothing.",
+   "report": "",
+   "notes": [],
+   "created": "2026-10-05T23:17:22+00:00",
+   "updated": "2026-10-05T23:17:22+00:00",
+   "created_by": "qa-agent",
+   "claim": null
+  }
+ ],
+ "events": [
+  {
+   "t": "2026-10-05T23:17:22+00:00",
+   "by": "planner",
+   "action": "add",
+   "id": "T0",
+   "detail": "Audit the dependencies"
+  },
+  {
+   "t": "2026-10-05T23:17:22+00:00",
+   "by": "planner",
+   "action": "add",
+   "id": "T1",
+   "detail": "Refactor the config loader"
+  },
+  {
+   "t": "2026-10-05T23:17:22+00:00",
+   "by": "planner",
+   "action": "add",
+   "id": "T2",
+   "detail": "Update the README for the new config format"
+  },
+  {
+   "t": "2026-10-05T23:17:22+00:00",
+   "by": "planner",
+   "action": "add",
+   "id": "T3",
+   "detail": "Write the regression test suite"
+  },
+  {
+   "t": "2026-10-05T23:17:22+00:00",
+   "by": "planner",
+   "action": "add",
+   "id": "T4",
+   "detail": "Fix the failing tests"
+  },
+  {
+   "t": "2026-10-05T23:17:22+00:00",
+   "by": "planner",
+   "action": "add",
+   "id": "T5",
+   "detail": "Staging smoke test"
+  },
+  {
+   "t": "2026-10-05T23:17:22+00:00",
+   "by": "planner",
+   "action": "add",
+   "id": "T6",
+   "detail": "Write the release notes"
+  },
+  {
+   "t": "2026-10-05T23:17:22+00:00",
+   "by": "planner",
+   "action": "add",
+   "id": "T7",
+   "detail": "Tag and publish v1.0"
+  },
+  {
+   "t": "2026-10-05T23:17:22+00:00",
+   "by": "qa-agent",
+   "action": "propose",
+   "id": "T8",
+   "detail": "Add a --dry-run flag"
+  },
+  {
+   "t": "2026-10-05T23:17:22+00:00",
+   "by": "build-agent",
+   "action": "claim",
+   "id": "T0",
+   "detail": ""
+  },
+  {
+   "t": "2026-10-05T23:17:22+00:00",
+   "by": "build-agent",
+   "action": "finish",
+   "id": "T0",
+   "detail": "no outcome stated: docs/reports/deps-audit.md"
+  },
+  {
+   "t": "2026-10-05T23:17:22+00:00",
+   "by": "human",
+   "action": "accept",
+   "id": "T0",
+   "detail": ""
+  },
+  {
+   "t": "2026-10-05T23:17:22+00:00",
+   "by": "build-agent",
+   "action": "claim",
+   "id": "T1",
+   "detail": ""
+  },
+  {
+   "t": "2026-10-05T23:17:22+00:00",
+   "by": "build-agent",
+   "action": "note",
+   "id": "T1",
+   "detail": ""
+  },
+  {
+   "t": "2026-10-05T23:17:23+00:00",
+   "by": "w",
+   "action": "claim",
+   "id": "T3",
+   "detail": ""
+  },
+  {
+   "t": "2026-10-05T23:17:23+00:00",
+   "by": "w",
+   "action": "finish",
+   "id": "T3",
+   "detail": "partial: r.md"
+  }
+ ]
+}

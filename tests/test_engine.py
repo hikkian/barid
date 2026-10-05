@@ -226,6 +226,24 @@ class EngineTests(unittest.TestCase):
         add(self.path, "W3", lane="c")
         self.assertFalse(any("own name" in w for w in (rb.mutate(self.path, lambda d: rb.op_claim(d, other, "W3")) or [])))
 
+    def test_the_panel_api_refuses_fields_of_the_wrong_type_with_a_clean_error(self):
+        add(self.path, "OK", lane="a")
+        for bad in ({"title": True}, {"needs": False}, {"uses": [1, 2]}, {"quiet": "yes"}, {"profile": 5}):
+            with self.assertRaises(rb.RBError) as cm:
+                rb.apply_action(self.path, {"action": "edit", "id": "OK", "args": bad})
+            self.assertEqual(cm.exception.code, "bad_input", bad)
+        with self.assertRaises(rb.RBError):
+            rb.apply_action(self.path, {"action": "add", "id": "X1", "args": ["not", "an", "object"]})
+        with self.assertRaises(rb.RBError):
+            rb.apply_action(self.path, ["not an object"])
+
+    def test_a_task_the_person_sets_to_running_gets_a_claim(self):
+        add(self.path, "HAND", lane="a")
+        rb.mutate(self.path, lambda d: rb.op_set_status(d, HUMAN, "HAND", "running"))
+        it = task(self.d(), "HAND")
+        self.assertEqual(it["claim"]["by"], "human")
+        self.assertTrue(it["claim"]["lease_until"])
+
     def test_explain_names_every_rule_and_the_verdict(self):
         add(self.path, "X", lane="a", uses="gpu", profile="bench")
         add(self.path, "Y", lane="b", uses="gpu", noisy=True)

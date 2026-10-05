@@ -842,6 +842,10 @@ def op_set_status(d: dict, actor: Actor, iid: str, status: str, detail: str = ""
     it["status"] = status
     if status != "running":
         it["claim"] = None
+    elif not it.get("claim"):
+        # a task the person sets to "running" by hand still gets a claim, so that the panel shows who holds it, the lease works and nobody else can finish it
+        hours = float(d.get("policy", {}).get("lease_hours", 12))
+        it["claim"] = {"by": actor.name, "at": now_iso(), "lease_until": (now_dt() + dt.timedelta(hours=hours)).isoformat()}
     it["updated"] = now_iso()
     log_event(d, actor, "status", iid, f"{status} {detail}".strip())
     return it
@@ -1652,11 +1656,35 @@ def make_handler(board: Path, tracker: dict):
     return Handler
 
 
+ARG_STR = ("title", "lane", "outline", "text", "when", "workdir", "branch", "profile", "status", "outcome", "color", "agent", "lang", "reason", "report")
+ARG_LIST = ("needs", "uses", "touches", "lint_ok")  # a comma-separated string or a list of strings
+ARG_BOOL = ("quiet", "noisy", "draft")
+
+
+def check_args(args) -> dict:
+    """The panel API takes JSON from a browser (or anything on this machine): refuse a field of the wrong type with a clean error."""
+    if not isinstance(args, dict):
+        raise RBError("args must be an object", "bad_input", field="args")
+    for k in ARG_STR:
+        if k in args and args[k] is not None and not isinstance(args[k], str):
+            raise RBError(f"{k} must be text", "bad_input", field=k)
+    for k in ARG_LIST:
+        v = args.get(k)
+        if v is not None and not (isinstance(v, str) or (isinstance(v, list) and all(isinstance(x, str) for x in v))):
+            raise RBError(f"{k} must be text or a list of text", "bad_input", field=k)
+    for k in ARG_BOOL:
+        if k in args and args[k] is not None and not isinstance(args[k], bool):
+            raise RBError(f"{k} must be true or false", "bad_input", field=k)
+    return args
+
+
 def apply_action(board: Path, req: dict):
     """Panel actions: always performed as the person."""
+    if not isinstance(req, dict):
+        raise RBError("the request must be an object", "bad_input", field="request")
     a = str(req.get("action", ""))
     iid = str(req.get("id", ""))
-    args = req.get("args") or {}
+    args = check_args(req.get("args") or {})
     h = HUMAN
 
     def fn(d):

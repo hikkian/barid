@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Audit of Barid with random operation sequences (hypothesis, 1500 sequences of 60 steps) and garbage input: two real findings fixed. (1) The panel API crashed with a 500 on a field of the wrong type (`"title": true`, `"needs": false`, `args` as a list); it now answers a clean `bad_input` error (translated in the panel). (2) A task the person set to "running" by hand had no claim (no holder, no lease); it now gets one.
+- New tests: random operation sequences and garbage actions (`tests/test_robust.py`, needs `hypothesis`, skipped without it) and boards made by every earlier release (`tests/fixtures`, `tests/test_migration.py`): they open, plan, export, accept reports and take new tasks with the current code, and reading never rewrites the file.
+## Unreleased
+
 - Fix: the "What to do now" card showed a later draft whose prompt was due instead of the session's first task in the plan when that first task was blocked. The card now shows the task the plan puts first (and drafts that wait for other tasks count as waiting).
 - examples: the example board describes its tasks with profiles, so `barid lint` is clean on it.
 ## 0.5.1 (2026-10-06)
