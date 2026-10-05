@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.4.0 (2026-10-05)
 
 - Fix: in the Appearance menu, opening the agent list of a session no longer closes the menu (a click on a button that the menu itself had just redrawn was taken for a click outside).
 - Sessions from the panel: a "+" button next to the session chips creates one (name and agent), then shows the connection text; every session card has a "Connect" button. `barid connect LANE` prints the same text: paste it as the first message of the agent window and the agent takes its tasks from the board (`next --lane`, `claim`, `finish`). The agent kind is picked from chips instead of a native drop-down that could jump to the wrong place on some desktops.
