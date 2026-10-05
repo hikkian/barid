@@ -1,0 +1,12 @@
+{
+  "name": "relayboard",
+  "description": "RelayBoard: a prompt relay board for people who run several AI agent sessions.",
+  "owner": { "name": "hikkian", "url": "https://github.com/hikkian" },
+  "plugins": [
+    {
+      "name": "relayboard",
+      "source": "./",
+      "description": "A shared prompt board for several AI agent sessions: order, dependencies, exclusive resources and a browser panel."
+    }
+  ]
+}

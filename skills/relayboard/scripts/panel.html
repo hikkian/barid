@@ -1,0 +1,461 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>RelayBoard</title>
+<style>
+:root{
+  --bg:#0d1320;--panel:#151d2e;--panel2:#1b2539;--line:#26324b;--tx:#e8eefb;--mute:#8e9cb8;--ac:#5aa9ff;
+  --ok:#3fd49a;--warn:#f5b84a;--bad:#ff6b7a;--draft:#a98bff;--shadow:0 6px 24px rgba(0,0,0,.28);
+  --l0:#5aa9ff;--l1:#3fd49a;--l2:#f5b84a;--l3:#ff8fb3;--l4:#a98bff;--l5:#6fd8ff;
+}
+@media (prefers-color-scheme:light){:root{
+  --bg:#eef2f9;--panel:#fff;--panel2:#f5f8fd;--line:#d8e0ee;--tx:#14202f;--mute:#59687f;--ac:#1763cf;
+  --ok:#0b8a5f;--warn:#b06f00;--bad:#d03348;--draft:#6f4bdc;--shadow:0 6px 24px rgba(30,50,90,.12);
+  --l0:#1763cf;--l1:#0b8a5f;--l2:#b06f00;--l3:#c2336f;--l4:#6f4bdc;--l5:#0b7fa6;
+}}
+*{box-sizing:border-box}
+html{color-scheme:dark light}
+body{margin:0;background:var(--bg);color:var(--tx);font:15px/1.5 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+button,input,select,textarea{font:inherit;color:inherit}
+button{cursor:pointer}
+header{position:sticky;top:0;z-index:20;background:color-mix(in srgb,var(--bg) 92%,transparent);backdrop-filter:blur(8px);border-bottom:1px solid var(--line);
+  display:flex;flex-wrap:wrap;gap:10px 14px;align-items:center;padding:10px 20px}
+.logo{display:flex;align-items:center;gap:9px;font-weight:800;font-size:17px}
+.logo i{width:26px;height:26px;border-radius:8px;background:linear-gradient(135deg,var(--ac),var(--ok));display:inline-block}
+.proj{color:var(--mute);font-size:13px}
+.spacer{flex:1}
+.pill{border:1px solid var(--line);background:var(--panel);border-radius:999px;padding:4px 12px;font-size:13px;color:var(--tx)}
+.pill.on{background:var(--ac);border-color:var(--ac);color:#fff}
+.btn{background:var(--panel2);border:1px solid var(--line);border-radius:10px;padding:6px 13px;font-size:13px;font-weight:600}
+.btn:hover{border-color:var(--ac)}
+.btn.pri{background:var(--ac);border-color:var(--ac);color:#fff}
+.btn.ok{background:var(--ok);border-color:var(--ok);color:#06251a}
+.btn.bad{color:var(--bad)}
+.btn.sm{padding:3px 10px;font-size:12px}
+.btn:disabled{opacity:.45;cursor:not-allowed}
+input[type=search],input[type=text],select,textarea{background:var(--panel2);border:1px solid var(--line);border-radius:10px;padding:6px 10px;width:100%}
+input[type=search]{width:190px;padding:5px 12px;border-radius:999px;font-size:13px}
+textarea{min-height:260px;font:13px/1.55 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;resize:vertical}
+main{max-width:1180px;margin:0 auto;padding:18px 20px 90px}
+h2{font-size:12px;letter-spacing:.09em;text-transform:uppercase;color:var(--mute);margin:26px 0 10px;display:flex;align-items:center;gap:8px}
+h2 small{font-weight:500;letter-spacing:0;text-transform:none}
+.banner{background:var(--bad);color:#fff;padding:8px 16px;text-align:center;font-weight:600}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:14px;box-shadow:var(--shadow)}
+/* NOW */
+.now{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:12px}
+.lane-card{padding:14px;border-left:4px solid var(--lane,var(--ac))}
+.lane-card .lh{display:flex;align-items:center;gap:8px;font-weight:700;margin-bottom:8px}
+.dot{width:10px;height:10px;border-radius:50%;background:var(--lane,var(--ac));display:inline-block}
+.big{font-size:16px;font-weight:700}
+.sub{color:var(--mute);font-size:13px}
+.row{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:10px}
+.together{margin-top:12px;padding:10px 14px;border-radius:12px;border:1px dashed var(--line);font-size:14px}
+.together.good{border-color:var(--ok)}
+.together.warn{border-color:var(--warn)}
+/* chips */
+.chip{font-size:11.5px;font-weight:700;border-radius:999px;padding:1px 9px;border:1px solid currentColor;white-space:nowrap;display:inline-block}
+.s-ready{color:var(--ok)}.s-running{color:var(--ac)}.s-sent{color:var(--ac)}.s-queued,.s-waiting{color:var(--mute)}
+.s-blocked{color:var(--warn)}.s-review{color:var(--warn)}.s-done{color:var(--ok)}.s-cancelled{color:var(--mute)}
+.s-draft,.s-proposed{color:var(--draft)}
+.s-running::before{content:"● ";animation:pulse 1.4s ease-in-out infinite}
+@keyframes pulse{50%{opacity:.25}}
+@media (prefers-reduced-motion:reduce){.s-running::before{animation:none}}
+.tag{font-size:11px;border-radius:6px;padding:0 6px;background:var(--panel2);border:1px solid var(--line);color:var(--mute)}
+.tag.gpu,.tag.res{color:var(--warn);border-color:color-mix(in srgb,var(--warn) 50%,var(--line))}
+/* flow */
+.step{display:grid;grid-template-columns:110px 1fr;gap:12px;margin-bottom:12px}
+@media (max-width:760px){.step{grid-template-columns:1fr}}
+.step .sh{padding-top:10px}
+.step .sh b{font-size:15px}
+.step .items{display:flex;flex-wrap:wrap;gap:10px;align-items:stretch}
+.item{background:var(--panel);border:1px solid var(--line);border-top:3px solid var(--lane,var(--ac));border-radius:12px;padding:10px 12px;min-width:240px;flex:1 1 260px;max-width:420px;cursor:pointer;text-align:left}
+.item:hover{border-color:var(--ac)}
+.item.sel{outline:2px solid var(--ac)}
+.item.dim{opacity:.75;border-style:dashed}
+.item .t{display:flex;gap:8px;align-items:center}
+.item .id{font-weight:800;font-size:13px;background:var(--panel2);border-radius:7px;padding:0 7px}
+.item .title{font-weight:600;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.item .m{margin-top:6px;display:flex;flex-wrap:wrap;gap:6px;align-items:center;font-size:12px;color:var(--mute)}
+.par{align-self:center;color:var(--ok);font-weight:800;font-size:18px}
+/* inbox */
+.inbox{display:grid;gap:10px}
+.ib{padding:12px 14px;display:flex;gap:12px;align-items:flex-start;flex-wrap:wrap}
+.ib .body{flex:1;min-width:240px}
+.ib pre{margin:6px 0 0;white-space:pre-wrap;word-break:break-word;font:12.5px/1.5 ui-monospace,Menlo,Consolas,monospace;color:var(--mute);max-height:90px;overflow:hidden}
+/* drawer */
+#drawer{position:fixed;top:0;right:0;height:100%;width:min(640px,100%);background:var(--panel);border-left:1px solid var(--line);box-shadow:var(--shadow);transform:translateX(105%);transition:transform .18s ease;z-index:40;display:flex;flex-direction:column}
+#drawer.open{transform:none}
+#drawer .dh{padding:14px 18px;border-bottom:1px solid var(--line);display:flex;gap:10px;align-items:center}
+#drawer .db{padding:14px 18px;overflow:auto;flex:1}
+#drawer pre{margin:0;white-space:pre-wrap;word-break:break-word;background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:12px;font:12.5px/1.55 ui-monospace,Menlo,Consolas,monospace;max-height:340px;overflow:auto}
+.kv{display:grid;grid-template-columns:110px 1fr;gap:4px 10px;font-size:13px;margin-bottom:12px}
+.kv dt{color:var(--mute)}.kv dd{margin:0;word-break:break-word}
+.note{font-size:13px;border-left:3px solid var(--line);padding:2px 10px;margin:6px 0}
+.note small{color:var(--mute)}
+.formgrid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.formgrid .full{grid-column:1/-1}
+label{font-size:12px;color:var(--mute);display:block;margin-bottom:3px}
+.modal{position:fixed;inset:0;background:rgba(0,0,0,.5);display:none;align-items:center;justify-content:center;z-index:60;padding:16px}
+.modal.open{display:flex}
+.modal .box{background:var(--panel);border:1px solid var(--line);border-radius:16px;box-shadow:var(--shadow);width:min(720px,100%);max-height:92vh;overflow:auto;padding:18px}
+#toast{position:fixed;bottom:18px;left:50%;transform:translateX(-50%);background:var(--ok);color:#06251a;padding:8px 16px;border-radius:999px;font-weight:700;opacity:0;pointer-events:none;transition:opacity .2s;z-index:80;max-width:90vw}
+#toast.show{opacity:1}#toast.err{background:var(--bad);color:#fff}
+.empty{color:var(--mute);font-style:italic;padding:8px 2px}
+details>summary{cursor:pointer;color:var(--mute);margin:6px 0}
+.ev{font-size:12.5px;color:var(--mute);padding:2px 0}
+.ev b{color:var(--tx)}
+</style>
+</head>
+<body>
+<div id="banner" class="banner" hidden></div>
+<header>
+  <div class="logo"><i></i>RelayBoard</div>
+  <span class="proj" id="proj"></span>
+  <span class="spacer"></span>
+  <span id="lanefilters" style="display:flex;gap:6px;flex-wrap:wrap"></span>
+  <input type="search" id="q" autocomplete="off">
+  <button class="btn pri" id="addbtn"></button>
+  <button class="pill" id="langbtn"></button>
+</header>
+<main>
+  <h2 id="h-now"></h2>
+  <div id="now" class="now"></div>
+  <div id="together"></div>
+  <div id="inboxwrap"></div>
+  <h2 id="h-flow"></h2>
+  <div id="flow"></div>
+  <h2><button class="pill" id="archbtn"></button></h2>
+  <div id="archive" hidden></div>
+  <h2><button class="pill" id="actbtn"></button></h2>
+  <div id="activity" hidden></div>
+</main>
+<aside id="drawer" aria-label="Task details"><div class="dh" id="dh"></div><div class="db" id="db"></div></aside>
+<div class="modal" id="modal"><div class="box" id="modalbox"></div></div>
+<div id="toast"></div>
+<script>
+"use strict";
+(function () {
+var STR = {
+ en: {now:"What to do now", flow:"Order and what can run together", inbox_p:"Agents proposed", inbox_r:"Reports to review", archive:"Archive", activity:"Activity",
+  add:"+ Add task", search:"Search…", lang:"Русский", idle:"Nothing to do in this lane.", nothing_ready:"Nothing is ready. Waiting for: ", running:"Running", by:"by",
+  since:"since", stale:"lease expired: is the session still alive?", copy:"Copy prompt", sent:"Mark as sent", release:"Release", approve:"Approve", reject:"Reject",
+  edit:"Edit", accept:"Accept report", sendback:"Send back", cancel:"Cancel task", restore:"Restore", gen:"Generate prompt", genhint:"Copies a request for your AI agent; it writes the prompt and stores it here.",
+  copied:"Copied", copied_gen:"Request copied: paste it into your AI agent", saved:"Saved", close:"Close", save:"Save", step:"Step", together:"can run at the same time", after:"after",
+  blocked_by:"blocked by", next:"Next", can:"These can run at the same time: ", cant:"Run one at a time (conflict): ", single:"Only one lane has work right now.",
+  status:"Status", notes:"Notes", addnote:"Add a note", history:"History", report:"Report", needs:"Needs", uses:"Uses", lane:"Lane", when:"When", created:"Created by", claim:"Held by",
+  prompt:"Prompt", noprompt:"No prompt text yet.", title:"Title", outline:"Outline (what the prompt must achieve)", needs_l:"Needs (comma list of ids)", uses_l:"Uses (comma list)",
+  quiet:"needs a quiet machine", noisy:"creates load", id:"ID", text:"Prompt text", create:"Create", proposals:"proposal", offline:"No connection to the board server. Retrying…",
+  copy_path:"Copy report path", reopen:"Reopen", turn:"its turn", draft_wait:"not its turn yet", empty_flow:"No planned tasks yet. Ask your agent to add some, or use + Add task.",
+  s:{ready:"ready",waiting:"waiting",blocked:"blocked",queued:"queued",draft:"draft",proposed:"proposed",sent:"sent",running:"running",review:"review",done:"done",cancelled:"cancelled"},
+  with_:"Can run with", wait_:"Waiting for", conf_:"Blocked by", why:{lane:"same session",quiet:"needs a quiet machine"}, rev:"rev"},
+ ru: {now:"Что делать сейчас", flow:"Порядок и что можно вместе", inbox_p:"Агенты предложили", inbox_r:"Отчёты на проверку", archive:"Архив", activity:"Журнал",
+  add:"+ Добавить", search:"Поиск…", lang:"English", idle:"В этой дорожке сейчас нечего делать.", nothing_ready:"Нечего запускать. Ждёт: ", running:"Выполняется", by:"у",
+  since:"с", stale:"аренда истекла: сессия ещё жива?", copy:"Скопировать промпт", sent:"Отметить отправленным", release:"Освободить", approve:"Одобрить", reject:"Отклонить",
+  edit:"Править", accept:"Принять отчёт", sendback:"Вернуть", cancel:"Отменить задачу", restore:"Вернуть", gen:"Сгенерировать промпт", genhint:"Копирует запрос для вашего ИИ-агента: он напишет промпт и сохранит его здесь.",
+  copied:"Скопировано", copied_gen:"Запрос скопирован: вставьте его вашему ИИ-агенту", saved:"Сохранено", close:"Закрыть", save:"Сохранить", step:"Шаг", together:"можно запускать одновременно", after:"после",
+  blocked_by:"мешает", next:"Дальше", can:"Можно одновременно: ", cant:"По одному (конфликт): ", single:"Сейчас работа есть только в одной дорожке.",
+  status:"Статус", notes:"Заметки", addnote:"Добавить заметку", history:"История", report:"Отчёт", needs:"После", uses:"Ресурсы", lane:"Дорожка", when:"Когда", created:"Создал", claim:"Занял",
+  prompt:"Промпт", noprompt:"Текста промпта ещё нет.", title:"Заголовок", outline:"Набросок (чего должен достичь промпт)", needs_l:"После (id через запятую)", uses_l:"Ресурсы (через запятую)",
+  quiet:"нужна тишина", noisy:"создаёт нагрузку", id:"ID", text:"Текст промпта", create:"Создать", proposals:"предложение", offline:"Нет связи с сервером доски. Повтор…",
+  copy_path:"Скопировать путь отчёта", reopen:"Открыть снова", turn:"подошла очередь", draft_wait:"очередь ещё не подошла", empty_flow:"Пока нет задач. Попросите агента добавить или нажмите «Добавить».",
+  s:{ready:"можно",waiting:"ждёт",blocked:"мешает",queued:"в очереди",draft:"черновик",proposed:"предложен",sent:"отправлен",running:"идёт",review:"на проверке",done:"готово",cancelled:"отменён"},
+  with_:"Можно вместе с", wait_:"Ждёт", conf_:"Мешает", why:{lane:"та же сессия",quiet:"нужна тишина"}, rev:"версия"}
+};
+var S = {board:null, lang:"en", lanes:{}, sel:null, q:"", laneOff:{}, arch:false, act:false, editing:false, rev:-1, offline:false};
+try { S.lang = localStorage.getItem("rb.lang") || ""; S.arch = localStorage.getItem("rb.arch") === "1"; S.act = localStorage.getItem("rb.act") === "1"; } catch (e) {}
+function t(k) { var d = STR[S.lang] || STR.en; return d[k] != null ? d[k] : (STR.en[k] != null ? STR.en[k] : k); }
+function st(s) { return (STR[S.lang] || STR.en).s[s] || s; }
+function $(id) { return document.getElementById(id); }
+function h(tag, attrs) {
+  var e = document.createElement(tag);
+  if (attrs) for (var k in attrs) {
+    if (k === "class") e.className = attrs[k]; else if (k === "text") e.textContent = attrs[k];
+    else if (k.slice(0, 2) === "on") e.addEventListener(k.slice(2), attrs[k]); else if (attrs[k] !== false && attrs[k] != null) e.setAttribute(k, attrs[k]);
+  }
+  for (var i = 2; i < arguments.length; i++) { var c = arguments[i]; if (c == null || c === false) continue; e.appendChild(typeof c === "string" ? document.createTextNode(c) : c); }
+  return e;
+}
+function clear(n) { while (n.firstChild) n.removeChild(n.firstChild); return n; }
+function toast(msg, err) { var x = $("toast"); x.textContent = msg; x.className = "show" + (err ? " err" : ""); clearTimeout(toast._t); toast._t = setTimeout(function () { x.className = ""; }, err ? 4200 : 1500); }
+function copy(text, msg) {
+  function fb() { var ta = h("textarea"); ta.value = text; ta.style.cssText = "position:fixed;opacity:0"; document.body.appendChild(ta); ta.select(); try { document.execCommand("copy"); toast(msg || t("copied")); } catch (e) { toast("Copy failed", true); } ta.remove(); }
+  if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(text).then(function () { toast(msg || t("copied")); }, fb); else fb();
+}
+function api(path, opts) { if (window.__RB_BOARD__) return Promise.reject(new Error("This is a read-only snapshot")); return fetch(path, Object.assign({cache: "no-store"}, opts || {})).then(function (r) { return r.json().then(function (j) { if (!r.ok) throw new Error(j.error || r.status); return j; }); }); }
+function act(action, id, args, ok) {
+  return api("/api/act", {method: "POST", headers: {"Content-Type": "application/json", "X-RB-Edit": "1"}, body: JSON.stringify({action: action, id: id, args: args || {}})})
+    .then(function () { if (ok) toast(ok); return load(); }).catch(function (e) { toast(e.message, true); });
+}
+function laneIndex(id) { var L = S.board.lanes; for (var i = 0; i < L.length; i++) if (L[i].id === id) return i; return 0; }
+function laneTitle(id) { var L = S.board.lanes; for (var i = 0; i < L.length; i++) if (L[i].id === id) return L[i].title || id; return id; }
+function laneColor(id) { return "var(--l" + (laneIndex(id) % 6) + ")"; }
+function byId(id) { var a = S.board.items; for (var i = 0; i < a.length; i++) if (a[i].id === id) return a[i]; return null; }
+function match(c) {
+  if (S.laneOff[c.lane]) return false;
+  if (!S.q) return true;
+  var q = S.q.toLowerCase();
+  return (c.id + " " + c.title + " " + (c.outline || "") + " " + (c.text || "")).toLowerCase().indexOf(q) >= 0;
+}
+function fmtTime(s) { if (!s) return ""; var d = new Date(s); return isNaN(d) ? s : d.toLocaleString([], {month: "short", day: "numeric", hour: "2-digit", minute: "2-digit"}); }
+function chip(c) { return h("span", {class: "chip s-" + c.state, text: st(c.state)}); }
+function tags(c) {
+  var out = [];
+  (c.uses || []).forEach(function (r) { out.push(h("span", {class: "tag res", text: (S.board.resources[r] && S.board.resources[r].label) || r})); });
+  if (c.quiet) out.push(h("span", {class: "tag", text: "🔇 " + t("quiet")}));
+  if (c.noisy) out.push(h("span", {class: "tag", text: "🔊 " + t("noisy")}));
+  return out;
+}
+function turnOf(c) { return c.status === "draft" && c.waiting_on.length === 0; }
+
+function setStatic() {
+  document.documentElement.lang = S.lang;
+  $("h-now").textContent = t("now"); $("h-flow").textContent = t("flow"); $("q").placeholder = t("search"); $("addbtn").textContent = t("add"); $("langbtn").textContent = t("lang");
+  $("archbtn").textContent = (S.arch ? "▾ " : "▸ ") + t("archive"); $("actbtn").textContent = (S.act ? "▾ " : "▸ ") + t("activity");
+  $("archive").hidden = !S.arch; $("activity").hidden = !S.act;
+}
+
+function render() {
+  var B = S.board; if (!B) return;
+  if (!S.lang) S.lang = B.lang === "ru" ? "ru" : ((navigator.language || "en").slice(0, 2) === "ru" ? "ru" : "en");
+  setStatic();
+  $("proj").textContent = B.project + " · " + t("rev") + " " + B.rev;
+  document.title = "RelayBoard · " + B.project;
+  // lane filter chips
+  var lf = clear($("lanefilters"));
+  B.lanes.forEach(function (l) { lf.appendChild(h("button", {class: "pill" + (S.laneOff[l.id] ? "" : " on"), style: S.laneOff[l.id] ? "" : "background:" + laneColor(l.id) + ";border-color:" + laneColor(l.id), text: l.title || l.id, onclick: function () { S.laneOff[l.id] = !S.laneOff[l.id]; render(); }})); });
+  renderNow(); renderInbox(); renderFlow(); renderArchive(); renderActivity();
+  if (S.sel && byId(S.sel)) renderDrawer(); else if (!S.editing) closeDrawer(true);
+}
+
+function renderNow() {
+  var B = S.board, box = clear($("now")), tog = clear($("together")), picks = [];
+  B.lanes.forEach(function (l) {
+    if (S.laneOff[l.id]) return;
+    var mine = B.items.filter(function (c) { return c.lane === l.id; });
+    var running = mine.filter(function (c) { return c.state === "running" || c.state === "sent"; });
+    var ready = mine.filter(function (c) { return c.state === "ready"; });
+    var card = h("div", {class: "card lane-card", style: "--lane:" + laneColor(l.id)}, h("div", {class: "lh"}, h("span", {class: "dot"}), l.title || l.id));
+    running.forEach(function (c) {
+      var cl = c.claim;
+      card.appendChild(h("div", {style: "margin-bottom:8px"}, h("div", {class: "sub", text: t("running")}), h("div", {class: "big", text: c.id + " · " + c.title}),
+        h("div", {class: "sub", text: (cl ? t("by") + " " + cl.by + " " + t("since") + " " + fmtTime(cl.at) : st(c.state)) + (c.stale ? " · ⚠ " + t("stale") : "")}),
+        h("div", {class: "row"}, h("button", {class: "btn sm", text: t("copy"), onclick: function () { copyPrompt(c.id); }}), h("button", {class: "btn sm", text: t("release"), onclick: function () { act("release", c.id); }}),
+          h("button", {class: "btn sm", text: "…", onclick: function () { openDrawer(c.id); }}))));
+    });
+    if (ready.length) {
+      var c = ready[0]; picks.push(c);
+      card.appendChild(h("div", {class: "sub", text: t("next")}));
+      card.appendChild(h("div", {class: "big", text: c.id + " · " + c.title}));
+      card.appendChild(h("div", {class: "row"}, h("button", {class: "btn pri", text: t("copy"), onclick: function () { copyPrompt(c.id); }}),
+        h("button", {class: "btn", text: t("sent"), onclick: function () { act("sent", c.id, {}, t("sent")); }}), h("button", {class: "btn sm", text: "…", onclick: function () { openDrawer(c.id); }})));
+      if (c.can_run_with.length) card.appendChild(h("div", {class: "sub", style: "margin-top:8px", text: "∥ " + c.can_run_with.join(", ")}));
+    } else if (!running.length) {
+      var wait = mine.filter(function (c) { return c.state === "waiting" || c.state === "blocked"; });
+      var dr = mine.filter(turnOf);
+      if (dr.length) {
+        var d = dr[0];
+        card.appendChild(h("div", {class: "sub", text: t("turn")}));
+        card.appendChild(h("div", {class: "big", text: d.id + " · " + d.title}));
+        card.appendChild(h("div", {class: "row"}, h("button", {class: "btn pri", title: t("genhint"), text: t("gen"), onclick: function () { copyGen(d.id); }}), h("button", {class: "btn sm", text: t("edit"), onclick: function () { openDrawer(d.id, true); }})));
+      } else if (wait.length) {
+        var w = wait[0];
+        card.appendChild(h("div", {class: "sub", text: t("nothing_ready") + (w.waiting_on.length ? w.waiting_on.join(", ") : w.conflicts.map(function (x) { return x.id; }).join(", "))}));
+        card.appendChild(h("div", {style: "margin-top:6px"}, w.id + " · " + w.title));
+      } else card.appendChild(h("div", {class: "empty", text: t("idle")}));
+    }
+    box.appendChild(card);
+  });
+  // can the picked tasks run together?
+  if (picks.length > 1) {
+    var conflicts = [];
+    picks.forEach(function (a) { a.cannot_run_with.forEach(function (x) { if (picks.some(function (p) { return p.id === x.id; }) && a.id < x.id) conflicts.push(a.id + " ✖ " + x.id + " (" + (t("why")[x.why] || ((S.board.resources[x.why] && S.board.resources[x.why].label) || x.why)) + ")"); }); });
+    var ids = picks.map(function (p) { return p.id; }).join(" ∥ ");
+    if (!conflicts.length) tog.appendChild(h("div", {class: "together good"}, "✔ " + t("can") + ids));
+    else tog.appendChild(h("div", {class: "together warn"}, "⚠ " + t("cant") + conflicts.join("; ")));
+  }
+}
+
+function renderInbox() {
+  var B = S.board, wrap = clear($("inboxwrap")), props = B.items.filter(function (c) { return c.state === "proposed" && match(c); }), revs = B.items.filter(function (c) { return c.state === "review" && match(c); });
+  if (!props.length && !revs.length) return;
+  if (props.length) {
+    wrap.appendChild(h("h2", null, t("inbox_p") + " ", h("small", {text: "(" + props.length + ")"})));
+    var l = h("div", {class: "inbox"});
+    props.forEach(function (c) {
+      l.appendChild(h("div", {class: "card ib", style: "border-left:4px solid var(--draft)"},
+        h("div", {class: "body"}, h("div", null, h("b", {text: c.id}), " · " + c.title + " ", chip(c), " ", h("span", {class: "sub", text: laneTitle(c.lane) + " · " + t("by") + " " + (c.created_by || "?")})), h("pre", {text: c.text || c.outline || ""})),
+        h("div", {class: "row"}, h("button", {class: "btn ok", text: t("approve"), onclick: function () { act("approve", c.id, {}, t("approve")); }}), h("button", {class: "btn", text: t("edit"), onclick: function () { openDrawer(c.id, true); }}),
+          h("button", {class: "btn bad", text: t("reject"), onclick: function () { act("reject", c.id); }}))));
+    });
+    wrap.appendChild(l);
+  }
+  if (revs.length) {
+    wrap.appendChild(h("h2", null, t("inbox_r") + " ", h("small", {text: "(" + revs.length + ")"})));
+    var l2 = h("div", {class: "inbox"});
+    revs.forEach(function (c) {
+      var lastNote = (c.notes || []).slice(-1)[0];
+      l2.appendChild(h("div", {class: "card ib", style: "border-left:4px solid var(--warn)"},
+        h("div", {class: "body"}, h("div", null, h("b", {text: c.id}), " · " + c.title), h("div", {class: "sub", text: t("report") + ": " + (c.report || "—")}), lastNote ? h("div", {class: "note"}, h("small", {text: lastNote.by + ": "}), lastNote.text) : null),
+        h("div", {class: "row"}, h("button", {class: "btn ok", text: t("accept"), onclick: function () { act("accept", c.id, {}, t("accept")); }}), c.report ? h("button", {class: "btn", text: t("copy_path"), onclick: function () { copy(c.report); }}) : null,
+          h("button", {class: "btn", text: t("sendback"), onclick: function () { act("status", c.id, {status: "queued"}); }}), h("button", {class: "btn sm", text: "…", onclick: function () { openDrawer(c.id); }}))));
+    });
+    wrap.appendChild(l2);
+  }
+}
+
+function itemCard(c, step1) {
+  var el = h("button", {class: "item" + (S.sel === c.id ? " sel" : "") + (c.state === "draft" || c.state === "proposed" ? " dim" : ""), style: "--lane:" + laneColor(c.lane), onclick: function () { openDrawer(c.id); }});
+  el.appendChild(h("div", {class: "t"}, h("span", {class: "id", text: c.id}), h("span", {class: "title", text: c.title}), chip(c)));
+  var m = h("div", {class: "m"}, h("span", {text: laneTitle(c.lane)}));
+  tags(c).forEach(function (x) { m.appendChild(x); });
+  if (c.waiting_on.length) m.appendChild(h("span", {text: t("after") + " " + c.waiting_on.join(", ")}));
+  if (c.state === "blocked") m.appendChild(h("span", {style: "color:var(--warn)", text: t("blocked_by") + " " + c.conflicts.map(function (x) { return x.id + " (" + (t("why")[x.why] || x.why) + ")"; }).join(", ")}));
+  if (turnOf(c)) m.appendChild(h("span", {style: "color:var(--draft);font-weight:700", text: "✎ " + t("turn")}));
+  el.appendChild(m);
+  return el;
+}
+
+function renderFlow() {
+  var B = S.board, box = clear($("flow")), any = false;
+  B.steps.forEach(function (ids, n) {
+    var cs = ids.map(byId).filter(function (c) { return c && match(c); });
+    if (!cs.length) return;
+    any = true;
+    var sh = h("div", {class: "sh"}, h("b", {text: t("step") + " " + (n + 1)}), cs.length > 1 ? h("div", {class: "sub", text: "∥ " + t("together")}) : null);
+    var items = h("div", {class: "items"});
+    cs.forEach(function (c, i) { if (i) items.appendChild(h("span", {class: "par", text: "∥"})); items.appendChild(itemCard(c, n === 0)); });
+    box.appendChild(h("div", {class: "step"}, sh, items));
+  });
+  if (!any) box.appendChild(h("div", {class: "empty", text: t("empty_flow")}));
+}
+
+function renderArchive() {
+  var box = clear($("archive")), cs = S.board.items.filter(function (c) { return (c.state === "done" || c.state === "cancelled") && match(c); });
+  if (!cs.length) { box.appendChild(h("div", {class: "empty", text: "—"})); return; }
+  var wrap = h("div", {class: "items", style: "display:flex;flex-wrap:wrap;gap:10px"});
+  cs.forEach(function (c) { wrap.appendChild(itemCard(c)); });
+  box.appendChild(wrap);
+}
+
+function renderActivity() {
+  var box = clear($("activity"));
+  S.board.events.slice().reverse().slice(0, 40).forEach(function (e) { box.appendChild(h("div", {class: "ev"}, fmtTime(e.t) + " ", h("b", {text: e.by}), " " + e.action + " " + (e.id || "") + (e.detail ? " · " + e.detail : ""))); });
+}
+
+function copyPrompt(id) { api("/api/prompt/" + encodeURIComponent(id)).then(function (j) { if (!j.text) { toast(t("noprompt"), true); return; } copy(j.text); }).catch(function (e) { toast(e.message, true); }); }
+function copyGen(id) { api("/api/gen/" + encodeURIComponent(id)).then(function (j) { copy(j.text, t("copied_gen")); }).catch(function (e) { toast(e.message, true); }); }
+
+function openDrawer(id, edit) { S.sel = id; S.editing = !!edit; renderDrawer(); $("drawer").classList.add("open"); renderFlow(); }
+function closeDrawer(silent) { S.sel = null; S.editing = false; $("drawer").classList.remove("open"); if (!silent) { renderFlow(); } }
+function field(label, input, full) { return h("div", {class: full ? "full" : ""}, h("label", {text: label}), input); }
+
+function renderDrawer() {
+  var c = byId(S.sel); if (!c) return;
+  var dh = clear($("dh")), db = clear($("db"));
+  dh.appendChild(h("span", {class: "id item", style: "padding:0 9px;min-width:0;flex:none;cursor:default", text: c.id}));
+  dh.appendChild(h("div", {class: "big", style: "flex:1", text: c.title})); dh.appendChild(chip(c));
+  dh.appendChild(h("button", {class: "btn sm", text: "✕", title: t("close"), onclick: function () { closeDrawer(); }}));
+  if (S.editing) { renderEdit(c, db); return; }
+  var kv = h("dl", {class: "kv"});
+  function row(k, v) { if (v == null || v === "" || (Array.isArray(v) && !v.length)) return; kv.appendChild(h("dt", {text: k})); kv.appendChild(h("dd", null, v)); }
+  row(t("lane"), laneTitle(c.lane)); row(t("needs"), c.needs.join(", ")); row(t("uses"), (c.uses || []).join(", ") + (c.quiet ? " 🔇" : "") + (c.noisy ? " 🔊" : ""));
+  row(t("when"), c.when); row(t("created"), c.created_by + " · " + fmtTime(c.created)); row(t("claim"), c.claim ? c.claim.by + " · " + fmtTime(c.claim.at) + (c.stale ? " ⚠ " + t("stale") : "") : "");
+  row(t("report"), c.report);
+  if (c.waiting_on.length) row(t("wait_"), c.waiting_on.join(", "));
+  if (c.conflicts.length) row(t("conf_"), c.conflicts.map(function (x) { return x.id + " (" + (t("why")[x.why] || x.why) + ")"; }).join(", "));
+  if (c.can_run_with.length) row(t("with_"), c.can_run_with.join(", "));
+  db.appendChild(kv);
+  var bar = h("div", {class: "row", style: "margin:0 0 12px"});
+  function b(label, cls, fn) { bar.appendChild(h("button", {class: "btn " + cls, text: label, onclick: fn})); }
+  var s = c.state;
+  if (s === "ready" || s === "blocked" || s === "waiting" || s === "queued") b(t("copy"), "pri", function () { copyPrompt(c.id); });
+  if (s === "ready" || s === "blocked" || s === "waiting" || s === "queued") b(t("sent"), "", function () { act("sent", c.id, {}, t("sent")); });
+  if (s === "draft") b(t("gen"), turnOf(c) ? "pri" : "", function () { copyGen(c.id); });
+  if (s === "proposed") { b(t("approve"), "ok", function () { act("approve", c.id, {}, t("approve")); }); b(t("reject"), "bad", function () { act("reject", c.id); }); }
+  if (s === "sent" || s === "running") { b(t("copy"), "pri", function () { copyPrompt(c.id); }); b(t("release"), "", function () { act("release", c.id); }); }
+  if (s === "review") { b(t("accept"), "ok", function () { act("accept", c.id, {}, t("accept")); }); b(t("sendback"), "", function () { act("status", c.id, {status: "queued"}); }); if (c.report) b(t("copy_path"), "", function () { copy(c.report); }); }
+  if (s === "done") b(t("reopen"), "", function () { act("status", c.id, {status: "queued"}); });
+  if (s === "cancelled") b(t("restore"), "", function () { act("restore", c.id); });
+  if (s !== "done" && s !== "cancelled") b(t("edit"), "", function () { S.editing = true; renderDrawer(); });
+  if (s !== "done" && s !== "cancelled" && s !== "running") b(t("cancel"), "bad", function () { act("cancel", c.id); });
+  db.appendChild(bar);
+  if (c.status === "draft" && c.outline) db.appendChild(h("div", {class: "note"}, h("small", {text: t("outline") + ": "}), c.outline));
+  db.appendChild(h("div", {class: "sub", style: "margin:6px 0", text: t("prompt")}));
+  db.appendChild(c.text ? h("pre", {text: c.text}) : h("div", {class: "empty", text: t("noprompt")}));
+  var sel = h("select", {onchange: function () { act("status", c.id, {status: sel.value}); }});
+  ["draft", "proposed", "queued", "sent", "running", "review", "done", "cancelled"].forEach(function (x) { var o = h("option", {value: x, text: st(x)}); if (x === c.status) o.selected = true; sel.appendChild(o); });
+  db.appendChild(h("div", {style: "margin-top:14px"}, h("label", {text: t("status")}), sel));
+  db.appendChild(h("div", {class: "sub", style: "margin:16px 0 4px", text: t("notes")}));
+  (c.notes || []).forEach(function (n) { db.appendChild(h("div", {class: "note"}, h("small", {text: n.by + " · " + fmtTime(n.t) + " — "}), n.text)); });
+  var ni = h("input", {type: "text", placeholder: t("addnote")});
+  ni.addEventListener("keydown", function (e) { if (e.key === "Enter" && ni.value.trim()) act("note", c.id, {text: ni.value}); });
+  db.appendChild(ni);
+  var hist = S.board.events.filter(function (e) { return e.id === c.id; }).slice(-12).reverse();
+  if (hist.length) { db.appendChild(h("div", {class: "sub", style: "margin:16px 0 4px", text: t("history")})); hist.forEach(function (e) { db.appendChild(h("div", {class: "ev"}, fmtTime(e.t) + " ", h("b", {text: e.by}), " " + e.action + (e.detail ? " · " + e.detail : ""))); }); }
+}
+
+function laneSelect(v) { var s = h("select"); S.board.lanes.forEach(function (l) { var o = h("option", {value: l.id, text: l.title || l.id}); if (l.id === v) o.selected = true; s.appendChild(o); }); return s; }
+function editForm(c, isNew) {
+  var f = {};
+  f.id = h("input", {type: "text", value: c.id || "", disabled: isNew ? null : "disabled", placeholder: "T1"});
+  f.title = h("input", {type: "text", value: c.title || ""});
+  f.lane = laneSelect(c.lane);
+  f.needs = h("input", {type: "text", value: (c.needs || []).join(", ")});
+  f.uses = h("input", {type: "text", value: (c.uses || []).join(", ")});
+  f.when = h("input", {type: "text", value: c.when || ""});
+  f.outline = h("input", {type: "text", value: c.outline || ""});
+  f.quiet = h("input", {type: "checkbox"}); f.quiet.checked = !!c.quiet;
+  f.noisy = h("input", {type: "checkbox"}); f.noisy.checked = !!c.noisy;
+  f.text = h("textarea"); f.text.value = c.text || "";
+  var g = h("div", {class: "formgrid"}, field(t("id"), f.id), field(t("lane"), f.lane), field(t("title"), f.title, true), field(t("needs_l"), f.needs), field(t("uses_l"), f.uses),
+    field(t("when"), f.when, true), field(t("outline"), f.outline, true),
+    h("div", null, h("label", null, f.quiet, " " + t("quiet"))), h("div", null, h("label", null, f.noisy, " " + t("noisy"))), field(t("text"), f.text, true));
+  g._f = f; return g;
+}
+function formArgs(f) { return {title: f.title.value, lane: f.lane.value, needs: f.needs.value, uses: f.uses.value, when: f.when.value, outline: f.outline.value, quiet: f.quiet.checked, noisy: f.noisy.checked, text: f.text.value}; }
+function renderEdit(c, db) {
+  var g = editForm(c, false); db.appendChild(g);
+  db.appendChild(h("div", {class: "row", style: "margin-top:14px"}, h("button", {class: "btn pri", text: t("save"), onclick: function () { S.editing = false; act("edit", c.id, formArgs(g._f), t("saved")); }}),
+    h("button", {class: "btn", text: t("close"), onclick: function () { S.editing = false; renderDrawer(); }})));
+}
+function openAdd() {
+  var g = editForm({}, true), box = clear($("modalbox"));
+  box.appendChild(h("div", {class: "big", style: "margin-bottom:12px", text: t("add")})); box.appendChild(g);
+  box.appendChild(h("div", {class: "row", style: "margin-top:14px"}, h("button", {class: "btn pri", text: t("create"), onclick: function () {
+    var a = formArgs(g._f); a.draft = !a.text.trim();
+    api("/api/act", {method: "POST", headers: {"Content-Type": "application/json", "X-RB-Edit": "1"}, body: JSON.stringify({action: "add", id: g._f.id.value.trim(), args: a})})
+      .then(function () { $("modal").classList.remove("open"); toast(t("saved")); return load(); }).catch(function (e) { toast(e.message, true); });
+  }}), h("button", {class: "btn", text: t("close"), onclick: function () { $("modal").classList.remove("open"); }})));
+  $("modal").classList.add("open");
+}
+
+function load() {
+  if (window.__RB_BOARD__) { S.board = window.__RB_BOARD__; S.rev = S.board.rev; render(); var hs = decodeURIComponent(location.hash.slice(1)); if (hs === "add") openAdd(); else if (hs.slice(-5) === "!edit" && byId(hs.slice(0, -5))) openDrawer(hs.slice(0, -5), true); else if (byId(hs)) openDrawer(hs); return Promise.resolve(); }
+  return api("/api/board").then(function (b) { S.board = b; S.rev = b.rev; if (S.offline) { S.offline = false; $("banner").hidden = true; } render(); })
+    .catch(function () { if (!S.offline) { S.offline = true; $("banner").textContent = t("offline"); $("banner").hidden = false; } });
+}
+function poll() {
+  if (document.hidden || window.__RB_BOARD__) return;
+  api("/api/rev").then(function (r) { if (S.offline) { S.offline = false; $("banner").hidden = true; } if (r.rev !== S.rev && !S.editing && !$("modal").classList.contains("open")) load(); })
+    .catch(function () { if (!S.offline) { S.offline = true; $("banner").textContent = t("offline"); $("banner").hidden = false; } });
+}
+
+$("q").addEventListener("input", function () { S.q = $("q").value; render(); });
+$("addbtn").addEventListener("click", openAdd);
+$("langbtn").addEventListener("click", function () { S.lang = S.lang === "ru" ? "en" : "ru"; try { localStorage.setItem("rb.lang", S.lang); } catch (e) {} render(); });
+$("archbtn").addEventListener("click", function () { S.arch = !S.arch; try { localStorage.setItem("rb.arch", S.arch ? "1" : "0"); } catch (e) {} setStatic(); });
+$("actbtn").addEventListener("click", function () { S.act = !S.act; try { localStorage.setItem("rb.act", S.act ? "1" : "0"); } catch (e) {} setStatic(); });
+$("modal").addEventListener("click", function (e) { if (e.target === $("modal")) $("modal").classList.remove("open"); });
+document.addEventListener("keydown", function (e) {
+  if (e.key === "Escape") { $("modal").classList.remove("open"); closeDrawer(); }
+  else if (e.key === "/" && document.activeElement.tagName !== "INPUT" && document.activeElement.tagName !== "TEXTAREA") { e.preventDefault(); $("q").focus(); }
+});
+document.addEventListener("visibilitychange", function () { if (!document.hidden) poll(); });
+setInterval(poll, 3000);
+load();
+})();
+</script>
+</body>
+</html>

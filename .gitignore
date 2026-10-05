@@ -1,0 +1,6 @@
+__pycache__/
+*.pyc
+.relayboard/
+example-project/
+*.tmp*
+.DS_Store
