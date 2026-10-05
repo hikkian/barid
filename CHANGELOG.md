@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.4.1 (2026-10-05)
 
 - The language button shows the current language and opens a list of all three (English, Русский, Қазақша) with a tick on the active one.
 - Fix: status labels (in progress, ready, waiting…) lost their colours because the new agent buttons reused the same style name.
