@@ -146,7 +146,7 @@ This is **detection plus convention, not a sandbox**: an agent can still write a
 | **Details** | prompt text, notes, history, edit form, any status |
 | **Archive / Activity** | finished and cancelled tasks, the event log |
 
-English, Russian and Kazakh built in (auto-detected, pick one from the language list in the header; the texts written for your agents have their own language, set in the second list of that menu or with `barid lang en|ru|kk`), light, dark or automatic mode and four colour palettes (Forest, Teal, Graphite, Midnight) from the *Appearance* button, works on a phone. The same menu lets you **name and colour each session** and say which **agent** runs in it (Claude Code, Codex, OpenCode, Gemini CLI, Cursor, Aider, a local model, or any name); the agent shows as a badge on the session. The panel polls only while its tab is visible and costs nothing when closed: the server exits after 30 idle minutes (`barid open --idle-exit 0` keeps it).
+English, Russian and Kazakh built in (auto-detected, pick one from the language list in the header; the texts written for your agents have their own language, set in the Connect window or with `barid lang en|ru|kk`), light, dark or automatic mode and four colour palettes (Forest, Teal, Graphite, Midnight) from the *Appearance* button, works on a phone. The same menu lets you **name and colour each session** and say which **agent** runs in it (Claude Code, Codex, OpenCode, Gemini CLI, Cursor, Aider, a local model, or any name); the agent shows as a badge on the session. The panel polls only while its tab is visible and costs nothing when closed: the server exits after 30 idle minutes (`barid open --idle-exit 0` keeps it).
 
 ![Details drawer](docs/img/panel-light-drawer.png)
 
