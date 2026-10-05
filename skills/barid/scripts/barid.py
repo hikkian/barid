@@ -17,6 +17,7 @@ import json
 import os
 import re
 import socket
+import socketserver
 import subprocess
 import sys
 import textwrap
@@ -1678,6 +1679,16 @@ def apply_action(board: Path, req: dict):
     return mutate(board, fn)
 
 
+class LocalServer(ThreadingHTTPServer):
+    """The standard server looks up the host name (socket.getfqdn) when it binds. With a slow or broken DNS that can take
+    half a minute or hang, and it is useless here: the panel only ever listens on loopback."""
+
+    def server_bind(self):
+        socketserver.TCPServer.server_bind(self)
+        host, port = self.server_address[:2]
+        self.server_name, self.server_port = str(host), port
+
+
 def serve(board: Path, host: str = "127.0.0.1", port: int = 0, idle_exit: float = 0.0, announce=None) -> None:
     if host not in ("127.0.0.1", "localhost", "::1"):
         raise RBError("Barid binds to loopback addresses only (there is no authentication)")
@@ -1685,14 +1696,14 @@ def serve(board: Path, host: str = "127.0.0.1", port: int = 0, idle_exit: float 
     handler = make_handler(board, tracker)
     srv = None
     if os.environ.get("LISTEN_FDS") == "1":  # systemd socket activation
-        srv = ThreadingHTTPServer(("127.0.0.1", 0), handler, bind_and_activate=False)
+        srv = LocalServer(("127.0.0.1", 0), handler, bind_and_activate=False)
         srv.socket.close()
         srv.socket = socket.socket(fileno=3)
         srv.server_address = srv.socket.getsockname()
     else:
         for p in ([port] if port else range(DEFAULT_PORT, DEFAULT_PORT + 30)):
             try:
-                srv = ThreadingHTTPServer((host, p), handler)
+                srv = LocalServer((host, p), handler)
                 break
             except OSError:
                 continue

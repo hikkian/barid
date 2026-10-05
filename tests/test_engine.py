@@ -220,5 +220,20 @@ class EngineTests(unittest.TestCase):
         self.assertEqual(json.loads(run("explain", "C1", "C2", "--json").stdout)["verdict"], "conflict")
 
 
+class ServerStartTests(unittest.TestCase):
+    def test_the_server_does_not_look_up_its_host_name(self):
+        import http.server
+        import socket
+        calls = []
+        real = socket.getfqdn
+        socket.getfqdn = lambda *a, **k: calls.append(a) or (_ for _ in ()).throw(AssertionError("getfqdn must not be called"))
+        try:
+            srv = rb.LocalServer(("127.0.0.1", 0), http.server.BaseHTTPRequestHandler)
+            srv.server_close()
+        finally:
+            socket.getfqdn = real
+        self.assertEqual(calls, [])
+
+
 if __name__ == "__main__":
     unittest.main()
