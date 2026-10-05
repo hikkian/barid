@@ -863,7 +863,14 @@ class ServerTests(unittest.TestCase):
         add(cls.path, AGENT, "P", lane="second", text="proposal")
         add(cls.path, AGENT, "Q", lane="third", text="another proposal")
         cls.proc = subprocess.Popen([sys.executable, str(RB_PATH), "--board", str(cls.path), "serve"], stdout=subprocess.PIPE, encoding="utf-8", errors="replace")
-        line = cls.proc.stdout.readline()
+        box = []
+        reader = threading.Thread(target=lambda: box.append(cls.proc.stdout.readline()), daemon=True)
+        reader.start()
+        reader.join(30)  # a server that never says where it listens must fail the test, not hang the whole run
+        if not box:
+            cls.proc.kill()
+            raise RuntimeError("the test server did not start within 30 seconds")
+        line = box[0]
         cls.port = int(line.split("localhost:")[1].split("/")[0])
         cls.base = f"http://localhost:{cls.port}"
 
