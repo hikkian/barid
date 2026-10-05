@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Many sessions: from the seventh on, each session gets its own hue (the first six use the palette); long "can run together" lists are shortened. Checked with 8 sessions and 60 tasks (plan and export in under 0.1 s).
 - Handoff between agents: the prompt of a task automatically includes what the tasks it builds on handed over (outcome, who and which agent, report, branch, changed files, last notes). A lane whose agent is `local` gets a short hint for smaller models.
 
 ## 0.3.0 (2026-10-05)

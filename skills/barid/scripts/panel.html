@@ -254,13 +254,21 @@ function act(action, id, args, ok) {
 function laneIndex(id) { var L = S.board.lanes; for (var i = 0; i < L.length; i++) if (L[i].id === id) return i; return 0; }
 function laneTitle(id) { var L = S.board.lanes; for (var i = 0; i < L.length; i++) if (L[i].id === id) return L[i].title || id; return id; }
 function laneObj(id) { var L = S.board.lanes; for (var i = 0; i < L.length; i++) if (L[i].id === id) return L[i]; return null; }
-function laneColor(id) { var l = laneObj(id); return l && l.color ? l.color : "var(--l" + (laneIndex(id) % 6) + ")"; }
+function hslToHex(h, s, l) {
+  s /= 100; l /= 100;
+  var a = s * Math.min(l, 1 - l);
+  function f(n) { var k = (n + h / 30) % 12, c = l - a * Math.max(-1, Math.min(k - 3, Math.min(9 - k, 1))); var x = Math.round(255 * c).toString(16); return x.length < 2 ? "0" + x : x; }
+  return "#" + f(0) + f(8) + f(4);
+}
+// the first six sessions use the palette; any further one gets its own hue, so many sessions stay distinguishable
+function genHex(i) { return hslToHex((i * 47 + 20) % 360, 65, document.documentElement.dataset.theme === "light" ? 38 : 62); }
+function laneColor(id) { var l = laneObj(id), i = laneIndex(id); return l && l.color ? l.color : (i < 6 ? "var(--l" + i + ")" : genHex(i)); }
 function fgFor(color) {
   if (color.charAt(0) !== "#") return "var(--lanefg)";
   var r = parseInt(color.slice(1, 3), 16), g = parseInt(color.slice(3, 5), 16), b = parseInt(color.slice(5, 7), 16);
   return (0.299 * r + 0.587 * g + 0.114 * b) > 150 ? "#04141a" : "#fff";
 }
-function defaultLaneHex(id) { var v = getComputedStyle(document.documentElement).getPropertyValue("--l" + (laneIndex(id) % 6)).trim(); return /^#[0-9a-f]{6}$/i.test(v) ? v : "#888888"; }
+function defaultLaneHex(id) { var i = laneIndex(id); if (i >= 6) return genHex(i); var v = getComputedStyle(document.documentElement).getPropertyValue("--l" + i).trim(); return /^#[0-9a-f]{6}$/i.test(v) ? v : "#888888"; }
 var AGENTS = ["claude", "codex", "opencode", "gemini", "cursor", "aider", "local"];
 function agentLabel(a) { if (!a) return ""; var d = STR[S.lang] || STR.en; return d["ag_" + a] != null ? d["ag_" + a] : a; }
 function byId(id) { var a = S.board.items; for (var i = 0; i < a.length; i++) if (a[i].id === id) return a[i]; return null; }
@@ -345,7 +353,7 @@ function renderNow() {
       card.appendChild(h("div", {class: "big", text: c.id + " · " + c.title}));
       card.appendChild(h("div", {class: "row"}, h("button", {class: "btn pri", text: t("copy"), onclick: function () { copyPrompt(c.id); }}),
         h("button", {class: "btn", text: t("sent"), onclick: function () { act("sent", c.id, {}, t("sent")); }}), h("button", {class: "btn sm", text: "…", onclick: function () { openDrawer(c.id); }})));
-      if (c.can_run_with.length) card.appendChild(h("div", {class: "sub", style: "margin-top:8px", text: "∥ " + c.can_run_with.join(", ")}));
+      if (c.can_run_with.length) card.appendChild(h("div", {class: "sub", style: "margin-top:8px", text: "∥ " + c.can_run_with.slice(0, 4).join(", ") + (c.can_run_with.length > 4 ? " +" + (c.can_run_with.length - 4) : "")}));
     } else if (!running.length) {
       var wait = mine.filter(function (c) { return c.state === "waiting" || c.state === "blocked"; });
       var dr = mine.filter(turnOf);
