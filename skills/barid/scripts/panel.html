@@ -3,7 +3,8 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>RelayBoard</title>
+<title>Barid</title>
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNTYgMjU2IiB3aWR0aD0iMjU2IiBoZWlnaHQ9IjI1NiIgcm9sZT0iaW1nIiBhcmlhLWxhYmVsPSJCYXJpZDogYSByZWxheSBvZiBtZXNzYWdlcyBhcm91bmQgYW4gZWlnaHQtcG9pbnRlZCBzdGFyIj48cmVjdCB3aWR0aD0iMjU2IiBoZWlnaHQ9IjI1NiIgcng9IjU4IiBmaWxsPSIjMDM0MjQxIi8+PHBvbHlnb24gcG9pbnRzPSIxMjguMCwxNC4wIDE1OC42LDU0LjEgMjA4LjYsNDcuNCAyMDEuOSw5Ny40IDI0Mi4wLDEyOC4wIDIwMS45LDE1OC42IDIwOC42LDIwOC42IDE1OC42LDIwMS45IDEyOC4wLDI0Mi4wIDk3LjQsMjAxLjkgNDcuNCwyMDguNiA1NC4xLDE1OC42IDE0LjAsMTI4LjAgNTQuMSw5Ny40IDQ3LjQsNDcuNCA5Ny40LDU0LjEiIGZpbGw9Im5vbmUiIHN0cm9rZT0iIzFkN2Y3YSIgc3Ryb2tlLXdpZHRoPSI4IiBzdHJva2UtbGluZWpvaW49InJvdW5kIi8+PHBvbHlnb24gcG9pbnRzPSIxMjguMCw2OC4wIDE3MC40LDg1LjYgMTg4LjAsMTI4LjAgMTcwLjQsMTcwLjQgMTI4LjAsMTg4LjAgODUuNiwxNzAuNCA2OC4wLDEyOC4wIDg1LjYsODUuNiIgZmlsbD0ibm9uZSIgc3Ryb2tlPSIjZjJjNTQ1IiBzdHJva2Utd2lkdGg9IjciIHN0cm9rZS1saW5lam9pbj0icm91bmQiLz48Y2lyY2xlIGN4PSIxMjguMCIgY3k9IjY4LjAiIHI9IjE5IiBmaWxsPSIjZjJjNTQ1Ii8+PGNpcmNsZSBjeD0iMTcwLjQiIGN5PSI4NS42IiByPSIxMyIgZmlsbD0iIzg2ZjllNCIvPjxjaXJjbGUgY3g9IjE4OC4wIiBjeT0iMTI4LjAiIHI9IjEzIiBmaWxsPSIjODZmOWU0Ii8+PGNpcmNsZSBjeD0iMTcwLjQiIGN5PSIxNzAuNCIgcj0iMTMiIGZpbGw9IiM4NmY5ZTQiLz48Y2lyY2xlIGN4PSIxMjguMCIgY3k9IjE4OC4wIiByPSIxMyIgZmlsbD0iIzg2ZjllNCIvPjxjaXJjbGUgY3g9Ijg1LjYiIGN5PSIxNzAuNCIgcj0iMTMiIGZpbGw9IiM4NmY5ZTQiLz48Y2lyY2xlIGN4PSI2OC4wIiBjeT0iMTI4LjAiIHI9IjEzIiBmaWxsPSIjODZmOWU0Ii8+PGNpcmNsZSBjeD0iODUuNiIgY3k9Ijg1LjYiIHI9IjEzIiBmaWxsPSIjODZmOWU0Ii8+PC9zdmc+Cg==">
 <style>
 :root{
   --bg:#0d1320;--panel:#151d2e;--panel2:#1b2539;--line:#26324b;--tx:#e8eefb;--mute:#8e9cb8;--ac:#5aa9ff;
@@ -23,7 +24,7 @@ button{cursor:pointer}
 header{position:sticky;top:0;z-index:20;background:color-mix(in srgb,var(--bg) 92%,transparent);backdrop-filter:blur(8px);border-bottom:1px solid var(--line);
   display:flex;flex-wrap:wrap;gap:10px 14px;align-items:center;padding:10px 20px}
 .logo{display:flex;align-items:center;gap:9px;font-weight:800;font-size:17px}
-.logo i{width:26px;height:26px;border-radius:8px;background:linear-gradient(135deg,var(--ac),var(--ok));display:inline-block}
+.logo .mark{width:28px;height:28px;display:block}
 .proj{color:var(--mute);font-size:13px}
 .spacer{flex:1}
 .pill{border:1px solid var(--line);background:var(--panel);border-radius:999px;padding:4px 12px;font-size:13px;color:var(--tx)}
@@ -111,7 +112,7 @@ details>summary{cursor:pointer;color:var(--mute);margin:6px 0}
 <body>
 <div id="banner" class="banner" hidden></div>
 <header>
-  <div class="logo"><i></i>RelayBoard</div>
+  <div class="logo"><svg class="mark" viewBox="0 0 256 256" aria-hidden="true"><rect width="256" height="256" rx="58" fill="#034241"/><polygon points="128.0,14.0 158.6,54.1 208.6,47.4 201.9,97.4 242.0,128.0 201.9,158.6 208.6,208.6 158.6,201.9 128.0,242.0 97.4,201.9 47.4,208.6 54.1,158.6 14.0,128.0 54.1,97.4 47.4,47.4 97.4,54.1" fill="none" stroke="#1d7f7a" stroke-width="8" stroke-linejoin="round"/><polygon points="128.0,68.0 170.4,85.6 188.0,128.0 170.4,170.4 128.0,188.0 85.6,170.4 68.0,128.0 85.6,85.6" fill="none" stroke="#f2c545" stroke-width="7" stroke-linejoin="round"/><circle cx="128.0" cy="68.0" r="19" fill="#f2c545"/><circle cx="170.4" cy="85.6" r="13" fill="#86f9e4"/><circle cx="188.0" cy="128.0" r="13" fill="#86f9e4"/><circle cx="170.4" cy="170.4" r="13" fill="#86f9e4"/><circle cx="128.0" cy="188.0" r="13" fill="#86f9e4"/><circle cx="85.6" cy="170.4" r="13" fill="#86f9e4"/><circle cx="68.0" cy="128.0" r="13" fill="#86f9e4"/><circle cx="85.6" cy="85.6" r="13" fill="#86f9e4"/></svg>Barid</div>
   <span class="proj" id="proj"></span>
   <span class="spacer"></span>
   <span id="lanefilters" style="display:flex;gap:6px;flex-wrap:wrap"></span>
@@ -213,7 +214,7 @@ function api(path, opts) {
   });
 }
 function act(action, id, args, ok) {
-  return api("/api/act", {method: "POST", headers: {"Content-Type": "application/json", "X-RB-Edit": "1"}, body: JSON.stringify({action: action, id: id, args: args || {}})})
+  return api("/api/act", {method: "POST", headers: {"Content-Type": "application/json", "X-Barid-Edit": "1"}, body: JSON.stringify({action: action, id: id, args: args || {}})})
     .then(function () { var key = action === "status" ? (args && args.status === "queued" ? "ok_requeued" : "ok_status") : ACT_OK[action]; if (key) toast(t(key)); return load(); }).catch(function (e) { toast(errText(e), true); });
 }
 function laneIndex(id) { var L = S.board.lanes; for (var i = 0; i < L.length; i++) if (L[i].id === id) return i; return 0; }
@@ -249,7 +250,7 @@ function render() {
   if (!S.lang) S.lang = B.lang === "ru" ? "ru" : ((navigator.language || "en").slice(0, 2) === "ru" ? "ru" : "en");
   setStatic();
   $("proj").textContent = B.project + " · " + t("rev") + " " + B.rev;
-  document.title = "RelayBoard · " + B.project;
+  document.title = "Barid · " + B.project;
   // lane filter chips
   var lf = clear($("lanefilters"));
   B.lanes.forEach(function (l) { lf.appendChild(h("button", {class: "pill" + (S.laneOff[l.id] ? "" : " on"), style: S.laneOff[l.id] ? "" : "background:" + laneColor(l.id) + ";border-color:" + laneColor(l.id), text: l.title || l.id, onclick: function () { S.laneOff[l.id] = !S.laneOff[l.id]; render(); }})); });
@@ -453,7 +454,7 @@ function openAdd() {
   box.appendChild(h("div", {class: "big", style: "margin-bottom:12px", text: t("add")})); box.appendChild(g);
   box.appendChild(h("div", {class: "row", style: "margin-top:14px"}, h("button", {class: "btn pri", text: t("create"), onclick: function () {
     var a = formArgs(g._f); a.draft = !a.text.trim();
-    api("/api/act", {method: "POST", headers: {"Content-Type": "application/json", "X-RB-Edit": "1"}, body: JSON.stringify({action: "add", id: g._f.id.value.trim(), args: a})})
+    api("/api/act", {method: "POST", headers: {"Content-Type": "application/json", "X-Barid-Edit": "1"}, body: JSON.stringify({action: "add", id: g._f.id.value.trim(), args: a})})
       .then(function () { $("modal").classList.remove("open"); toast(t("ok_created")); return load(); }).catch(function (e) { toast(errText(e), true); });
   }}), h("button", {class: "btn", text: t("close"), onclick: function () { $("modal").classList.remove("open"); }})));
   $("modal").classList.add("open");

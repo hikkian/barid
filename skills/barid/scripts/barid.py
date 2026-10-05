@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-"""RelayBoard: a prompt relay board for people who work with several AI agent sessions.
+"""Barid: a prompt relay board for people who work with several AI agent sessions.
 
 One file, Python 3.9+, no dependencies. The browser panel (panel.html) lives next to this file.
-Agents use the command line (`rb ...`), the person uses the panel (`rb open`).
+Agents use the command line (`rb ...`), the person uses the panel (`barid open`).
 Run `rb --help` or read SKILL.md next to this script's folder.
 """
 from __future__ import annotations
@@ -30,6 +30,7 @@ STATUSES = ("draft", "proposed", "queued", "sent", "running", "review", "done", 
 ACTIVE = ("sent", "running")
 ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,31}$")
 DEFAULT_PORT = 8765
+DATA_DIRS = (".barid", ".relayboard")  # the second is the old name, still found
 MAX_BODY = 512 * 1024
 MAX_EVENTS = 500
 
@@ -76,28 +77,35 @@ class Actor:
 HUMAN = Actor("human", "human")
 
 
+def env(name: str, default=None):
+    """BARID_X, falling back to the old RB_X names (the tool was first called RelayBoard)."""
+    return os.environ.get("BARID_" + name) or os.environ.get("RB_" + name) or default
+
+
 def cli_actor(args) -> Actor:
-    if getattr(args, "human", False) or os.environ.get("RB_ACTOR") == "human":
+    if getattr(args, "human", False) or env("ACTOR") == "human":
         return HUMAN
-    name = getattr(args, "by", None) or os.environ.get("RB_AGENT") or "agent"
+    name = getattr(args, "by", None) or env("AGENT") or "agent"
     return Actor("agent", name)
 
 
 # ----------------------------------------------------------------------------- storage
 
 def find_board(explicit=None) -> Path:
-    cand = explicit or os.environ.get("RB_BOARD")
+    cand = explicit or env("BOARD")
     if cand:
         p = Path(cand).expanduser()
         if p.is_dir():
-            p = p / "board.json" if (p / "board.json").is_file() else p / ".relayboard" / "board.json"
+            p = p / "board.json" if (p / "board.json").is_file() else next(
+                (p / n / "board.json" for n in DATA_DIRS if (p / n / "board.json").is_file()), p / ".barid" / "board.json")
         return p.resolve()
     cur = Path.cwd().resolve()
     for d in [cur, *cur.parents]:
-        f = d / ".relayboard" / "board.json"
-        if f.is_file():
-            return f
-    raise RBError("no board found here: run `rb init` in your project folder, or pass --board PATH / set RB_BOARD")
+        for name in DATA_DIRS:
+            f = d / name / "board.json"
+            if f.is_file():
+                return f
+    raise RBError("no board found here: run `barid init` in your project folder, or pass --board PATH / set BARID_BOARD")
 
 
 @contextlib.contextmanager
@@ -154,7 +162,7 @@ def load(path: Path) -> dict:
     except json.JSONDecodeError as e:
         raise RBError(f"board file is not valid JSON ({path}): {e}")
     if d.get("schema") != SCHEMA:
-        raise RBError(f"unsupported board schema {d.get('schema')!r} (this rb understands {SCHEMA})")
+        raise RBError(f"unsupported board schema {d.get('schema')!r} (this barid understands {SCHEMA})")
     return d
 
 
@@ -357,14 +365,14 @@ def split_list(v) -> list:
 
 def check_refs(d: dict, lane, needs, uses) -> None:
     if lane is not None and lane not in [l["id"] for l in d["lanes"]]:
-        raise RBError(f"unknown lane {lane!r}; lanes: {', '.join(l['id'] for l in d['lanes'])} (add one with `rb lane add`)", "unknown_lane", lane=lane)
+        raise RBError(f"unknown lane {lane!r}; lanes: {', '.join(l['id'] for l in d['lanes'])} (add one with `barid lane add`)", "unknown_lane", lane=lane)
     ids = {i["id"] for i in d["items"]}
     for n in needs or []:
         if n not in ids:
             raise RBError(f"unknown task in needs: {n}", "unknown_task", id=n)
     for r in uses or []:
         if r not in d.get("resources", {}):
-            raise RBError(f"unknown resource {r!r}; define it with `rb resource add {r}`", "unknown_resource", name=r)
+            raise RBError(f"unknown resource {r!r}; define it with `barid resource add {r}`", "unknown_resource", name=r)
 
 
 def op_add(d: dict, actor: Actor, f: dict) -> dict:
@@ -637,7 +645,7 @@ def op_purge(d: dict, actor: Actor, iid: str) -> None:
 FOOTER = {
     "en": textwrap.dedent("""\
         ---
-        RelayBoard tracking: this task ({id}) lives on a shared board. Use Python 3, nothing to install.
+        Barid tracking: this task ({id}) lives on a shared board. Use Python 3, nothing to install.
         1. Before you start:  {py} "{rb}" --board "{board}" claim {id} --by "<your agent name>"
            If this is refused, STOP and tell the user why.
         2. When you are done and your report is written:
@@ -648,7 +656,7 @@ FOOTER = {
         (it is saved as a proposal that the user approves)."""),
     "ru": textwrap.dedent("""\
         ---
-        Учёт в RelayBoard: эта задача ({id}) лежит на общей доске. Нужен Python 3, ничего ставить не надо.
+        Учёт в Barid: эта задача ({id}) лежит на общей доске. Нужен Python 3, ничего ставить не надо.
         1. Перед началом работы:  {py} "{rb}" --board "{board}" claim {id} --by "<имя твоего агента>"
            Если команда отказала, ОСТАНОВИСЬ и сообщи пользователю причину.
         2. Когда закончил и записал отчёт:
@@ -661,7 +669,7 @@ FOOTER = {
 
 GEN = {
     "en": textwrap.dedent("""\
-        Write the complete, self-contained prompt for task {id} ("{title}") of the RelayBoard project "{project}".
+        Write the complete, self-contained prompt for task {id} ("{title}") of the Barid project "{project}".
         The prompt will be pasted into another AI agent session ("{lane}") that has none of our conversation, so it must say everything.
 
         Goal / outline of the task:
@@ -673,13 +681,13 @@ GEN = {
         {template}
 
         Rules for the text: concrete steps, exact file paths and commands, a hard deadline, measurable acceptance criteria,
-        what must NOT be touched, and where to write the report. Do not add the RelayBoard tracking footer: the board appends it by itself.
+        what must NOT be touched, and where to write the report. Do not add the Barid tracking footer: the board appends it by itself.
 
         When it is written, save it to a file and store it with:
         {py} "{rb}" --board "{board}" edit {id} --text-file <that file> --by "<your agent name>"
         """),
     "ru": textwrap.dedent("""\
-        Напиши полный самодостаточный промпт для задачи {id} («{title}») проекта «{project}» на RelayBoard.
+        Напиши полный самодостаточный промпт для задачи {id} («{title}») проекта «{project}» на Barid.
         Промпт вставят в другую сессию ИИ-агента («{lane}»), которая не видела нашего разговора, поэтому в нём должно быть всё.
 
         Цель и набросок задачи:
@@ -691,7 +699,7 @@ GEN = {
         {template}
 
         Требования к тексту: конкретные шаги, точные пути и команды, жёсткий срок, измеримые критерии приёмки,
-        что трогать НЕЛЬЗЯ и куда писать отчёт. Не добавляй хвост про учёт в RelayBoard: доска добавит его сама.
+        что трогать НЕЛЬЗЯ и куда писать отчёт. Не добавляй хвост про учёт в Barid: доска добавит его сама.
 
         Когда текст готов, сохрани его в файл и запиши командой:
         {py} "{rb}" --board "{board}" edit {id} --text-file <этот файл> --by "<имя твоего агента>"
@@ -799,7 +807,7 @@ def server_file(board: Path) -> Path:
 
 def make_handler(board: Path, tracker: dict):
     class Handler(BaseHTTPRequestHandler):
-        server_version = "RelayBoard/" + __version__
+        server_version = "Barid/" + __version__
 
         def log_message(self, *a):
             pass
@@ -830,7 +838,7 @@ def make_handler(board: Path, tracker: dict):
                 if path == "/":
                     f = HERE / "panel.html"
                     if not f.is_file():
-                        return self._send(500, "panel.html is missing next to rb.py", "text/plain; charset=utf-8")
+                        return self._send(500, "panel.html is missing next to barid.py", "text/plain; charset=utf-8")
                     return self._send(200, f.read_bytes(), "text/html; charset=utf-8")
                 if path == "/api/rev":
                     return self._send(200, {"rev": load(board).get("rev", 0)})
@@ -853,7 +861,7 @@ def make_handler(board: Path, tracker: dict):
                 return
             origin = self.headers.get("Origin") or ""
             host = self.headers.get("Host") or ""
-            if (self.path.split("?", 1)[0] != "/api/act" or self.headers.get("X-RB-Edit") != "1"
+            if (self.path.split("?", 1)[0] != "/api/act" or "1" not in (self.headers.get("X-Barid-Edit"), self.headers.get("X-RB-Edit"))
                     or (origin and origin.split("://", 1)[-1] != host)):
                 return self._send(403, {"error": "forbidden"})
             try:
@@ -913,7 +921,7 @@ def apply_action(board: Path, req: dict):
 
 def serve(board: Path, host: str = "127.0.0.1", port: int = 0, idle_exit: float = 0.0, announce=None) -> None:
     if host not in ("127.0.0.1", "localhost", "::1"):
-        raise RBError("RelayBoard binds to loopback addresses only (there is no authentication)")
+        raise RBError("Barid binds to loopback addresses only (there is no authentication)")
     tracker = {"last": time.time()}
     handler = make_handler(board, tracker)
     srv = None
@@ -989,7 +997,7 @@ def ensure_server(board: Path, idle_exit: float = 30.0):
         info = server_alive(board)
         if info:
             return info
-    raise RBError("the panel server did not start; try `rb serve` in a terminal to see why")
+    raise RBError("the panel server did not start; try `barid serve` in a terminal to see why")
 
 
 # ----------------------------------------------------------------------------- CLI
@@ -1011,9 +1019,9 @@ def read_text_arg(args) -> str | None:
 
 
 def cmd_init(args):
-    base = Path(args.board).expanduser() if getattr(args, "board", None) else Path.cwd() / ".relayboard" / "board.json"
+    base = Path(args.board).expanduser() if getattr(args, "board", None) else Path.cwd() / ".barid" / "board.json"
     if base.is_dir():
-        base = base / ".relayboard" / "board.json"
+        base = base / ".barid" / "board.json"
     if base.exists() and not args.force:
         raise RBError(f"{base} already exists (use --force to overwrite)")
     lanes = []
@@ -1025,7 +1033,7 @@ def cmd_init(args):
     base.parent.mkdir(parents=True, exist_ok=True)
     save(base, new_board(args.project or Path.cwd().name, lanes, args.lang))
     print(f"created {base}")
-    print("next: add tasks with `rb add`, then look at them with `rb open`")
+    print("next: add tasks with `barid add`, then look at them with `barid open`")
 
 
 def cmd_where(args):
@@ -1149,7 +1157,7 @@ def cmd_open(args):
 def cmd_serve(args):
     board = find_board(getattr(args, "board", None))
     load(board)
-    serve(board, args.host, args.port, args.idle_exit, announce=lambda p: print(f"RelayBoard panel: http://localhost:{p}/  (Ctrl+C to stop)", flush=True))
+    serve(board, args.host, args.port, args.idle_exit, announce=lambda p: print(f"Barid panel: http://localhost:{p}/  (Ctrl+C to stop)", flush=True))
 
 
 def cmd_export(args):
@@ -1260,7 +1268,7 @@ def cmd_doctor(args):
         ok = ok and good
         print(("ok    " if good else "FAIL  ") + msg)
     line(sys.version_info >= (3, 9), f"python {sys.version.split()[0]} (needs 3.9+)")
-    line((HERE / "panel.html").is_file(), "panel.html next to rb.py")
+    line((HERE / "panel.html").is_file(), "panel.html next to barid.py")
     try:
         board = find_board(getattr(args, "board", None))
         d = load(board)
@@ -1270,7 +1278,7 @@ def cmd_doctor(args):
         line(True, "lock works")
         line(not has_cycle({i["id"]: i for i in d["items"]}), "no dependency cycles")
         info = server_alive(board)
-        print("info  panel server: " + (f"running on port {info['port']}" if info else "not running (starts on `rb open`)"))
+        print("info  panel server: " + (f"running on port {info['port']}" if info else "not running (starts on `barid open`)"))
     except RBError as e:
         line(False, str(e))
     sys.exit(0 if ok else 1)
@@ -1293,12 +1301,12 @@ def cmd_shim(args):
 
 def build_parser() -> argparse.ArgumentParser:
     common = argparse.ArgumentParser(add_help=False)
-    common.add_argument("--board", default=argparse.SUPPRESS, help="path to board.json or its folder (or set RB_BOARD)")
-    common.add_argument("--by", default=argparse.SUPPRESS, help="your agent name (or set RB_AGENT)")
-    common.add_argument("--human", action="store_true", default=argparse.SUPPRESS, help="act as the person (or set RB_ACTOR=human)")
+    common.add_argument("--board", default=argparse.SUPPRESS, help="path to board.json or its folder (or set BARID_BOARD)")
+    common.add_argument("--by", default=argparse.SUPPRESS, help="your agent name (or set BARID_AGENT)")
+    common.add_argument("--human", action="store_true", default=argparse.SUPPRESS, help="act as the person (or set BARID_ACTOR=human)")
     common.add_argument("--json", action="store_true", default=argparse.SUPPRESS, help="machine-readable output")
-    p = argparse.ArgumentParser(prog="rb", parents=[common], description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    p.add_argument("--version", action="version", version=f"RelayBoard {__version__}")
+    p = argparse.ArgumentParser(prog="barid", parents=[common], description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    p.add_argument("--version", action="version", version=f"Barid {__version__}")
     sub = p.add_subparsers(dest="cmd", required=True, metavar="command")
 
     def add(name, fn, help_, **kw):
@@ -1306,7 +1314,7 @@ def build_parser() -> argparse.ArgumentParser:
         sp.set_defaults(fn=fn)
         return sp
 
-    s = add("init", cmd_init, "create a board in .relayboard/ of the current folder")
+    s = add("init", cmd_init, "create a board in .barid/ of the current folder")
     s.add_argument("--project")
     s.add_argument("--lanes", default="main,second", help="comma list, id or id:Title (one lane per agent session)")
     s.add_argument("--lang", default="en", choices=["en", "ru"])
@@ -1417,7 +1425,7 @@ def build_parser() -> argparse.ArgumentParser:
     s.add_argument("--port", type=int, default=0)
     s.add_argument("--idle-exit", type=float, default=0.0)
     add("doctor", cmd_doctor, "check the installation and the board")
-    add("shim", cmd_shim, "install a short `rb` command")
+    add("shim", cmd_shim, "install a short `barid` command")
     return p
 
 

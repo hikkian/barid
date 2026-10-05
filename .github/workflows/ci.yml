@@ -21,6 +21,6 @@ jobs:
       - name: Example board builds and plans
         run: |
           python examples/build_example.py ./example-project
-          python skills/relayboard/scripts/rb.py --board ./example-project/.relayboard/board.json plan
-          python skills/relayboard/scripts/rb.py --board ./example-project/.relayboard/board.json export snapshot.html
-          python skills/relayboard/scripts/rb.py --board ./example-project/.relayboard/board.json doctor
+          python skills/barid/scripts/barid.py --board ./example-project/.barid/board.json plan
+          python skills/barid/scripts/barid.py --board ./example-project/.barid/board.json export snapshot.html
+          python skills/barid/scripts/barid.py --board ./example-project/.barid/board.json doctor

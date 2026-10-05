@@ -3,13 +3,13 @@
 
     python3 examples/build_example.py [target-dir]      # default: ./example-project
 
-Then:  cd example-project && python3 ../skills/relayboard/scripts/rb.py open
+Then:  cd example-project && python3 ../skills/barid/scripts/barid.py open
 """
 import importlib.util
 import sys
 from pathlib import Path
 
-RB = Path(__file__).resolve().parent.parent / "skills" / "relayboard" / "scripts" / "rb.py"
+RB = Path(__file__).resolve().parent.parent / "skills" / "barid" / "scripts" / "barid.py"
 spec = importlib.util.spec_from_file_location("rb", RB)
 rb = importlib.util.module_from_spec(spec)
 sys.modules["rb"] = rb
@@ -22,7 +22,7 @@ ME = rb.HUMAN
 
 
 def main(target: Path) -> Path:
-    path = target / ".relayboard" / "board.json"
+    path = target / ".barid" / "board.json"
     path.parent.mkdir(parents=True, exist_ok=True)
     d = rb.new_board("Ship v1.0 of a CLI tool", [("build", "Build agent"), ("docs", "Docs agent"), ("qa", "QA agent")])
     d["resources"] = {"staging": {"label": "Staging server", "exclusive": True}, "user": {"label": "User present", "exclusive": True}}

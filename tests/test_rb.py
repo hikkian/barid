@@ -11,7 +11,7 @@ import urllib.request
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-RB_PATH = ROOT / "skills" / "relayboard" / "scripts" / "rb.py"
+RB_PATH = ROOT / "skills" / "barid" / "scripts" / "barid.py"
 spec = importlib.util.spec_from_file_location("rb", RB_PATH)
 rb = importlib.util.module_from_spec(spec)
 sys.modules["rb"] = rb
@@ -23,7 +23,7 @@ PLANNER = rb.Actor("agent", "planner")
 
 
 def board_with(tmp, **policy):
-    path = Path(tmp) / ".relayboard" / "board.json"
+    path = Path(tmp) / ".barid" / "board.json"
     path.parent.mkdir(parents=True)
     d = rb.new_board("test", [("main", "Main"), ("second", "Second"), ("third", "Third")])
     d["policy"].update(policy)
@@ -305,8 +305,8 @@ class CliTests(unittest.TestCase):
 
     def run_rb(self, *args, check=True, env=None):
         e = dict(os.environ)
-        e.pop("RB_BOARD", None)
-        e.pop("RB_ACTOR", None)
+        e.pop("BARID_BOARD", None)
+        e.pop("BARID_ACTOR", None)
         e.update(env or {})
         p = subprocess.run([sys.executable, str(RB_PATH), *args], cwd=self.cwd, capture_output=True, encoding="utf-8", errors="replace", env=e)
         if check and p.returncode != 0:
@@ -358,7 +358,7 @@ class CliTests(unittest.TestCase):
     def test_error_without_board_is_friendly(self):
         p = self.run_rb("list", check=False)
         self.assertEqual(p.returncode, 1)
-        self.assertIn("rb init", p.stderr)
+        self.assertIn("barid init", p.stderr)
         self.assertNotIn("Traceback", p.stderr)
 
 
@@ -447,7 +447,7 @@ class ServerTests(unittest.TestCase):
             return e.code, e.read().decode("utf-8")
 
     def post(self, body, headers=None):
-        h = {"Content-Type": "application/json", "X-RB-Edit": "1"}
+        h = {"Content-Type": "application/json", "X-Barid-Edit": "1"}
         h.update(headers or {})
         req = urllib.request.Request(self.base + "/api/act", data=json.dumps(body).encode(), headers=h, method="POST")
         try:
@@ -459,7 +459,7 @@ class ServerTests(unittest.TestCase):
     def test_panel_and_board_api(self):
         code, html = self.get("/")
         self.assertEqual(code, 200)
-        self.assertIn("RelayBoard", html)
+        self.assertIn("Barid", html)
         code, body = self.get("/api/board")
         data = json.loads(body)
         self.assertEqual(code, 200)
@@ -490,7 +490,7 @@ class ServerTests(unittest.TestCase):
 
     def test_security_checks(self):
         self.assertEqual(self.get("/api/board", {"Host": "evil.example.com"})[0], 403)
-        code, _ = self.post({"action": "note", "id": "A", "args": {"text": "x"}}, {"X-RB-Edit": "0"})
+        code, _ = self.post({"action": "note", "id": "A", "args": {"text": "x"}}, {"X-Barid-Edit": "0"})
         self.assertEqual(code, 403)
         code, _ = self.post({"action": "note", "id": "A", "args": {"text": "x"}}, {"Origin": "http://evil.example.com"})
         self.assertEqual(code, 403)

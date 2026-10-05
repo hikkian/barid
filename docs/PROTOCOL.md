@@ -1,14 +1,14 @@
-# RelayBoard protocol
+# Barid protocol
 
-The rules every client (CLI, panel, agent) follows, and the file format. Implemented in `skills/relayboard/scripts/rb.py`.
+The rules every client (CLI, panel, agent) follows, and the file format. Implemented in `skills/barid/scripts/barid.py`.
 
 ## Roles
 
 | Role | Who | Can |
 |---|---|---|
-| person (`human`) | you, through the panel or `--human` / `RB_ACTOR=human` | everything: approve, accept, set any status, restore, purge, change trust |
+| person (`human`) | you, through the panel or `--human` / `BARID_ACTOR=human` | everything: approve, accept, set any status, restore, purge, change trust |
 | trusted agent | a name listed in `policy.direct_agents` (or `*`) | add, edit, cancel tasks directly; add lanes, resources, context |
-| agent | any other name (`--by`, `RB_AGENT`, default `agent`) | propose tasks, claim and finish its own task, note, release its own claim, cancel or edit its own proposal |
+| agent | any other name (`--by`, `BARID_AGENT`, default `agent`) | propose tasks, claim and finish its own task, note, release its own claim, cancel or edit its own proposal |
 
 Identity is advisory. The board protects against mistakes, not against a hostile process.
 
@@ -30,7 +30,7 @@ Two tasks conflict (must not be active together) when any of these holds:
 
 Active tasks are those in `sent` or `running`. `claim` is refused when it would conflict with an active task, unless the task is already `sent` (the person chose it, a warning is returned) or `--force` is used.
 
-`can_run_with` lists active/ready tasks that do not conflict and are unrelated by dependencies. `steps` (from `rb plan`) is a greedy schedule in list order: each task goes into the earliest step after its unfinished needs where nothing it conflicts with is placed.
+`can_run_with` lists active/ready tasks that do not conflict and are unrelated by dependencies. `steps` (from `barid plan`) is a greedy schedule in list order: each task goes into the earliest step after its unfinished needs where nothing it conflicts with is placed.
 
 ## Leases
 
@@ -56,7 +56,7 @@ Active tasks are those in `sent` or `running`. `claim` is refused when it would 
 | `lane`, `resource`, `context` | person, trusted agents | board configuration |
 | `trust` | person | edits `policy.direct_agents` |
 
-## File format (`.relayboard/board.json`, schema 1)
+## File format (`.barid/board.json`, schema 1)
 
 ```json
 {
@@ -77,12 +77,12 @@ Active tasks are those in `sent` or `running`. `claim` is refused when it would 
 }
 ```
 
-`rev` increases on every write. `events` keeps the last 500 entries. All writes go through `rb` (file lock plus atomic replace); do not edit the file by hand while agents are active.
+`rev` increases on every write. `events` keeps the last 500 entries. All writes go through `barid` (file lock plus atomic replace); do not edit the file by hand while agents are active.
 
 ## Prompt footer
 
-`rb show ID --text`, `rb next` and the panel's *Copy prompt* return the task text followed by a footer (English or Russian by `lang`, switch off with `policy.footer: false`) that contains the `claim`, `finish` and `note` commands with the absolute path of `rb.py` and of the board file. The footer is generated on the fly and never stored in `text`.
+`barid show ID --text`, `barid next` and the panel's *Copy prompt* return the task text followed by a footer (English or Russian by `lang`, switch off with `policy.footer: false`) that contains the `claim`, `finish` and `note` commands with the absolute path of `barid.py` and of the board file. The footer is generated on the fly and never stored in `text`.
 
 ## Panel HTTP API (loopback only)
 
-`GET /` panel, `GET /api/board` (computed view), `GET /api/rev`, `GET /api/prompt/<id>`, `GET /api/gen/<id>`, `POST /api/act` (JSON `{action, id, args}`, header `X-RB-Edit: 1`, `Origin` must match `Host`). Requests whose `Host` is not `localhost`, `127.0.0.1`, `[::1]` or `*.localhost` are refused. Systemd socket activation is supported (`LISTEN_FDS=1`).
+`GET /` panel, `GET /api/board` (computed view), `GET /api/rev`, `GET /api/prompt/<id>`, `GET /api/gen/<id>`, `POST /api/act` (JSON `{action, id, args}`, header `X-Barid-Edit: 1`, `Origin` must match `Host`). Requests whose `Host` is not `localhost`, `127.0.0.1`, `[::1]` or `*.localhost` are refused. Systemd socket activation is supported (`LISTEN_FDS=1`).
