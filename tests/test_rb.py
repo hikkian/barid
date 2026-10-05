@@ -246,6 +246,80 @@ class CoreTests(unittest.TestCase):
         self.assertIn("D1", [x["id"] for x in by["R1"]["cannot_run_with"]])
         self.assertIn("D2", by["D1"]["can_run_with"])
 
+    def test_every_next_task_gets_a_start_hint_in_every_combination_of_states(self):
+        # two sessions, each in one of these states, with and without a shared exclusive resource: the focus line must always be right
+        states = ("none", "running", "sent", "ready", "draft", "waiting")
+        for shared in (True, False):
+            for sa in states:
+                for sb in states:
+                    with tempfile.TemporaryDirectory() as tmp:
+                        path = Path(tmp) / ".barid" / "board.json"
+                        path.parent.mkdir()
+                        rb.save(path, rb.new_board("t", [("a", "A"), ("b", "B")]))
+                        for lane, st in (("a", sa), ("b", sb)):
+                            if st == "none":
+                                continue
+                            iid = lane.upper() + "1"
+                            uses = "gpu" if shared else ""
+                            if st == "draft":
+                                add(path, HUMAN, iid, lane=lane, text="", outline="x", uses=uses)
+                            elif st == "waiting":
+                                add(path, HUMAN, lane.upper() + "0", lane=lane)
+                                rb.mutate(path, lambda d, i=lane.upper() + "0": rb.op_cancel(d, HUMAN, i, "dep"))
+                                add(path, HUMAN, iid, lane=lane, uses=uses, needs=lane.upper() + "0")
+                            else:
+                                add(path, HUMAN, iid, lane=lane, uses=uses)
+                                if st == "running":
+                                    rb.mutate(path, lambda d, i=iid: rb.op_claim(d, AGENT, i, force=True))
+                                elif st == "sent":
+                                    rb.mutate(path, lambda d, i=iid: rb.op_sent(d, HUMAN, i))
+                        focus = rb.board_view(path)["focus"]
+                        label = f"shared={shared} a={sa} b={sb}"
+                        for lane, st, other in (("a", sa, sb), ("b", sb, sa)):
+                            if st == "none":
+                                self.assertNotIn(lane, focus, label)
+                                continue
+                            f = focus[lane]
+                            if st in ("running", "sent"):
+                                self.assertEqual(f["role"], "running", label)
+                                self.assertNotIn("hint", f, label)
+                                continue
+                            self.assertIn("hint", f, label)
+                            kind = f["hint"]["kind"]
+                            self.assertIn(kind, ("deps", "wait", "not", "ok", "none"), label)
+                            if st == "waiting":
+                                self.assertEqual(kind, "deps", label)
+                                continue
+                            if shared and other in ("running", "sent"):
+                                self.assertEqual(kind, "wait", label)
+                            elif shared and other in ("ready", "draft"):
+                                self.assertEqual(kind, "not", label)
+                            elif not shared:
+                                self.assertIn(kind, ("ok", "none"), label)
+                                if other in ("running", "sent", "ready", "draft"):
+                                    self.assertEqual(kind, "ok", label)
+                            else:
+                                self.assertEqual(kind, "none", label)
+
+    def test_the_section_summary_names_what_runs_what_can_start_and_what_waits(self):
+        rb.mutate(self.path, lambda d: d["resources"].update({"gpu": {"label": "GPU", "exclusive": True}}))
+        add(self.path, HUMAN, "RUN", lane="main", uses="gpu")
+        rb.mutate(self.path, lambda d: rb.op_claim(d, AGENT, "RUN", force=True))
+        add(self.path, HUMAN, "BLK", lane="second", uses="gpu")
+        add(self.path, HUMAN, "FREE", lane="third")
+        sm = rb.board_view(self.path)["summary"]
+        self.assertEqual(sm["running"], ["RUN"])
+        self.assertEqual([w["id"] for w in sm["wait"]], ["BLK"])
+        self.assertIn("RUN", [x["id"] for x in sm["wait"][0]["with"]])
+        self.assertEqual(sm["can_start"], ["FREE"])
+        self.assertEqual(sm["choose"], [])
+        rb.mutate(self.path, lambda d: rb.op_release(d, HUMAN, "RUN", force=True))
+        sm = rb.board_view(self.path)["summary"]
+        self.assertEqual(sm["running"], [])
+        self.assertEqual(sorted(sm["can_start"]), ["FREE"])
+        self.assertEqual(len(sm["choose"]), 1)
+        self.assertEqual(sorted(sm["choose"][0]["ids"]), ["BLK", "RUN"])
+
     def test_system_language_picks_the_default_board_language(self):
         old = {k: os.environ.get(k) for k in ("LC_ALL", "LC_MESSAGES", "LANG")}
         try:

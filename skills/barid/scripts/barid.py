@@ -1213,6 +1213,70 @@ def gen_request(d: dict, it: dict, board: Path) -> str:
 
 # ----------------------------------------------------------------------------- views
 
+def lane_focus(comp: list, lanes: list) -> dict:
+    """For every session: the one task it works on or is up next with, and whether it can start next to the others.
+
+    role: running (running or sent), ready, turn (a draft whose turn has come), blocked (a conflict with something that
+    runs), waiting (its dependencies are not finished). hint.kind: deps, wait (conflict with a running task), not (conflict
+    with another session's next task), ok (can run together, `ids` says with what), none (nothing to compare with).
+    One function for every state, so no card can be left without its line."""
+    focus = {}
+    for lane in lanes:
+        mine = [c for c in comp if c["lane"] == lane["id"]]
+        pick = None
+        for role, test in (("running", lambda c: c["state"] in ("running", "sent")), ("ready", lambda c: c["state"] == "ready"),
+                           ("turn", lambda c: c["status"] == "draft" and not c["waiting_on"]),
+                           ("blocked", lambda c: c["state"] == "blocked"), ("waiting", lambda c: c["state"] == "waiting")):
+            found = next((c for c in mine if test(c)), None)
+            if found:
+                pick = (role, found)
+                break
+        if pick:
+            focus[lane["id"]] = {"id": pick[1]["id"], "role": pick[0]}
+    near = {f["id"]: lid for lid, f in focus.items()}
+    by_id = {c["id"]: c for c in comp}
+    for lid, f in focus.items():
+        c = by_id[f["id"]]
+        if f["role"] == "running":
+            continue
+        other = lambda ids: [i for i in ids if i in near and near[i] != lid]
+        if c["waiting_on"]:
+            f["hint"] = {"kind": "deps", "ids": list(c["waiting_on"])}
+        elif c["conflicts"]:
+            f["hint"] = {"kind": "wait", "with": [{"id": x["id"], "why": x["why"]} for x in c["conflicts"]]}
+        elif [x for x in c["cannot_run_with"] if x["id"] in near and near[x["id"]] != lid]:
+            f["hint"] = {"kind": "not", "with": [{"id": x["id"], "why": x["why"]} for x in c["cannot_run_with"] if x["id"] in near and near[x["id"]] != lid]}
+        elif other(c["can_run_with"]):
+            f["hint"] = {"kind": "ok", "ids": other(c["can_run_with"])}
+        else:
+            others = [i for i, l2 in near.items() if l2 != lid and by_id[i]["state"] in ("running", "sent")]
+            f["hint"] = {"kind": "ok", "ids": others} if others else {"kind": "none"}
+    return focus
+
+
+def focus_summary(focus: dict) -> dict:
+    """One line of truth for the whole 'what to do now' section, from the same focus data as the cards."""
+    out = {"running": [], "can_start": [], "wait": [], "choose": [], "deps": []}
+    seen = set()
+    for lid, f in focus.items():
+        h = f.get("hint")
+        if f["role"] == "running":
+            out["running"].append(f["id"])
+        elif h["kind"] == "deps":
+            out["deps"].append({"id": f["id"], "ids": h["ids"]})
+        elif h["kind"] == "wait":
+            out["wait"].append({"id": f["id"], "with": h["with"]})
+        elif h["kind"] == "not":
+            for w in h["with"]:
+                key = tuple(sorted((f["id"], w["id"])))
+                if key not in seen:
+                    seen.add(key)
+                    out["choose"].append({"ids": list(key), "why": w["why"]})
+        else:
+            out["can_start"].append(f["id"])
+    return out
+
+
 def board_view(path: Path) -> dict:
     d = load(path)
     comp = compute(d)
@@ -1225,7 +1289,7 @@ def board_view(path: Path) -> dict:
         "version": __version__, "project": d.get("project", ""), "rev": d.get("rev", 0), "updated": d.get("updated"),
         "lang": d.get("lang", "en"), "lanes": d["lanes"], "resources": d.get("resources", {}),
         "policy": {k: d.get("policy", {}).get(k) for k in ("dependents_wait_for_accept", "lease_hours", "footer", "direct_agents")},
-        "items": comp, "steps": steps, "next_by_lane": now_by_lane, "events": d.get("events", [])[-60:],
+        "items": comp, "steps": steps, "next_by_lane": now_by_lane, "focus": lane_focus(comp, d["lanes"]), "summary": focus_summary(lane_focus(comp, d["lanes"])), "events": d.get("events", [])[-60:],
         "proposed": [c["id"] for c in comp if c["state"] == "proposed"],
         "review": [c["id"] for c in comp if c["state"] == "review"],
     }

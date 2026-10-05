@@ -60,7 +60,8 @@ h2 small{font-weight:500;letter-spacing:0;text-transform:none}
 .big{font-size:16px;font-weight:700}
 .sub{color:var(--mute);font-size:13px}
 .row{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:10px}
-.together{margin-top:12px;padding:10px 14px;border-radius:12px;border:1px dashed var(--line);font-size:14px}
+.together{margin-top:8px;padding:8px 14px;border-radius:12px;border:1px dashed var(--line);font-size:14px}
+#together .together:first-child{margin-top:12px}
 .together.good{border-color:var(--ok)}
 .together.warn{border-color:var(--warn)}
 /* chips */
@@ -180,7 +181,7 @@ details>summary{cursor:pointer;color:var(--mute);margin:6px 0}
 (function () {
 var STR = {
  en: {now:"What to do now", flow:"Order, and what can run together", inbox_p:"Proposed by agents", inbox_r:"Reports to review", archive:"Archive", activity:"Activity log",
-  add:"+ New task", search:"Search…", lang:"Русский", idle:"Nothing to do for this session right now.", nothing_ready:"Nothing is ready yet. Waiting for: ", nothing_ready_now:"Next in line, but it cannot start yet.",
+  add:"+ New task", search:"Search…", lang:"Русский", idle:"Nothing to do for this session right now.", nothing_ready:"Nothing is ready yet. Waiting for: ", nothing_ready_now:"Next in line, but it cannot start yet.", sum_running:"Running now: {list}", sum_ok:"Can start now: {list}", sum_together:"Can start together: {list}", sum_choose:"Start one at a time, they conflict ({why}): {list}", sum_wait:"{id} waits for {list}", sum_deps:"{id} waits for the tasks it depends on: {list}",
   running:"In progress", held_by:"held by {name} since {time}", proposed_by:"proposed by {name}",
   stale:"the claim has expired: is the session still running?", copy:"Copy prompt", sent:"Mark as sent", release:"Return to queue", approve:"Approve", reject:"Reject",
   edit:"Edit", accept:"Accept report", sendback:"Send back", cancel:"Cancel task", restore:"Restore", gen:"Generate prompt",
@@ -199,7 +200,7 @@ var STR = {
    unknown_resource:"Unknown resource: {name}", cycle:"That would create a dependency loop", no_text:"{id} has no prompt text yet: generate or write it first", not_found:"No such task: {id}",
    wrong_state:"{id} is now “{status}”: this action is not possible", human_only:"Only you can do this", empty_note:"The note is empty", bad_status:"Unknown status", bad_outcome:"Unknown outcome", no_git:"This folder is not a git repository", bad_color:"Color must look like #feb83b", bad_agent:"Agent name: letters, digits, space, . _ + - (up to 24 characters)"}},
  ru: {now:"Что делать сейчас", flow:"Порядок работ и что можно запускать вместе", inbox_p:"Предложения агентов", inbox_r:"Отчёты на проверку", archive:"Архив", activity:"Журнал действий",
-  add:"+ Новая задача", search:"Поиск…", lang:"Қазақша", idle:"Для этой сессии сейчас нет задач.", nothing_ready:"Пока нечего запускать. Ожидает: ", nothing_ready_now:"Следующая по очереди, но запустить её пока нельзя.",
+  add:"+ Новая задача", search:"Поиск…", lang:"Қазақша", idle:"Для этой сессии сейчас нет задач.", nothing_ready:"Пока нечего запускать. Ожидает: ", nothing_ready_now:"Следующая по очереди, но запустить её пока нельзя.", sum_running:"Идёт сейчас: {list}", sum_ok:"Можно запускать сейчас: {list}", sum_together:"Можно запускать одновременно: {list}", sum_choose:"Запускайте по одной, они конфликтуют ({why}): {list}", sum_wait:"{id} ждёт: {list}", sum_deps:"{id} ждёт задачи, от которых зависит: {list}",
   running:"В работе", held_by:"у {name} с {time}", proposed_by:"предложил(а) {name}",
   stale:"срок занятия истёк: сессия ещё работает?", copy:"Скопировать промпт", sent:"Отметить как отправленный", release:"Вернуть в очередь", approve:"Одобрить", reject:"Отклонить",
   edit:"Редактировать", accept:"Принять отчёт", sendback:"Вернуть на доработку", cancel:"Отменить задачу", restore:"Восстановить", gen:"Сгенерировать промпт",
@@ -218,7 +219,7 @@ var STR = {
    unknown_resource:"Нет такого ресурса: {name}", cycle:"Получился бы цикл зависимостей", no_text:"У {id} ещё нет текста промпта: сначала сгенерируйте или напишите его", not_found:"Задачи {id} нет",
    wrong_state:"Задача {id} сейчас «{status}»: это действие невозможно", human_only:"Это может сделать только человек", empty_note:"Заметка пустая", bad_status:"Неизвестный статус", bad_outcome:"Неизвестный итог", no_git:"Эта папка не является git-репозиторием", bad_color:"Цвет в формате #feb83b", bad_agent:"Имя агента: буквы, цифры, пробел, . _ + - (до 24 знаков)"}},
  kk: {now:"Қазір не істеу керек", flow:"Жұмыс реті және қайсысын бірге іске қосуға болады", inbox_p:"Агенттердің ұсыныстары", inbox_r:"Тексеруге арналған есептер", archive:"Архив", activity:"Әрекеттер журналы",
-  add:"+ Жаңа тапсырма", search:"Іздеу…", lang:"English", idle:"Бұл сессия үшін қазір тапсырма жоқ.", nothing_ready:"Әзірге іске қосатын ештеңе жоқ. Күтілуде: ", nothing_ready_now:"Кезектегі келесі, бірақ әзірге іске қосуға болмайды.",
+  add:"+ Жаңа тапсырма", search:"Іздеу…", lang:"English", idle:"Бұл сессия үшін қазір тапсырма жоқ.", nothing_ready:"Әзірге іске қосатын ештеңе жоқ. Күтілуде: ", nothing_ready_now:"Кезектегі келесі, бірақ әзірге іске қосуға болмайды.", sum_running:"Қазір орындалуда: {list}", sum_ok:"Қазір іске қосуға болады: {list}", sum_together:"Бірге іске қосуға болады: {list}", sum_choose:"Бір-бірлеп іске қосыңыз, олар қайшы келеді ({why}): {list}", sum_wait:"{id} күтуде: {list}", sum_deps:"{id} өзі тәуелді тапсырмаларды күтуде: {list}",
   running:"Орындалуда", held_by:"{name} алды, {time} бастап", proposed_by:"{name} ұсынды",
   stale:"броньның мерзімі өтті: сессия әлі жұмыс істеп тұр ма?", copy:"Промптты көшіру", sent:"Жіберілді деп белгілеу", release:"Кезекке қайтару", approve:"Мақұлдау", reject:"Қабылдамау",
   edit:"Өзгерту", accept:"Есепті қабылдау", sendback:"Қайта жұмысқа қайтару", cancel:"Тапсырманы болдырмау", restore:"Қалпына келтіру", gen:"Промпт жасату",
@@ -322,16 +323,13 @@ function whyText(w) {
   var m = t("why")[w]; if (m) return m;
   var r = S.board.resources[w]; return r && r.label ? r.label : w;
 }
-function startHint(c) {
-  // can this task start now: next to what already runs, and next to the other next-up tasks?
-  var act = S.board.items.filter(function (x) { return (x.status === "running" || x.status === "sent") && x.id !== c.id; });
-  if (c.conflicts && c.conflicts.length) return h("div", {class: "sub go wait", text: "⏳ " + fmt(t("go_wait"), {list: c.conflicts.map(function (x) { return x.id + " (" + whyText(x.why) + ")"; }).join(", ")})});
-  var near = S.nextIds || {};
-  var no = (c.cannot_run_with || []).filter(function (x) { return near[x.id] && near[x.id] !== c.lane; });
-  if (no.length) return h("div", {class: "sub go wait", text: "⛔ " + fmt(t("go_not"), {list: no.map(function (x) { return x.id + " (" + whyText(x.why) + ")"; }).join(", ")})});
-  var ok = (c.can_run_with || []).filter(function (id) { return near[id] && near[id] !== c.lane; });
-  if (ok.length) return h("div", {class: "sub go ok", text: "✓ " + fmt(t("go_ok"), {list: ok.join(", ")})});
-  if (act.length) return h("div", {class: "sub go ok", text: "✓ " + fmt(t("go_ok"), {list: act.map(function (x) { return x.id; }).join(", ")})});
+function hintLine(f) {
+  // f.hint comes from the server for every kind of next task, so every card is treated the same way
+  var k = f && f.hint && f.hint.kind; if (!k || k === "none") return null;
+  var wl = function (a) { return a.map(function (x) { return x.id + " (" + whyText(x.why) + ")"; }).join(", "); };
+  if (k === "wait") return h("div", {class: "sub go wait", text: "⏳ " + fmt(t("go_wait"), {list: wl(f.hint.with)})});
+  if (k === "not") return h("div", {class: "sub go wait", text: "⛔ " + fmt(t("go_not"), {list: wl(f.hint.with)})});
+  if (k === "ok") return h("div", {class: "sub go ok", text: "✓ " + fmt(t("go_ok"), {list: f.hint.ids.join(", ")})});
   return null;
 }
 function violText(v) { return t("viol_" + (v.type === "outside_scope" ? "outside" : v.type)).replace("{id}", v.with || "") + ": " + v.path; }
@@ -382,17 +380,11 @@ function render() {
 
 function renderNow() {
   var B = S.board, box = clear($("now")), tog = clear($("together")), picks = [];
-  S.nextIds = {};
-  B.lanes.forEach(function (l) {
-    var mine = B.items.filter(function (c) { return c.lane === l.id; });
-    var cur = mine.filter(function (c) { return c.state === "running" || c.state === "sent"; })[0] || mine.filter(function (c) { return c.state === "ready"; })[0] || mine.filter(turnOf)[0];
-    if (cur) S.nextIds[cur.id] = l.id;
-  });
   B.lanes.forEach(function (l) {
     if (S.laneOff[l.id]) return;
     var mine = B.items.filter(function (c) { return c.lane === l.id; });
     var running = mine.filter(function (c) { return c.state === "running" || c.state === "sent"; });
-    var ready = mine.filter(function (c) { return c.state === "ready"; });
+    var fo = B.focus && B.focus[l.id], fc = fo && byId(fo.id);
     var card = h("div", {class: "card lane-card", style: "--lane:" + laneColor(l.id)}, h("div", {class: "lh"}, h("span", {class: "dot"}), l.title || l.id, l.agent ? h("span", {class: "tag", style: "margin-left:auto", text: agentLabel(l.agent)}) : h("span", {style: "margin-left:auto"}), h("button", {class: "btn sm", style: "margin-left:8px", title: t("connect_help_short"), text: "⇄ " + t("connect"), onclick: function () { openConnect(l.id); }})));
     running.forEach(function (c) {
       var cl = c.claim;
@@ -401,40 +393,38 @@ function renderNow() {
         h("div", {class: "row"}, h("button", {class: "btn sm", text: t("copy"), onclick: function () { copyPrompt(c.id); }}), h("button", {class: "btn sm", text: t("release"), onclick: function () { act("release", c.id); }}),
           h("button", {class: "btn sm", text: "…", onclick: function () { openDrawer(c.id); }}))));
     });
-    if (ready.length) {
-      var c = ready[0]; picks.push(c);
-      card.appendChild(h("div", {class: "sub", text: t("next")}));
-      card.appendChild(h("div", {class: "big", text: c.id + " · " + c.title}));
-      var gh = startHint(c); if (gh) card.appendChild(gh);
-      card.appendChild(h("div", {class: "row"}, h("button", {class: "btn pri", text: t("copy"), onclick: function () { copyPrompt(c.id); }}),
-        h("button", {class: "btn", text: t("sent"), onclick: function () { act("sent", c.id, {}, t("sent")); }}), h("button", {class: "btn sm", text: "…", onclick: function () { openDrawer(c.id); }})));
-    } else if (!running.length) {
-      var wait = mine.filter(function (c) { return c.state === "waiting" || c.state === "blocked"; });
-      var dr = mine.filter(turnOf);
-      if (dr.length) {
-        var d = dr[0];
+    if (!running.length && fc) {
+      var hl = hintLine(fo);
+      if (fo.role === "ready") {
+        picks.push(fc);
+        card.appendChild(h("div", {class: "sub", text: t("next")}));
+        card.appendChild(h("div", {class: "big", text: fc.id + " · " + fc.title}));
+        if (hl) card.appendChild(hl);
+        card.appendChild(h("div", {class: "row"}, h("button", {class: "btn pri", text: t("copy"), onclick: function () { copyPrompt(fc.id); }}),
+          h("button", {class: "btn", text: t("sent"), onclick: function () { act("sent", fc.id, {}, t("sent")); }}), h("button", {class: "btn sm", text: "…", onclick: function () { openDrawer(fc.id); }})));
+      } else if (fo.role === "turn") {
         card.appendChild(h("div", {class: "sub", text: t("turn")}));
-        card.appendChild(h("div", {class: "big", text: d.id + " · " + d.title}));
-        var dh = startHint(d); if (dh) card.appendChild(dh);
-        card.appendChild(h("div", {class: "row"}, h("button", {class: "btn pri", title: t("genhint"), text: t("gen"), onclick: function () { copyGen(d.id); }}), h("button", {class: "btn sm", text: t("edit"), onclick: function () { openDrawer(d.id, true); }})));
-      } else if (wait.length) {
-        var w = wait[0];
-        if (w.waiting_on.length) card.appendChild(h("div", {class: "sub", text: t("nothing_ready") + waitText(w)}));
-        else card.appendChild(h("div", {class: "sub", text: t("nothing_ready_now")}));
-        card.appendChild(h("div", {class: "big", style: "margin-top:6px", text: w.id + " · " + w.title}));
-        var wh = w.waiting_on.length ? null : startHint(w); if (wh) card.appendChild(wh);
-      } else card.appendChild(h("div", {class: "empty", text: t("idle")}));
-    }
+        card.appendChild(h("div", {class: "big", text: fc.id + " · " + fc.title}));
+        if (hl) card.appendChild(hl);
+        card.appendChild(h("div", {class: "row"}, h("button", {class: "btn pri", title: t("genhint"), text: t("gen"), onclick: function () { copyGen(fc.id); }}), h("button", {class: "btn sm", text: t("edit"), onclick: function () { openDrawer(fc.id, true); }})));
+      } else {
+        // blocked (conflict) or waiting (dependencies): say why, with the same line as everywhere
+        card.appendChild(h("div", {class: "sub", text: fo.role === "waiting" ? t("nothing_ready") + waitText(fc) : t("nothing_ready_now")}));
+        card.appendChild(h("div", {class: "big", style: "margin-top:6px", text: fc.id + " · " + fc.title}));
+        if (hl && fo.role !== "waiting") card.appendChild(hl);
+        card.appendChild(h("div", {class: "row"}, h("button", {class: "btn sm", text: "…", onclick: function () { openDrawer(fc.id); }})));
+      }
+    } else if (!running.length) card.appendChild(h("div", {class: "empty", text: t("idle")}));
     box.appendChild(card);
   });
-  // can the picked tasks run together?
-  if (picks.length > 1) {
-    var conflicts = [];
-    picks.forEach(function (a) { a.cannot_run_with.forEach(function (x) { if (picks.some(function (p) { return p.id === x.id; }) && a.id < x.id) conflicts.push(a.id + " ✖ " + x.id + " (" + whyText(x.why) + ")"); }); });
-    var ids = picks.map(function (p) { return p.id; }).join(" ∥ ");
-    if (!conflicts.length) tog.appendChild(h("div", {class: "together good"}, "✔ " + t("can") + ids));
-    else tog.appendChild(h("div", {class: "together warn"}, "⚠ " + t("cant") + conflicts.join("; ")));
-  }
+  // one summary for the whole section, from the same server data as the cards
+  var sm = B.summary || {}, why = function (w) { return whyText(w); };
+  function line(cls, mark, text) { tog.appendChild(h("div", {class: "together " + cls}, mark + " " + text)); }
+  if ((sm.running || []).length) line("good", "▶", fmt(t("sum_running"), {list: sm.running.join(", ")}));
+  if ((sm.can_start || []).length) line("good", "✔", fmt(t(sm.can_start.length > 1 ? "sum_together" : "sum_ok"), {list: sm.can_start.join(sm.can_start.length > 1 ? " ∥ " : ", ")}));
+  (sm.choose || []).forEach(function (c) { line("warn", "⛔", fmt(t("sum_choose"), {list: c.ids.join(" / "), why: why(c.why)})); });
+  (sm.wait || []).forEach(function (w) { line("warn", "⏳", fmt(t("sum_wait"), {id: w.id, list: w.with.map(function (x) { return x.id + " (" + why(x.why) + ")"; }).join(", ")})); });
+  (sm.deps || []).forEach(function (d) { line("", "…", fmt(t("sum_deps"), {id: d.id, list: d.ids.join(", ")})); });
 }
 
 function renderInbox() {

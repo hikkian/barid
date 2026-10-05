@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- "What to do now" has a summary under the cards for the whole board: what runs now, what can start (together or one at a time), and what waits and why. The hint line on each card and this summary now come from one place on the server (`focus`, `summary` in `/api/board`) and are tested against every combination of states of two sessions, so no kind of task can be left without its line.
 - A next task that cannot start yet because of a conflict now shows the same coloured line with the reason ("⏳ Wait, conflict: M11 (GPU)") instead of a bare "Waiting for: M11".
 - A refused `claim` on a task that is already running now says who holds it and since when, and what to do if that was the same session before an interruption.
 - "What to do now" now also compares the next tasks of different sessions with each other, drafts whose turn has come included: "⛔ Do not run together with: M2 (GPU)" or "✓ Can run together with: …". Before, it only looked at tasks that were already running.
