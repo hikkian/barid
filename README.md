@@ -11,7 +11,7 @@
 **A prompt board for people who run several AI agent sessions at once.**
 Your planner agent writes the prompts, you copy them into the other sessions, and the board keeps track of the order, what depends on what, what may run in parallel, and who is holding the GPU. It ships as an **agent skill** (so your agent can run it for you) plus a small **browser panel** (so you can see and click).
 
-![Barid panel](docs/img/panel-dark.png)
+![Barid in action](docs/img/demo.gif)
 
 - **No more "which prompt next?"** The panel shows what to send now, and which tasks may run together or must wait ("blocked by T1: GPU").
 - **Agents manage the board themselves.** Install the skill; your agent adds tasks, writes missing prompts, records reports. Other sessions claim their task and finish it with a report.
@@ -129,6 +129,10 @@ Barid prevents accidents, not malice. Identities are self-declared (`--by`), so 
 
 Keep secrets out of prompts and notes: the board is plain JSON in your project folder (add `.barid/` to `.gitignore` unless you want to commit it).
 
+## Status
+
+Version 0.1, used every day by its author to run two agent sessions. Linux is the tested home; macOS and Windows are covered by CI but have had little real-world use, and nothing here has been tried on AMD or Intel GPUs (Barid itself does not care about the GPU: it only tracks who holds it). Bug reports with the output of `barid doctor` are very welcome.
+
 ## Requirements and platforms
 
 Python 3.9 or newer, any OS. CI runs the tests on Linux, macOS and Windows. The panel needs any modern browser. If you want it as an always-on-top window, open it in an app window (`chromium --app=URL`) and pin it with your window manager.
@@ -146,6 +150,6 @@ The whole tool is `skills/barid/scripts/barid.py` (logic, CLI, server) and `pane
 
 *Barid* (بريد) is the Arabic word for mail. It was also the name of the relay post of the early caliphates: couriers handed messages from station to station along a chain of posts. Prompts are the messages, your agent sessions are the stations, and this is the board that keeps the relay in order. (The first working title was RelayBoard; the old `rb`, `RB_*` and `.relayboard` names still work.)
 
-## License
+## Contributing, security, license
 
-MIT, see [LICENSE](LICENSE).
+See [CONTRIBUTING.md](CONTRIBUTING.md) and [SECURITY.md](SECURITY.md). MIT license, see [LICENSE](LICENSE). Copyright (c) 2026 hikkian.
