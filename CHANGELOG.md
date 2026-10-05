@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- A next task that cannot start yet because of a conflict now shows the same coloured line with the reason ("⏳ Wait, conflict: M11 (GPU)") instead of a bare "Waiting for: M11".
 - A refused `claim` on a task that is already running now says who holds it and since when, and what to do if that was the same session before an interruption.
 - "What to do now" now also compares the next tasks of different sessions with each other, drafts whose turn has come included: "⛔ Do not run together with: M2 (GPU)" or "✓ Can run together with: …". Before, it only looked at tasks that were already running.
 - `barid init` takes the language of the agent texts from the system language when `--lang` is not given, and the skill tells the agent to pass the language the user writes in.

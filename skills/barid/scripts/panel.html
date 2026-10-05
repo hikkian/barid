@@ -180,7 +180,7 @@ details>summary{cursor:pointer;color:var(--mute);margin:6px 0}
 (function () {
 var STR = {
  en: {now:"What to do now", flow:"Order, and what can run together", inbox_p:"Proposed by agents", inbox_r:"Reports to review", archive:"Archive", activity:"Activity log",
-  add:"+ New task", search:"Search…", lang:"Русский", idle:"Nothing to do for this session right now.", nothing_ready:"Nothing is ready yet. Waiting for: ",
+  add:"+ New task", search:"Search…", lang:"Русский", idle:"Nothing to do for this session right now.", nothing_ready:"Nothing is ready yet. Waiting for: ", nothing_ready_now:"Next in line, but it cannot start yet.",
   running:"In progress", held_by:"held by {name} since {time}", proposed_by:"proposed by {name}",
   stale:"the claim has expired: is the session still running?", copy:"Copy prompt", sent:"Mark as sent", release:"Return to queue", approve:"Approve", reject:"Reject",
   edit:"Edit", accept:"Accept report", sendback:"Send back", cancel:"Cancel task", restore:"Restore", gen:"Generate prompt",
@@ -199,7 +199,7 @@ var STR = {
    unknown_resource:"Unknown resource: {name}", cycle:"That would create a dependency loop", no_text:"{id} has no prompt text yet: generate or write it first", not_found:"No such task: {id}",
    wrong_state:"{id} is now “{status}”: this action is not possible", human_only:"Only you can do this", empty_note:"The note is empty", bad_status:"Unknown status", bad_outcome:"Unknown outcome", no_git:"This folder is not a git repository", bad_color:"Color must look like #feb83b", bad_agent:"Agent name: letters, digits, space, . _ + - (up to 24 characters)"}},
  ru: {now:"Что делать сейчас", flow:"Порядок работ и что можно запускать вместе", inbox_p:"Предложения агентов", inbox_r:"Отчёты на проверку", archive:"Архив", activity:"Журнал действий",
-  add:"+ Новая задача", search:"Поиск…", lang:"Қазақша", idle:"Для этой сессии сейчас нет задач.", nothing_ready:"Пока нечего запускать. Ожидает: ",
+  add:"+ Новая задача", search:"Поиск…", lang:"Қазақша", idle:"Для этой сессии сейчас нет задач.", nothing_ready:"Пока нечего запускать. Ожидает: ", nothing_ready_now:"Следующая по очереди, но запустить её пока нельзя.",
   running:"В работе", held_by:"у {name} с {time}", proposed_by:"предложил(а) {name}",
   stale:"срок занятия истёк: сессия ещё работает?", copy:"Скопировать промпт", sent:"Отметить как отправленный", release:"Вернуть в очередь", approve:"Одобрить", reject:"Отклонить",
   edit:"Редактировать", accept:"Принять отчёт", sendback:"Вернуть на доработку", cancel:"Отменить задачу", restore:"Восстановить", gen:"Сгенерировать промпт",
@@ -218,7 +218,7 @@ var STR = {
    unknown_resource:"Нет такого ресурса: {name}", cycle:"Получился бы цикл зависимостей", no_text:"У {id} ещё нет текста промпта: сначала сгенерируйте или напишите его", not_found:"Задачи {id} нет",
    wrong_state:"Задача {id} сейчас «{status}»: это действие невозможно", human_only:"Это может сделать только человек", empty_note:"Заметка пустая", bad_status:"Неизвестный статус", bad_outcome:"Неизвестный итог", no_git:"Эта папка не является git-репозиторием", bad_color:"Цвет в формате #feb83b", bad_agent:"Имя агента: буквы, цифры, пробел, . _ + - (до 24 знаков)"}},
  kk: {now:"Қазір не істеу керек", flow:"Жұмыс реті және қайсысын бірге іске қосуға болады", inbox_p:"Агенттердің ұсыныстары", inbox_r:"Тексеруге арналған есептер", archive:"Архив", activity:"Әрекеттер журналы",
-  add:"+ Жаңа тапсырма", search:"Іздеу…", lang:"English", idle:"Бұл сессия үшін қазір тапсырма жоқ.", nothing_ready:"Әзірге іске қосатын ештеңе жоқ. Күтілуде: ",
+  add:"+ Жаңа тапсырма", search:"Іздеу…", lang:"English", idle:"Бұл сессия үшін қазір тапсырма жоқ.", nothing_ready:"Әзірге іске қосатын ештеңе жоқ. Күтілуде: ", nothing_ready_now:"Кезектегі келесі, бірақ әзірге іске қосуға болмайды.",
   running:"Орындалуда", held_by:"{name} алды, {time} бастап", proposed_by:"{name} ұсынды",
   stale:"броньның мерзімі өтті: сессия әлі жұмыс істеп тұр ма?", copy:"Промптты көшіру", sent:"Жіберілді деп белгілеу", release:"Кезекке қайтару", approve:"Мақұлдау", reject:"Қабылдамау",
   edit:"Өзгерту", accept:"Есепті қабылдау", sendback:"Қайта жұмысқа қайтару", cancel:"Тапсырманы болдырмау", restore:"Қалпына келтіру", gen:"Промпт жасату",
@@ -419,8 +419,10 @@ function renderNow() {
         card.appendChild(h("div", {class: "row"}, h("button", {class: "btn pri", title: t("genhint"), text: t("gen"), onclick: function () { copyGen(d.id); }}), h("button", {class: "btn sm", text: t("edit"), onclick: function () { openDrawer(d.id, true); }})));
       } else if (wait.length) {
         var w = wait[0];
-        card.appendChild(h("div", {class: "sub", text: t("nothing_ready") + (w.waiting_on.length ? waitText(w) : w.conflicts.map(function (x) { return x.id; }).join(", "))}));
-        card.appendChild(h("div", {style: "margin-top:6px"}, w.id + " · " + w.title));
+        if (w.waiting_on.length) card.appendChild(h("div", {class: "sub", text: t("nothing_ready") + waitText(w)}));
+        else card.appendChild(h("div", {class: "sub", text: t("nothing_ready_now")}));
+        card.appendChild(h("div", {class: "big", style: "margin-top:6px", text: w.id + " · " + w.title}));
+        var wh = w.waiting_on.length ? null : startHint(w); if (wh) card.appendChild(wh);
       } else card.appendChild(h("div", {class: "empty", text: t("idle")}));
     }
     box.appendChild(card);
