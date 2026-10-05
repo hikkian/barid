@@ -732,7 +732,11 @@ def op_sent(d: dict, actor: Actor, iid: str) -> dict:
 def op_claim(d: dict, actor: Actor, iid: str, force: bool = False) -> list:
     it = get_item(d, iid)
     if it["status"] not in ("queued", "sent") and not force:
-        raise RBError(f"{iid} is {it['status']} and cannot be claimed (only queued or sent tasks can)", "wrong_state", id=iid, status=it["status"])
+        who = ""
+        if it["status"] == "running" and it.get("claim"):
+            cl = it["claim"]
+            who = f" Held by {cl.get('by', '?')} since {cl.get('at', '?')[:16].replace('T', ' ')} UTC. If that was you before an interruption, do not start: tell the person to press 'Return to queue' in the panel (or run `release {iid}`), then claim again."
+        raise RBError(f"{iid} is {it['status']} and cannot be claimed (only queued or sent tasks can).{who}", "wrong_state", id=iid, status=it["status"])
     comp = {c["id"]: c for c in compute(d)}[iid]
     if comp["waiting_on"] and not force:
         raise RBError(f"{iid} must wait for: {', '.join(comp['waiting_on'])}")

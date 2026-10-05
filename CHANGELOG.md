@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- A refused `claim` on a task that is already running now says who holds it and since when, and what to do if that was the same session before an interruption.
 - "What to do now" now also compares the next tasks of different sessions with each other, drafts whose turn has come included: "⛔ Do not run together with: M2 (GPU)" or "✓ Can run together with: …". Before, it only looked at tasks that were already running.
 - `barid init` takes the language of the agent texts from the system language when `--lang` is not given, and the skill tells the agent to pass the language the user writes in.
 - The language of the texts Barid writes for agents (footer, connection text, handoff) can now be changed: `barid lang en|ru|kk`. It is separate from the panel language.
