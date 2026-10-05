@@ -185,6 +185,16 @@ class EngineTests(unittest.TestCase):
         rb.mutate(self.path, lambda d: rb.op_finish(d, AGENT, "BENCH2", report="r.md", force=True))
         self.assertIn("SHORT", [x["id"] for x in task(self.d(), "BENCH2")["ran_with"]])
 
+    def test_claiming_in_two_lanes_under_one_name_warns(self):
+        add(self.path, "W1", lane="a")
+        add(self.path, "W2", lane="b")
+        rb.mutate(self.path, lambda d: rb.op_claim(d, AGENT, "W1"))
+        warnings = rb.mutate(self.path, lambda d: rb.op_claim(d, AGENT, "W2"))
+        self.assertTrue(any("own name" in w for w in warnings), warnings)
+        other = rb.Actor("agent", "worker-2")
+        add(self.path, "W3", lane="c")
+        self.assertFalse(any("own name" in w for w in (rb.mutate(self.path, lambda d: rb.op_claim(d, other, "W3")) or [])))
+
     def test_explain_names_every_rule_and_the_verdict(self):
         add(self.path, "X", lane="a", uses="gpu", profile="bench")
         add(self.path, "Y", lane="b", uses="gpu", noisy=True)

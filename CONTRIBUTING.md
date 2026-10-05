@@ -8,6 +8,8 @@ Thanks for looking. Barid is one Python file (`skills/barid/scripts/barid.py`) p
 python3 -m unittest discover -s tests -v
 ```
 
+The tests in `tests/test_ui.py` open the panel in Firefox (headless) and are skipped when Firefox is not installed; `BARID_SKIP_UI=1` skips them on purpose. To run only them: `python3 -m unittest tests.test_ui -v`.
+
 The suite covers the rules (permissions, dependencies, conflicts, outcomes), concurrency (threads and processes racing for one resource), the CLI end to end, the panel server (including its security checks) and the panel's texts.
 
 ## Things the tests enforce that are easy to forget

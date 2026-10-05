@@ -932,6 +932,11 @@ def op_claim(d: dict, actor: Actor, iid: str, force: bool = False) -> list:
             warnings.append(msg)
         else:
             raise RBError(f"refused: {msg}; wait for it to finish, or ask the person")
+    for other in d["items"]:
+        cl = other.get("claim") or {}
+        if other["status"] == "running" and other["id"] != iid and other["lane"] != it["lane"] and cl.get("by") == actor.name:
+            warnings.append(f"{actor.name} already holds {other['id']} in lane {other['lane']}: if this is another window, give each window its own name (--by) so that Barid can tell them apart")
+            break
     hours = float(d.get("policy", {}).get("lease_hours", 12))
     it["status"] = "running"
     it.pop("outcome", None)

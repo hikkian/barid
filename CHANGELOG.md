@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+- The panel is now tested in a real browser: 20 tests drive Firefox headless over Marionette (standard library only, `tests/test_ui.py`): language list, "+" new session, Connect, the Appearance menu, forms, drawer, review inbox, hints, colours of the status labels, narrow screens, Kazakh. They were checked against three bugs we had (a menu that closed, colourless status labels, a missing conflict hint). CI runs them on one Linux job; `BARID_SKIP_UI=1` skips them.
+- `?lang=en|ru|kk` in the panel link opens it in that language.
+- The task drawer lists the tasks it cannot run with (not only the running ones).
+- `claim` warns when one name holds running tasks in two sessions (probably two windows with the same name).
 ## 0.5.0 (2026-10-06)
 
 - Fix: the panel server no longer looks up its host name when it starts (`socket.getfqdn`), which could take half a minute or hang with a slow or broken DNS.

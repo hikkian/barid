@@ -18,6 +18,11 @@ jobs:
           python-version: ${{ matrix.python }}
       - name: Unit and end-to-end tests
         run: python -m unittest discover -s tests -v
+        env:
+          BARID_SKIP_UI: "1"
+      - name: Panel in a real browser (Firefox)
+        if: matrix.os == 'ubuntu-latest' && matrix.python == '3.12'
+        run: python -m unittest tests.test_ui -v
       - name: Example board builds and plans
         run: |
           python examples/build_example.py ./example-project
