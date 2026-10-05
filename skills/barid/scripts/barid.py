@@ -1287,10 +1287,10 @@ def cmd_doctor(args):
 def cmd_shim(args):
     me = str(Path(__file__).resolve())
     if os.name == "nt":
-        target = Path(os.environ.get("USERPROFILE", str(Path.home()))) / "bin" / "rb.cmd"
+        target = Path(os.environ.get("USERPROFILE", str(Path.home()))) / "bin" / "barid.cmd"
         body = f'@echo off\r\npython "{me}" %*\r\n'
     else:
-        target = Path.home() / ".local" / "bin" / "rb"
+        target = Path.home() / ".local" / "bin" / "barid"
         body = f'#!/bin/sh\nexec python3 "{me}" "$@"\n'
     target.parent.mkdir(parents=True, exist_ok=True)
     target.write_text(body, "utf-8")
