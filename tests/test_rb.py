@@ -432,6 +432,16 @@ class PanelI18nTests(unittest.TestCase):
         for key in re.findall(r'"(ok_\w+)"', self.html):
             self.assertIn(key, self.STR["en"], key)
 
+    def test_every_palette_exists_in_both_modes_and_has_a_name(self):
+        import re
+        for pal in ("teal", "graphite", "midnight"):
+            for mode in ("dark", "light"):
+                self.assertIn(f'html[data-pal="{pal}"][data-theme="{mode}"]', self.html)
+        listed = re.search(r"var PALS = \[(.*?)\]", self.html).group(1)
+        for pal in re.findall(r'"(\w+)"', listed):
+            for lang in ("en", "ru"):
+                self.assertIn("pal_" + pal, self.STR[lang])
+
     def test_every_error_code_raised_by_rb_has_a_translation(self):
         import re
         codes = set(re.findall(r'RBError\([^\n]*?, "(\w+)"', RB_PATH.read_text("utf-8")))
