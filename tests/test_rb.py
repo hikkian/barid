@@ -225,6 +225,16 @@ class CoreTests(unittest.TestCase):
         self.assertIn("claim T1", footer)
         self.assertIn("finish T1", footer)
 
+    def test_board_language_changes_the_agent_texts_only_for_the_person(self):
+        rb.mutate(self.path, lambda d: rb.op_board_lang(d, HUMAN, "ru"))
+        self.assertEqual(rb.load(self.path)["lang"], "ru")
+        rb.mutate(self.path, lambda d: rb.op_board_lang(d, HUMAN, "kz"))
+        self.assertEqual(rb.load(self.path)["lang"], "kk")
+        with self.assertRaises(rb.RBError):
+            rb.mutate(self.path, lambda d: rb.op_board_lang(d, HUMAN, "de"))
+        with self.assertRaises(rb.RBError):
+            rb.mutate(self.path, lambda d: rb.op_board_lang(d, AGENT, "en"))
+
     def test_connect_text_names_the_lane_and_the_next_command(self):
         rb.mutate(self.path, lambda d: rb.op_lane_edit(d, HUMAN, "main", agent="local"))
         d = rb.load(self.path)

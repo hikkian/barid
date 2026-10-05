@@ -104,4 +104,4 @@ Unless `policy.handoff` is false, the prompt of a task starts (before the footer
 
 ## Panel HTTP API (loopback only)
 
-`GET /` panel, `GET /api/board` (computed view), `GET /api/rev`, `GET /api/prompt/<id>`, `GET /api/gen/<id>`, `POST /api/act` (JSON `{action, id, args}`, header `X-Barid-Edit: 1`, `Origin` must match `Host`). Requests whose `Host` is not `localhost`, `127.0.0.1`, `[::1]` or `*.localhost` are refused. Systemd socket activation is supported (`LISTEN_FDS=1`).
+`GET /` panel, `GET /api/connect/<lane>` (the text that connects an agent window to a lane), `GET /api/board` (computed view), `GET /api/rev`, `GET /api/prompt/<id>`, `GET /api/gen/<id>`, `POST /api/act` (JSON `{action, id, args}`, header `X-Barid-Edit: 1`, `Origin` must match `Host`). Requests whose `Host` is not `localhost`, `127.0.0.1`, `[::1]` or `*.localhost` are refused. Systemd socket activation is supported (`LISTEN_FDS=1`).

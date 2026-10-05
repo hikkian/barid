@@ -878,6 +878,18 @@ def op_lane_add(d: dict, actor: Actor, lane_id: str, title=None, color=None, age
     return op_lane_edit(d, actor, lane_id, None, color, agent)
 
 
+def op_board_lang(d: dict, actor: Actor, lang: str) -> str:
+    """Language of the texts Barid writes for agents (footers, connection text, handoff). Not the panel language."""
+    if not direct_allowed(d, actor):
+        raise RBError("only the person (or a trusted planner agent) can change the board language", "human_only")
+    lang = "kk" if lang == "kz" else lang
+    if lang not in ("en", "ru", "kk"):
+        raise RBError("language must be en, ru or kk", "bad_lang")
+    d["lang"] = lang
+    log_event(d, actor, "lang", "", lang)
+    return lang
+
+
 def op_lane_edit(d: dict, actor: Actor, lane_id: str, title=None, color=None, agent=None) -> dict:
     """Name, colour and agent kind of a lane (a session). Colour '' or agent '' reset to the default."""
     if not direct_allowed(d, actor):
@@ -1338,6 +1350,8 @@ def apply_action(board: Path, req: dict):
             return op_cancel(d, h, iid, str(args.get("reason", "")))["status"]
         if a == "outcome":
             return op_outcome(d, h, iid, str(args.get("outcome", "")))["outcome"]
+        if a == "boardlang":
+            return {"lang": op_board_lang(d, h, str(args.get("lang", "")))}
         if a == "laneadd":
             lane = op_lane_add(d, h, iid, args.get("title"), args.get("color"), args.get("agent"))
             return {"id": lane["id"]}
@@ -1555,6 +1569,16 @@ def cmd_next(args):
     else:
         print(msg)
     sys.exit(2)
+
+
+def cmd_lang(args):
+    board = find_board(getattr(args, "board", None))
+    actor = cli_actor(args)
+    if not args.value:
+        print(load(board).get("lang", "en"))
+        return
+    mutate(board, lambda d: op_board_lang(d, actor, args.value))
+    print(f"board language (agent prompts): {'kk' if args.value == 'kz' else args.value}")
 
 
 def cmd_connect(args):
@@ -1888,6 +1912,8 @@ def build_parser() -> argparse.ArgumentParser:
     s.add_argument("--text", action="store_true")
     s = add("next", cmd_next, "print the next task that is ready for a lane (exit code 2 if none)")
     s.add_argument("--lane")
+    s = add("lang", cmd_lang, "show or set the language of the texts written for agents (en, ru, kk); the panel language is separate")
+    s.add_argument("value", nargs="?", choices=["en", "ru", "kk", "kz"])
     s = add("connect", cmd_connect, "print the message that connects an agent session to a lane (paste it as the session's first message)")
     s.add_argument("lane")
     s = add("gen", cmd_gen, "print the request that makes an agent write this task's prompt")
