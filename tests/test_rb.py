@@ -203,6 +203,20 @@ class CoreTests(unittest.TestCase):
         with self.assertRaises(rb.RBError):
             add(self.path, PLANNER, "bad id!", lane="main")
 
+    def test_lane_colour_and_agent_are_validated_and_trusted_only(self):
+        rb.mutate(self.path, lambda d: rb.op_lane_edit(d, HUMAN, "main", title="Build", color="#FEB83B", agent="codex"))
+        lane = rb.load(self.path)["lanes"][0]
+        self.assertEqual((lane["title"], lane["color"], lane["agent"]), ("Build", "#feb83b", "codex"))
+        for bad in ({"color": "red"}, {"color": "#12345"}, {"agent": "x" * 40}, {"agent": "<script>"}):
+            with self.assertRaises(rb.RBError):
+                rb.mutate(self.path, lambda d, b=bad: rb.op_lane_edit(d, HUMAN, "main", **b))
+        with self.assertRaises(rb.RBError):
+            rb.mutate(self.path, lambda d: rb.op_lane_edit(d, AGENT, "main", color="#000000"))
+        with self.assertRaises(rb.RBError):
+            rb.mutate(self.path, lambda d: rb.op_lane_edit(d, HUMAN, "nope", color="#000000"))
+        rb.mutate(self.path, lambda d: rb.op_lane_edit(d, HUMAN, "main", color="", agent=""))  # reset
+        self.assertEqual(rb.load(self.path)["lanes"][0]["color"], "")
+
     def test_failed_operation_does_not_change_the_file(self):
         before = self.path.read_text("utf-8")
         with self.assertRaises(rb.RBError):
@@ -561,6 +575,16 @@ class CliTests(unittest.TestCase):
         bad = self.run_rb("lane", "add", "x", "y", "--human", check=False)
         self.assertEqual(bad.returncode, 1)
         self.assertIn("usage", bad.stderr)
+
+    def test_lane_edit_command(self):
+        self.run_rb("init", "--lanes", "a,b")
+        self.run_rb("lane", "edit", "a", "--title", "Builder", "--color", "#aabbcc", "--agent", "claude", "--human")
+        out = self.run_rb("lane", "list").stdout
+        self.assertIn("Builder", out)
+        self.assertIn("#aabbcc", out)
+        self.assertIn("claude", out)
+        bad = self.run_rb("lane", "edit", "a", "--color", "blue", "--human", check=False)
+        self.assertEqual(bad.returncode, 1)
 
     def test_non_ascii_titles_do_not_crash_a_narrow_console(self):
         self.run_rb("init", "--lang", "ru")

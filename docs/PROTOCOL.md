@@ -12,6 +12,10 @@ The rules every client (CLI, panel, agent) follows, and the file format. Impleme
 
 Identity is advisory. The board protects against mistakes, not against a hostile process.
 
+## Lanes
+
+A lane is one agent session. `color` (`#rrggbb`, empty = the palette default) and `agent` (a free label up to 24 characters; known ones: `claude`, `codex`, `opencode`, `gemini`, `cursor`, `aider`, `local`) are cosmetic: they change how the panel draws the session, never what the board allows. Only the person or a trusted agent may edit lanes.
+
 ## Task states
 
 Stored `status`: `draft` (no prompt text yet), `proposed` (added by an untrusted agent, waits for approval), `queued`, `sent` (the person handed the prompt to a session), `running` (claimed), `review` (finished, report written), `done` (accepted), `cancelled`.
@@ -71,7 +75,7 @@ Active tasks are those in `sent` or `running`. `claim` is refused when it would 
 ```json
 {
   "schema": 1, "project": "name", "rev": 42, "created": "...", "updated": "...", "lang": "en",
-  "lanes": [{"id": "main", "title": "Main session"}],
+  "lanes": [{"id": "main", "title": "Main session", "color": "#7c5cff", "agent": "codex"}],
   "resources": {"gpu": {"label": "GPU", "exclusive": true}},
   "policy": {"direct_agents": ["planner"], "dependents_wait_for_accept": false, "lease_hours": 12, "footer": true},
   "context": ["README.md"],

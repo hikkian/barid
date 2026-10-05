@@ -113,7 +113,7 @@ label{font-size:12px;color:var(--mute);display:block;margin-bottom:3px}
 #toast.show{opacity:1}#toast.err{background:var(--bad);color:#fff}
 .empty{color:var(--mute);font-style:italic;padding:8px 2px}
 .themewrap{position:relative}
-#themepop{position:fixed;width:min(260px,calc(100vw - 16px));background:var(--panel);border:1px solid var(--line);border-radius:14px;box-shadow:var(--shadow);padding:12px;z-index:50}
+#themepop{position:fixed;width:min(330px,calc(100vw - 16px));max-height:82vh;overflow:auto;background:var(--panel);border:1px solid var(--line);border-radius:14px;box-shadow:var(--shadow);padding:12px;z-index:50}
 #themepop[hidden]{display:none}
 #themepop h4{margin:0 0 6px;font-size:12px;letter-spacing:.06em;text-transform:uppercase;color:var(--mute)}
 .seg{display:flex;border:1px solid var(--line);border-radius:10px;overflow:hidden;margin-bottom:12px}
@@ -122,6 +122,10 @@ label{font-size:12px;color:var(--mute);display:block;margin-bottom:3px}
 .pals{display:grid;grid-template-columns:1fr 1fr;gap:8px}
 .pal{display:flex;align-items:center;gap:8px;border:1px solid var(--line);background:var(--panel2);border-radius:10px;padding:6px 8px;font-size:13px;text-align:left}
 .pal.on{border-color:var(--ac);outline:1px solid var(--ac)}
+.lrow{display:grid;grid-template-columns:34px 1fr 34px;gap:6px;align-items:center;margin-bottom:8px}
+.lrow input[type=color]{width:34px;height:30px;padding:0;border:1px solid var(--line);border-radius:8px;background:transparent;cursor:pointer}
+.lrow input[type=text]{padding:4px 8px;font-size:13px}
+.lagent{grid-column:1/-1}
 .pal i{width:22px;height:22px;border-radius:50%;display:inline-block;border:1px solid rgba(128,128,128,.4)}
 details>summary{cursor:pointer;color:var(--mute);margin:6px 0}
 .ev{font-size:12.5px;color:var(--mute);padding:2px 0}
@@ -171,14 +175,14 @@ var STR = {
   status:"Status", notes:"Notes", addnote:"New note (Enter to save)", history:"History", report:"Report", needs:"Depends on", uses:"Resources", lane:"Session", when:"When", created:"Created by", claim:"Held by",
   prompt:"Prompt", noprompt:"There is no prompt text yet.", title:"Title", outline:"Outline (what the prompt must achieve)", needs_l:"Depends on (IDs, comma separated)", uses_l:"Resources (comma separated)",
   quiet:"needs a quiet machine", noisy:"creates load", id:"ID", text:"Prompt text", create:"Create", offline:"No connection to the board server. Retrying…",
-  copy_path:"Copy report path", reopen:"Reopen", why_paths:"same files", touches_l:"Files and folders it may change (comma separated)", files:"Files", workdir:"Checkout", branch:"Branch", viol_chip:"files need a look", viol_protected:"changed a protected file", viol_outside:"changed a file outside its scope", viol_collision:"touched a file that {id} is working on", changed_n:"{n} files changed on {branch}", viol_warn:"Barid found file changes you should look at before accepting.", updated:"updated", theme:"Appearance", mode_auto:"Auto", mode_light:"Light", mode_dark:"Dark", palette:"Colors", pal_forest:"Forest", pal_teal:"Teal", pal_graphite:"Graphite", pal_midnight:"Midnight", out:"Outcome", out_complete:"complete", out_partial:"partial", out_failed:"failed", out_none:"outcome not stated", accept_asis:"Accept as is", partial_warn:"The session stopped early or did not finish everything. Dependent tasks wait for your decision.", turn:"its turn has come", empty_flow:"No tasks yet. Ask your agent to add some, or press “+ New task”.",
+  copy_path:"Copy report path", reopen:"Reopen", sessions:"Sessions", color_reset:"Reset color", agent_ph:"Agent (claude, codex…)", ag_claude:"Claude Code", ag_codex:"Codex", ag_opencode:"OpenCode", ag_gemini:"Gemini CLI", ag_cursor:"Cursor", ag_aider:"Aider", ag_local:"Local model", why_paths:"same files", touches_l:"Files and folders it may change (comma separated)", files:"Files", workdir:"Checkout", branch:"Branch", viol_chip:"files need a look", viol_protected:"changed a protected file", viol_outside:"changed a file outside its scope", viol_collision:"touched a file that {id} is working on", changed_n:"{n} files changed on {branch}", viol_warn:"Barid found file changes you should look at before accepting.", updated:"updated", theme:"Appearance", mode_auto:"Auto", mode_light:"Light", mode_dark:"Dark", palette:"Colors", pal_forest:"Forest", pal_teal:"Teal", pal_graphite:"Graphite", pal_midnight:"Midnight", out:"Outcome", out_complete:"complete", out_partial:"partial", out_failed:"failed", out_none:"outcome not stated", accept_asis:"Accept as is", partial_warn:"The session stopped early or did not finish everything. Dependent tasks wait for your decision.", turn:"its turn has come", empty_flow:"No tasks yet. Ask your agent to add some, or press “+ New task”.",
   s:{ready:"ready to run",waiting:"waiting",blocked:"busy",queued:"queued",draft:"draft",proposed:"proposed",sent:"sent",running:"in progress",review:"to review",done:"done",cancelled:"cancelled"},
   with_:"Can run with", wait_:"Depends on", conf_:"Waiting for", why:{lane:"same session",quiet:"quiet and load do not mix"}, rev:"rev", snapshot:"This is a read-only snapshot",
   ok_sent:"Marked as sent", ok_release:"Returned to the queue", ok_approve:"Approved", ok_reject:"Rejected", ok_accept:"Report accepted", ok_cancel:"Task cancelled", ok_restore:"Task restored",
   ok_status:"Status changed", ok_requeued:"Returned to the queue", ok_note:"Note added", ok_outcome:"Outcome changed", ok_saved:"Saved", ok_created:"Task created",
   ERR:{exists:"A task with ID {id} already exists", bad_id:"ID: letters, digits, “.”, “_” or “-”, up to 32 characters", unknown_lane:"Unknown session: {lane}", unknown_task:"Unknown task in the dependency list: {id}",
    unknown_resource:"Unknown resource: {name}", cycle:"That would create a dependency loop", no_text:"{id} has no prompt text yet: generate or write it first", not_found:"No such task: {id}",
-   wrong_state:"{id} is now “{status}”: this action is not possible", human_only:"Only you can do this", empty_note:"The note is empty", bad_status:"Unknown status", bad_outcome:"Unknown outcome", no_git:"This folder is not a git repository"}},
+   wrong_state:"{id} is now “{status}”: this action is not possible", human_only:"Only you can do this", empty_note:"The note is empty", bad_status:"Unknown status", bad_outcome:"Unknown outcome", no_git:"This folder is not a git repository", bad_color:"Color must look like #feb83b", bad_agent:"Agent name: letters, digits, space, . _ + - (up to 24 characters)"}},
  ru: {now:"Что делать сейчас", flow:"Порядок работ и что можно запускать вместе", inbox_p:"Предложения агентов", inbox_r:"Отчёты на проверку", archive:"Архив", activity:"Журнал действий",
   add:"+ Новая задача", search:"Поиск…", lang:"English", idle:"Для этой сессии сейчас нет задач.", nothing_ready:"Пока нечего запускать. Ожидает: ",
   running:"В работе", held_by:"у {name} с {time}", proposed_by:"предложил(а) {name}",
@@ -190,14 +194,14 @@ var STR = {
   status:"Статус", notes:"Заметки", addnote:"Новая заметка (Enter — сохранить)", history:"История", report:"Отчёт", needs:"Зависит от", uses:"Ресурсы", lane:"Сессия", when:"Когда", created:"Автор", claim:"В работе у",
   prompt:"Промпт", noprompt:"Текста промпта ещё нет.", title:"Название", outline:"Суть (что должен сделать промпт)", needs_l:"Зависит от (ID через запятую)", uses_l:"Ресурсы (через запятую)",
   quiet:"нужна тишина", noisy:"создаёт нагрузку", id:"ID", text:"Текст промпта", create:"Создать", offline:"Нет связи с сервером доски. Пробую снова…",
-  copy_path:"Скопировать путь к отчёту", reopen:"Открыть заново", why_paths:"те же файлы", touches_l:"Какие файлы и папки можно менять (через запятую)", files:"Файлы", workdir:"Рабочая копия", branch:"Ветка", viol_chip:"проверьте файлы", viol_protected:"изменён защищённый файл", viol_outside:"изменён файл вне своей области", viol_collision:"тронут файл, с которым работает {id}", changed_n:"изменено файлов: {n} (ветка {branch})", viol_warn:"Barid нашёл изменения файлов, которые стоит проверить перед принятием.", updated:"обновлено", theme:"Оформление", mode_auto:"Авто", mode_light:"Светлая", mode_dark:"Тёмная", palette:"Цвета", pal_forest:"Лес", pal_teal:"Бирюза", pal_graphite:"Графит", pal_midnight:"Полночь", out:"Итог", out_complete:"выполнено полностью", out_partial:"выполнено частично", out_failed:"не удалось", out_none:"итог не указан", accept_asis:"Принять как есть", partial_warn:"Сессия остановилась раньше или сделала не всё. Зависимые задачи ждут вашего решения.", turn:"подошла очередь", empty_flow:"Задач пока нет. Попросите агента добавить их или нажмите «+ Новая задача».",
+  copy_path:"Скопировать путь к отчёту", reopen:"Открыть заново", sessions:"Сессии", color_reset:"Сбросить цвет", agent_ph:"Агент (claude, codex…)", ag_claude:"Claude Code", ag_codex:"Codex", ag_opencode:"OpenCode", ag_gemini:"Gemini CLI", ag_cursor:"Cursor", ag_aider:"Aider", ag_local:"Локальная модель", why_paths:"те же файлы", touches_l:"Какие файлы и папки можно менять (через запятую)", files:"Файлы", workdir:"Рабочая копия", branch:"Ветка", viol_chip:"проверьте файлы", viol_protected:"изменён защищённый файл", viol_outside:"изменён файл вне своей области", viol_collision:"тронут файл, с которым работает {id}", changed_n:"изменено файлов: {n} (ветка {branch})", viol_warn:"Barid нашёл изменения файлов, которые стоит проверить перед принятием.", updated:"обновлено", theme:"Оформление", mode_auto:"Авто", mode_light:"Светлая", mode_dark:"Тёмная", palette:"Цвета", pal_forest:"Лес", pal_teal:"Бирюза", pal_graphite:"Графит", pal_midnight:"Полночь", out:"Итог", out_complete:"выполнено полностью", out_partial:"выполнено частично", out_failed:"не удалось", out_none:"итог не указан", accept_asis:"Принять как есть", partial_warn:"Сессия остановилась раньше или сделала не всё. Зависимые задачи ждут вашего решения.", turn:"подошла очередь", empty_flow:"Задач пока нет. Попросите агента добавить их или нажмите «+ Новая задача».",
   s:{ready:"можно запускать",waiting:"ждёт",blocked:"занято",queued:"в очереди",draft:"черновик",proposed:"предложено",sent:"отправлено",running:"в работе",review:"на проверке",done:"выполнено",cancelled:"отменено"},
   with_:"Можно вместе с", wait_:"Ждёт задачи", conf_:"Ждёт завершения", why:{lane:"та же сессия",quiet:"тишина и нагрузка несовместимы"}, rev:"версия", snapshot:"Это снимок только для чтения",
   ok_sent:"Отмечено как отправленное", ok_release:"Возвращено в очередь", ok_approve:"Одобрено", ok_reject:"Отклонено", ok_accept:"Отчёт принят", ok_cancel:"Задача отменена", ok_restore:"Задача восстановлена",
   ok_status:"Статус изменён", ok_requeued:"Возвращено в очередь", ok_note:"Заметка добавлена", ok_outcome:"Итог изменён", ok_saved:"Сохранено", ok_created:"Задача создана",
   ERR:{exists:"Задача с ID {id} уже существует", bad_id:"ID: латинские буквы, цифры, «.», «_» или «-», до 32 символов", unknown_lane:"Нет такой сессии: {lane}", unknown_task:"Нет такой задачи в зависимостях: {id}",
    unknown_resource:"Нет такого ресурса: {name}", cycle:"Получился бы цикл зависимостей", no_text:"У {id} ещё нет текста промпта: сначала сгенерируйте или напишите его", not_found:"Задачи {id} нет",
-   wrong_state:"Задача {id} сейчас «{status}»: это действие невозможно", human_only:"Это может сделать только человек", empty_note:"Заметка пустая", bad_status:"Неизвестный статус", bad_outcome:"Неизвестный итог", no_git:"Эта папка не является git-репозиторием"}}
+   wrong_state:"Задача {id} сейчас «{status}»: это действие невозможно", human_only:"Это может сделать только человек", empty_note:"Заметка пустая", bad_status:"Неизвестный статус", bad_outcome:"Неизвестный итог", no_git:"Эта папка не является git-репозиторием", bad_color:"Цвет в формате #feb83b", bad_agent:"Имя агента: буквы, цифры, пробел, . _ + - (до 24 знаков)"}}
 };
 var S = {board:null, lang:"en", lanes:{}, sel:null, q:"", laneOff:{}, arch:false, act:false, editing:false, rev:-1, offline:false};
 try { S.lang = localStorage.getItem("rb.lang") || ""; S.arch = localStorage.getItem("rb.arch") === "1"; S.act = localStorage.getItem("rb.act") === "1"; } catch (e) {}
@@ -210,7 +214,7 @@ function errText(e) {
   var info = Object.assign({}, e.info || {}); if (info.status) info.status = st(info.status);
   return fmt(tpl, info);
 }
-var ACT_OK = {sent: "ok_sent", approve: "ok_approve", reject: "ok_reject", accept: "ok_accept", cancel: "ok_cancel", restore: "ok_restore", release: "ok_release", note: "ok_note", outcome: "ok_outcome", edit: "ok_saved", add: "ok_created"};
+var ACT_OK = {sent: "ok_sent", approve: "ok_approve", reject: "ok_reject", accept: "ok_accept", cancel: "ok_cancel", restore: "ok_restore", release: "ok_release", note: "ok_note", outcome: "ok_outcome", lane: "ok_saved", edit: "ok_saved", add: "ok_created"};
 function st(s) { return (STR[S.lang] || STR.en).s[s] || s; }
 function $(id) { return document.getElementById(id); }
 var PALS = ["forest", "teal", "graphite", "midnight"], SWATCH = {forest: "#34d399", teal: "#feb83b", graphite: "#6ee7b7", midnight: "#5aa9ff"};
@@ -249,7 +253,16 @@ function act(action, id, args, ok) {
 }
 function laneIndex(id) { var L = S.board.lanes; for (var i = 0; i < L.length; i++) if (L[i].id === id) return i; return 0; }
 function laneTitle(id) { var L = S.board.lanes; for (var i = 0; i < L.length; i++) if (L[i].id === id) return L[i].title || id; return id; }
-function laneColor(id) { return "var(--l" + (laneIndex(id) % 6) + ")"; }
+function laneObj(id) { var L = S.board.lanes; for (var i = 0; i < L.length; i++) if (L[i].id === id) return L[i]; return null; }
+function laneColor(id) { var l = laneObj(id); return l && l.color ? l.color : "var(--l" + (laneIndex(id) % 6) + ")"; }
+function fgFor(color) {
+  if (color.charAt(0) !== "#") return "var(--lanefg)";
+  var r = parseInt(color.slice(1, 3), 16), g = parseInt(color.slice(3, 5), 16), b = parseInt(color.slice(5, 7), 16);
+  return (0.299 * r + 0.587 * g + 0.114 * b) > 150 ? "#04141a" : "#fff";
+}
+function defaultLaneHex(id) { var v = getComputedStyle(document.documentElement).getPropertyValue("--l" + (laneIndex(id) % 6)).trim(); return /^#[0-9a-f]{6}$/i.test(v) ? v : "#888888"; }
+var AGENTS = ["claude", "codex", "opencode", "gemini", "cursor", "aider", "local"];
+function agentLabel(a) { if (!a) return ""; var d = STR[S.lang] || STR.en; return d["ag_" + a] != null ? d["ag_" + a] : a; }
 function byId(id) { var a = S.board.items; for (var i = 0; i < a.length; i++) if (a[i].id === id) return a[i]; return null; }
 function match(c) {
   if (S.laneOff[c.lane]) return false;
@@ -306,7 +319,7 @@ function render() {
   document.title = "Barid · " + B.project;
   // lane filter chips
   var lf = clear($("lanefilters"));
-  B.lanes.forEach(function (l) { lf.appendChild(h("button", {class: "pill" + (S.laneOff[l.id] ? "" : " on"), style: S.laneOff[l.id] ? "" : "background:" + laneColor(l.id) + ";border-color:" + laneColor(l.id) + ";color:var(--lanefg)", text: l.title || l.id, onclick: function () { S.laneOff[l.id] = !S.laneOff[l.id]; render(); }})); });
+  B.lanes.forEach(function (l) { lf.appendChild(h("button", {class: "pill" + (S.laneOff[l.id] ? "" : " on"), style: S.laneOff[l.id] ? "" : "background:" + laneColor(l.id) + ";border-color:" + laneColor(l.id) + ";color:" + fgFor(laneColor(l.id)), title: agentLabel(l.agent), text: l.title || l.id, onclick: function () { S.laneOff[l.id] = !S.laneOff[l.id]; render(); }})); });
   renderNow(); renderInbox(); renderFlow(); renderArchive(); renderActivity();
   if (S.sel && byId(S.sel)) renderDrawer(); else if (!S.editing) closeDrawer(true);
 }
@@ -318,7 +331,7 @@ function renderNow() {
     var mine = B.items.filter(function (c) { return c.lane === l.id; });
     var running = mine.filter(function (c) { return c.state === "running" || c.state === "sent"; });
     var ready = mine.filter(function (c) { return c.state === "ready"; });
-    var card = h("div", {class: "card lane-card", style: "--lane:" + laneColor(l.id)}, h("div", {class: "lh"}, h("span", {class: "dot"}), l.title || l.id));
+    var card = h("div", {class: "card lane-card", style: "--lane:" + laneColor(l.id)}, h("div", {class: "lh"}, h("span", {class: "dot"}), l.title || l.id, l.agent ? h("span", {class: "tag", style: "margin-left:auto", text: agentLabel(l.agent)}) : null));
     running.forEach(function (c) {
       var cl = c.claim;
       card.appendChild(h("div", {style: "margin-bottom:8px"}, h("div", {class: "sub", text: t("running")}), h("div", {class: "big", text: c.id + " · " + c.title}),
@@ -562,6 +575,22 @@ function renderThemePop() {
     g.appendChild(h("button", {class: "pal" + (S.pal === k ? " on" : ""), onclick: function () { S.pal = k; lsSet("rb.pal", k); applyTheme(); renderThemePop(); }}, h("i", {style: "background:" + SWATCH[k]}), t("pal_" + k)));
   });
   pop.appendChild(g);
+  if (S.board && S.board.lanes.length) {
+    pop.appendChild(h("h4", {style: "margin-top:14px", text: t("sessions")}));
+    var dl = h("datalist", {id: "agentlist"});
+    AGENTS.forEach(function (a) { dl.appendChild(h("option", {value: a})); });
+    pop.appendChild(dl);
+    S.board.lanes.forEach(function (l) {
+      var colorIn = h("input", {type: "color", value: l.color || defaultLaneHex(l.id), title: t("color_reset") ? "" : ""});
+      colorIn.addEventListener("change", function () { act("lane", l.id, {color: colorIn.value}); });
+      var reset = h("button", {class: "btn sm", text: "↺", title: t("color_reset"), onclick: function () { act("lane", l.id, {color: ""}).then(renderThemePop); }});
+      var titleIn = h("input", {type: "text", value: l.title || l.id});
+      titleIn.addEventListener("change", function () { act("lane", l.id, {title: titleIn.value}); });
+      var agentIn = h("input", {type: "text", list: "agentlist", value: l.agent || "", placeholder: t("agent_ph")});
+      agentIn.addEventListener("change", function () { act("lane", l.id, {agent: agentIn.value.trim()}); });
+      pop.appendChild(h("div", {class: "lrow"}, colorIn, titleIn, reset, h("span", {class: "lagent"}, agentIn)));
+    });
+  }
 }
 function toggleThemePop(open) {
   var pop = $("themepop"); var show = open === undefined ? pop.hidden : open;

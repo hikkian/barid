@@ -26,12 +26,14 @@ import webbrowser
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
-__version__ = "0.2.0"
+__version__ = "0.3.0"
 SCHEMA = 1
 HERE = Path(__file__).resolve().parent
 STATUSES = ("draft", "proposed", "queued", "sent", "running", "review", "done", "cancelled")
 ACTIVE = ("sent", "running")
 OUTCOMES = ("complete", "partial", "failed")  # how a finished task ended; only "complete" unlocks dependents by itself
+COLOR_RE = re.compile(r"^#[0-9a-fA-F]{6}$")
+AGENT_RE = re.compile(r"^[A-Za-z0-9 ._+-]{0,24}$")
 ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,31}$")
 DEFAULT_PORT = 8765
 DATA_DIRS = (".barid", ".relayboard")  # the second is the old name, still found
@@ -861,6 +863,27 @@ def op_protect(d: dict, actor: Actor, action: str, path: str = "") -> list:
     return lst
 
 
+def op_lane_edit(d: dict, actor: Actor, lane_id: str, title=None, color=None, agent=None) -> dict:
+    """Name, colour and agent kind of a lane (a session). Colour '' or agent '' reset to the default."""
+    if not direct_allowed(d, actor):
+        raise RBError("only the person (or a trusted planner agent) can change lanes", "human_only")
+    lane = next((l for l in d["lanes"] if l["id"] == lane_id), None)
+    if lane is None:
+        raise RBError(f"unknown lane {lane_id!r}", "unknown_lane", lane=lane_id)
+    if color is not None:
+        if color and not COLOR_RE.match(color):
+            raise RBError("color must look like #feb83b", "bad_color")
+        lane["color"] = color.lower()
+    if agent is not None:
+        if not AGENT_RE.match(agent):
+            raise RBError("agent: letters, digits, space, '.', '_', '+', '-', up to 24 characters", "bad_agent")
+        lane["agent"] = agent
+    if title is not None and title.strip():
+        lane["title"] = title.strip()[:60]
+    log_event(d, actor, "lane", lane_id, "edit")
+    return lane
+
+
 def op_purge(d: dict, actor: Actor, iid: str) -> None:
     require_human(actor, "purge a task for good")
     it = get_item(d, iid)
@@ -1165,6 +1188,9 @@ def apply_action(board: Path, req: dict):
             return op_cancel(d, h, iid, str(args.get("reason", "")))["status"]
         if a == "outcome":
             return op_outcome(d, h, iid, str(args.get("outcome", "")))["outcome"]
+        if a == "lane":
+            lane = op_lane_edit(d, h, iid, args.get("title"), args.get("color"), args.get("agent"))
+            return {"id": lane["id"]}
         if a == "restore":
             return op_restore(d, h, iid)["status"]
         if a == "sent":
@@ -1440,14 +1466,14 @@ def cmd_export(args):
 
 
 def _add_word(words, what: str):
-    """`add NAME` or just `NAME`; returns None for `list`."""
+    """`add NAME`, `edit NAME` or just `NAME`; returns None for `list`."""
     ws = list(words)
     if ws and ws[0] == "list":
         return None
-    if ws and ws[0] == "add":
+    if ws and ws[0] in ("add", "edit"):
         ws = ws[1:]
     if len(ws) != 1:
-        raise RBError(f"usage: barid {what} add NAME [--title/--label ...]  or  barid {what} list")
+        raise RBError(f"usage: barid {what} add NAME [options]  or  barid {what} list")
     return ws[0]
 
 
@@ -1519,20 +1545,25 @@ def cmd_lane(args):
     actor = cli_actor(args)
     lane_id = _add_word(args.words, "lane")
     if lane_id is None:
-        print("\n".join(f"{l['id']:<12} {l.get('title', '')}" for l in load(board)["lanes"]))
+        print("\n".join(f"{l['id']:<12} {l.get('title', ''):<24} {l.get('color', '') or '-':<8} {l.get('agent', '') or '-'}" for l in load(board)["lanes"]))
         return
     args.lane_id = lane_id
+    editing = args.words[0] == "edit"
 
     def fn(d):
         require_human_or_direct(d, actor)
-        if not ID_RE.match(args.lane_id):
-            raise RBError("bad lane id")
-        if any(l["id"] == args.lane_id for l in d["lanes"]):
-            raise RBError("lane exists")
-        d["lanes"].append({"id": args.lane_id, "title": args.title or args.lane_id})
-        log_event(d, actor, "lane", args.lane_id)
+        exists = any(l["id"] == lane_id for l in d["lanes"])
+        if editing and not exists:
+            raise RBError(f"unknown lane {lane_id!r}", "unknown_lane", lane=lane_id)
+        if not editing:
+            if not ID_RE.match(lane_id):
+                raise RBError("bad lane id", "bad_id")
+            if exists:
+                raise RBError("lane exists (use `barid lane edit` to change it)", "exists", id=lane_id)
+            d["lanes"].append({"id": lane_id, "title": args.title or lane_id})
+        op_lane_edit(d, actor, lane_id, args.title if editing else None, getattr(args, "color", None), getattr(args, "agent", None))
     mutate(board, fn)
-    print(f"lane {args.lane_id} added")
+    print(f"lane {lane_id} {'updated' if editing else 'added'}")
 
 
 def require_human_or_direct(d, actor):
@@ -1762,9 +1793,11 @@ def build_parser() -> argparse.ArgumentParser:
     s.add_argument("--base", help="start point, default HEAD")
     s = add("check", cmd_check, "show what could collide with a task (overlapping scopes, protected paths)")
     s.add_argument("id")
-    s = add("lane", cmd_lane, "add a lane (a session that receives prompts): `lane add ID --title T`, or `lane list`")
-    s.add_argument("words", nargs="+", metavar="[add] ID")
+    s = add("lane", cmd_lane, "a lane is a session that receives prompts: `lane add ID --title T --color #hex --agent codex`, `lane edit ID ...`, `lane list`")
+    s.add_argument("words", nargs="+", metavar="[add|edit] ID")
     s.add_argument("--title")
+    s.add_argument("--color", help="e.g. #feb83b; empty resets to the palette default")
+    s.add_argument("--agent", help="which agent runs there: claude, codex, opencode, gemini, cursor, aider, local, or any name (max 24 characters)")
     s = add("resource", cmd_resource, "define a resource tasks can use: `resource add NAME --label L`, or `resource list`")
     s.add_argument("words", nargs="+", metavar="[add] NAME")
     s.add_argument("--label")

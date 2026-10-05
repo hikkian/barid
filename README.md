@@ -107,7 +107,7 @@ This is **detection plus convention, not a sandbox**: an agent can still write a
 | **Details** | prompt text, notes, history, edit form, any status |
 | **Archive / Activity** | finished and cancelled tasks, the event log |
 
-English and Russian built in (auto-detected, switch in the header), light, dark or automatic mode and four colour palettes (Forest, Teal, Graphite, Midnight) from the *Appearance* button, works on a phone. The panel polls only while its tab is visible and costs nothing when closed: the server exits after 30 idle minutes (`barid open --idle-exit 0` keeps it).
+English and Russian built in (auto-detected, switch in the header), light, dark or automatic mode and four colour palettes (Forest, Teal, Graphite, Midnight) from the *Appearance* button, works on a phone. The same menu lets you **name and colour each session** and say which **agent** runs in it (Claude Code, Codex, OpenCode, Gemini CLI, Cursor, Aider, a local model, or any name); the agent shows as a badge on the session. The panel polls only while its tab is visible and costs nothing when closed: the server exits after 30 idle minutes (`barid open --idle-exit 0` keeps it).
 
 ![Details drawer](docs/img/panel-light-drawer.png)
 
@@ -129,6 +129,7 @@ barid add T3 --lane a --touches src/api --text-file p.md   # file scope: overlap
 barid protect add config/live.json        # no task may change it (verified at finish)
 barid worktree T3                         # an isolated git worktree and branch for the task
 barid check T3                            # what could collide with it
+barid lane edit a --title Builder --color "#7c5cff" --agent codex   # name, colour and agent of a session
 barid open                                   # panel;  barid export board.html  = read-only snapshot
 ```
 

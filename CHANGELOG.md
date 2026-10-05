@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.3.0 (2026-10-05)
+
+- Sessions get their own colour, name and agent kind (`barid lane edit ID --color --agent`, or the Sessions section of the Appearance menu); the agent shows as a badge.
+- Fix for macOS and Windows: paths are compared by real path, so symlinked project folders (macOS temp folders) and short Windows names no longer break the file checks.
+
 ## 0.2.0 (2026-10-05)
 
 Sessions no longer collide on files either.
