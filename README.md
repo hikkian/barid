@@ -9,13 +9,13 @@
 </p>
 
 **A prompt board for people who run several AI agent sessions at once.**
-Your planner agent writes the prompts, you copy them into the other sessions, and the board keeps track of the order, what depends on what, what may run in parallel, and who is holding the GPU. It ships as an **agent skill** (so your agent can run it for you) plus a small **browser panel** (so you can see and click).
+Your planner agent writes the prompts, you copy them into the other sessions, and the board keeps track of the order, what depends on what, what may run in parallel, and what could collide: a shared GPU or test server, the same files, or the same session. It ships as an **agent skill** (so your agent can run it for you) plus a small **browser panel** (so you can see and click).
 
 ![Barid in action](docs/img/demo.gif)
 
-- **No more "which prompt next?"** The panel shows what to send now, and which tasks may run together or must wait ("blocked by T1: GPU").
+- **No more "which prompt next?"** The panel shows what to send now, and which tasks may run together or must wait ("blocked by T1: GPU", "same files: src/api").
 - **Agents manage the board themselves.** Install the skill; your agent adds tasks, writes missing prompts, records reports. Other sessions claim their task and finish it with a report.
-- **Safe by construction.** Exclusive resources are leased, so two sessions cannot grab the GPU at once. Agent-added tasks wait for your approval. Nothing is ever deleted, only cancelled. Every change is logged.
+- **Safe by construction.** Exclusive resources (a GPU, a test server, "user present") are leased, and file scopes with a git check catch sessions that edit the same files, so sessions do not step on each other. Agent-added tasks wait for your approval. Nothing is ever deleted, only cancelled. Every change is logged.
 - **Zero dependencies, tiny, local.** One Python file (3.9+), one JSON file, a local panel that starts on demand and exits when idle. No account, no cloud, no telemetry.
 
 ## 60-second start
@@ -166,7 +166,7 @@ Keep secrets out of prompts and notes: the board is plain JSON in your project f
 
 ## Status
 
-Version 0.1, used every day by its author to run two agent sessions. Linux is the tested home; macOS and Windows are covered by CI but have had little real-world use, and nothing here has been tried on AMD or Intel GPUs (Barid itself does not care about the GPU: it only tracks who holds it). Bug reports with the output of `barid doctor` are very welcome.
+Version 0.4, used every day by its author to run two agent sessions. Linux is the tested home; macOS and Windows are covered by CI but have had little real-world use, and nothing here has been tried on AMD or Intel GPUs (Barid itself does not care about the GPU: it only tracks who holds it). Bug reports with the output of `barid doctor` are very welcome.
 
 ## Requirements and platforms
 
