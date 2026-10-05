@@ -8,6 +8,8 @@
 <img src="https://img.shields.io/badge/agent-skill-005b5d" alt="agent skill">
 </p>
 
+<p align="center">English · <a href="README.ru.md">Русский</a> · <a href="README.kz.md">Қазақша</a></p>
+
 **A prompt board for people who run several AI agent sessions at once.**
 Your planner agent writes the prompts, you copy them into the other sessions, and the board keeps track of the order, what depends on what, what may run in parallel, and what could collide: a shared GPU or test server, the same files, or the same session. It ships as an **agent skill** (so your agent can run it for you) plus a small **browser panel** (so you can see and click).
 
@@ -100,6 +102,27 @@ What makes them work as a team:
 - **A hint for small models.** A lane whose agent is `local` gets one extra line: work through the steps one at a time, run commands exactly as written, say so if a step is unclear.
 - **No collisions.** Exclusive resources, file scopes and separate worktrees apply across agents the same way (see above).
 
+## How is this different?
+
+Several tools already help with more than one agent. Barid is a small one with a different centre, so here is an honest map (as of October 2026; check their pages, they move fast):
+
+| | What it mainly does | How it differs from Barid |
+|---|---|---|
+| [Claude Squad](https://github.com/smtg-ai/claude-squad) | A terminal UI that runs several agents, each in its own git worktree | It launches and hosts the sessions; Barid does not launch anything, it plans the work and hands you the prompts |
+| [Vibe Kanban](https://github.com/BloopAI/vibe-kanban) | A kanban app that starts coding agents on cards and reviews the results | It orchestrates the agents itself; with Barid you stay in the middle and use the windows you already have |
+| [MCP Agent Mail](https://github.com/Dicklesworthstone/mcp_agent_mail) | Messaging between agents, with identities, inboxes and advisory file leases | Agents talk to each other through an MCP server; Barid has no agent-to-agent chat and needs no MCP |
+| [Aqua](https://github.com/vignesh07/aqua) | A shared task queue with atomic claiming and file locking for CLI agents | Closest in spirit. Aqua lets agents pick tasks from a queue; Barid also stores the prompt text, plans the order and the parallel steps, and records an honest outcome |
+| Claude Code agent teams | A lead agent that spawns and directs teammates inside Claude Code | Works inside one product; Barid works across products (Claude Code, Codex, OpenCode, a local model) |
+
+What Barid adds, in one line each:
+
+- **The prompt is the unit of work.** The board stores the text you will paste, can keep a task as a draft until the planner writes its prompt, and hands the result of a finished task to the next one.
+- **You stay in the loop on purpose.** Nothing is launched or controlled. Any chat window or terminal that can run a command works, and an agent can only propose, claim and finish its own task.
+- **Honest endings.** A stopped, partial or failed run never unlocks the tasks that depend on it by itself; you decide.
+- **One file, no daemon.** Python only, a JSON board, optional panel. No MCP server, no database, no API keys.
+
+Who it is not for: if you want agents to run unattended, split a goal into subtasks on their own and merge branches, use an orchestrator from the table. Barid is for people who prefer to keep the steering wheel.
+
 ## Keeping sessions out of each other's way
 
 Two sessions rarely fight over a GPU alone: they also overwrite each other's files. Barid handles this on four levels:
@@ -166,7 +189,9 @@ Keep secrets out of prompts and notes: the board is plain JSON in your project f
 
 ## Status
 
-Version 0.4, used every day by its author to run two agent sessions. Linux is the tested home; macOS and Windows are covered by CI but have had little real-world use, and nothing here has been tried on AMD or Intel GPUs (Barid itself does not care about the GPU: it only tracks who holds it). Bug reports with the output of `barid doctor` are very welcome.
+I built Barid for myself, to stop losing track of my own agent windows. If it is useful to you, please use it; ideas and bug reports are welcome, but it is a one-person project and I cannot promise fast answers.
+
+Version 0.4, used every day by its author to run two agent sessions. Linux is the tested home; macOS and Windows are covered by CI but have had little real-world use, and nothing here has been tried on AMD or Intel GPUs (Barid itself does not care about the GPU: it only tracks who holds a shared resource). Bug reports with the output of `barid doctor` are very welcome.
 
 ## Requirements and platforms
 

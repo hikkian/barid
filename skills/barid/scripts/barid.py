@@ -169,6 +169,8 @@ def load(path: Path) -> dict:
         raise RBError(f"board file is not valid JSON ({path}): {e}")
     if d.get("schema") != SCHEMA:
         raise RBError(f"unsupported board schema {d.get('schema')!r} (this barid understands {SCHEMA})")
+    if d.get("lang") == "kz":  # people write kz; the language code is kk
+        d["lang"] = "kk"
     d["_root"] = str(path.resolve().parent.parent)  # the project folder (real path); lives in memory only
     return d
 
@@ -196,7 +198,7 @@ def mutate(path: Path, fn):
 
 def new_board(project: str, lanes, lang: str = "en") -> dict:
     return {
-        "schema": SCHEMA, "project": project, "rev": 1, "created": now_iso(), "updated": now_iso(), "lang": lang,
+        "schema": SCHEMA, "project": project, "rev": 1, "created": now_iso(), "updated": now_iso(), "lang": "kk" if lang == "kz" else lang,
         "lanes": [{"id": i, "title": t} for i, t in lanes],
         "resources": {
             "gpu": {"label": "GPU", "exclusive": True},
@@ -936,6 +938,20 @@ FOOTER = {
         Трогай только задачу {id}: чужие задачи не меняй, не отменяй и не удаляй. Чтобы предложить следующую задачу:
         {py} "{rb}" --board "{board}" add <НОВЫЙ_ID> --lane <дорожка> --title "<заголовок>" --text-file <файл> --by "<имя твоего агента>"
         (она сохранится как предложение, пользователь его одобрит)."""),
+    "kk": textwrap.dedent("""\
+        ---
+        Barid есебі: бұл тапсырма ({id}) ортақ тақтада тұр. Python 3 керек, ештеңе орнату қажет емес.
+        1. Жұмысты бастамас бұрын:  {py} "{rb}" --board "{board}" claim {id} --by "<агентіңнің аты>"
+           Команда бас тартса, ТОҚТА да, себебін пайдаланушыға айт.
+        2. Тоқтап, есебіңді жазғаннан кейін:
+           {py} "{rb}" --board "{board}" finish {id} --report "<есебіңнің жолы>" --outcome <complete|partial|failed> --by "<агентіңнің аты>"
+           Нәтижеңді адал бағала: complete = барлық қабылдау тексерулері орындалды және ештеңе қалмады; partial = ерте тоқтадың
+           (қауіпсіздік шегі, мерзім, қате) немесе бір бөлігі жасалмады; failed = негізгі мақсатқа жетпедің. Тек complete ғана
+           тәуелді тапсырмаларды өздігінен іске қосады.
+        3. Жұмыс барысындағы жазба (міндетті емес):  {py} "{rb}" --board "{board}" note {id} "<мәтін>" --by "<агентіңнің аты>"
+        Тек {id} тапсырмасына тиіс: басқа тапсырмаларды өзгертпе, болдырма және жойма. Келесі тапсырманы ұсыну үшін:
+        {py} "{rb}" --board "{board}" add <ЖАҢА_ID> --lane <сессия> --title "<атауы>" --text-file <файл> --by "<агентіңнің аты>"
+        (ол ұсыныс болып сақталады, пайдаланушы мақұлдайды)."""),
 }
 
 GEN = {
@@ -975,6 +991,24 @@ GEN = {
         Когда текст готов, сохрани его в файл и запиши командой:
         {py} "{rb}" --board "{board}" edit {id} --text-file <этот файл> --by "<имя твоего агента>"
         """),
+    "kk": textwrap.dedent("""\
+        Barid жобасының "{project}" тапсырмасына {id} ("{title}") толық, өздігінен жеткілікті промпт жаз.
+        Промпт біздің әңгімені көрмеген басқа ЖИ-агент сессиясына ("{lane}") қойылады, сондықтан онда бәрі жазылуы керек.
+
+        Тапсырманың мақсаты және қысқаша мазмұны:
+        {outline}
+
+        Тапсырма туралы деректер: сессия {lane}; тәуелді: {needs}; ресурстар: {uses}; процессордың тыныштығы керек: {quiet}; жүктеме жасайды: {noisy}.
+        {reports}{context}
+        Мына қаңқаны ұста (тек сәйкес бөлімдерді қалдыр):
+        {template}
+
+        Мәтінге қойылатын талаптар: нақты қадамдар, нақты жолдар мен командалар, қатаң мерзім, өлшенетін қабылдау
+        критерийлері, нені ТҮРТПЕУ керек және есепті қайда жазу керек. Barid есебі туралы соңғы бөлікті қоспа: тақта оны өзі қосады.
+
+        Мәтін дайын болғанда, оны файлға сақтап, мына командамен жаз:
+        {py} "{rb}" --board "{board}" edit {id} --text-file <сол файл> --by "<агентіңнің аты>"
+        """),
 }
 
 DEFAULT_TEMPLATE = textwrap.dedent("""\
@@ -997,6 +1031,9 @@ SCOPE_FOOTER = {
     "ru": ("Файлы и безопасность (задано доской):", "- Меняй только эти файлы и папки: {touches}", "- Никогда не меняй защищённые пути: {protect}",
            "- Работай только в {workdir} (ветка {branch}); другие копии проекта не трогай.",
            "В конце Barid сверит файлы и отметит для человека всё, что вне этого списка."),
+    "kk": ("Файлдар және қауіпсіздік (тақта белгілеген):", "- Тек мына файлдар мен қалталарды өзгерт: {touches}", "- Мына қорғалған жолдарды ешқашан өзгертпе: {protect}",
+           "- Тек {workdir} ішінде жұмыс істе (тармақ {branch}); жобаның басқа көшірмелеріне тиіспе.",
+           "Соңында Barid файлдарды салыстырып, осы тізімнен тыс нәрсенің бәрін адамға белгілейді."),
 }
 
 
@@ -1037,6 +1074,14 @@ CONNECT = {
         2. Если там сказано, что ничего нет готового, сообщи об этом пользователю и остановись. Не придумывай работу.
         3. Когда закончил задачу и записал отчёт, снова запусти команду выше.
         Правила: работай только с задачами линии {lane}; не используй --human и --force и не правь board.json руками; если команда отказала, остановись и сообщи пользователю причину."""),
+    "kk": textwrap.dedent("""\
+        Сен "{project}" жобасының "{title}" сессиясысың (id `{lane}`{agent}). Саған арналған промпттар ортақ Barid тақтасынан келеді. Тек Python 3 керек.
+        Қалай жұмыс істеу керек:
+        1. Тақтадан келесі тапсырмаңды сұра:  {py} "{rb}" --board "{board}" next --lane {lane}
+           Ол тапсырма промптын басып шығарады, оның соңында осы тапсырманы алу және аяқтау командалары бар. Промпттағыны дәл орында.
+        2. Егер ештеңе дайын емес десе, пайдаланушыға хабарла да, тоқта. Жұмыс ойлап таппа.
+        3. Тапсырманы аяқтап, есебін жазғаннан кейін, жоғарыдағы команданы қайта іске қос.
+        Ережелер: тек `{lane}` сессиясының тапсырмаларымен жұмыс істе; --human мен --force пайдаланба және board.json файлын қолмен өзгертпе; команда бас тартса, тоқта да, себебін пайдаланушыға айт."""),
 }
 
 
@@ -1058,11 +1103,14 @@ HANDOFF = {
            "files": "files changed", "note": "note", "unstated": "not stated"},
     "ru": {"head": "Передача от задач, на которых строится эта (прочитай сначала):", "outcome": "итог", "report": "отчёт", "by": "делал", "branch": "ветка",
            "files": "изменено файлов", "note": "заметка", "unstated": "не указан"},
+    "kk": {"head": "Бұл тапсырма сүйенетін тапсырмалардан келген табыс (алдымен оқы):", "outcome": "нәтиже", "report": "есеп", "by": "орындаған", "branch": "тармақ",
+           "files": "өзгерген файлдар", "note": "жазба", "unstated": "көрсетілмеген"},
 }
 
 AGENT_HINT = {
     "en": "You may be a smaller or local model: work through the steps one at a time, run the commands exactly as written, and say so in your report if a step is unclear instead of guessing.",
     "ru": "Ты можешь быть небольшой или локальной моделью: выполняй шаги по одному, запускай команды ровно как написано, а если шаг неясен, скажи об этом в отчёте, а не угадывай.",
+    "kk": "Сен шағын немесе жергілікті модель болуың мүмкін: қадамдарды бір-бірлеп орында, командаларды дәл жазылғандай іске қос, ал қадам түсініксіз болса, болжамай, есепте солай деп жаз.",
 }
 
 
@@ -1129,8 +1177,8 @@ def gen_request(d: dict, it: dict, board: Path) -> str:
         if r:
             reports.append(f"- {n}: {r}")
     ctx = d.get("context", [])
-    head_r = ("Reports of the tasks this one depends on (read them first):\n" if lang == "en" else "Отчёты задач, от которых зависит эта (прочитай сначала):\n")
-    head_c = ("Project files worth reading:\n" if lang == "en" else "Файлы проекта, которые стоит прочитать:\n")
+    head_r = ("Reports of the tasks this one depends on (read them first):\n" if lang == "en" else "Бұл тапсырма тәуелді тапсырмалардың есептері (алдымен оқы):\n" if lang == "kk" else "Отчёты задач, от которых зависит эта (прочитай сначала):\n")
+    head_c = ("Project files worth reading:\n" if lang == "en" else "Жоба файлдары, оқуға тұрарлық:\n" if lang == "kk" else "Файлы проекта, которые стоит прочитать:\n")
     return GEN.get(lang, GEN["en"]).format(
         id=it["id"], title=it["title"], project=d.get("project", ""), lane=next((l.get("title") or l["id"] for l in d["lanes"] if l["id"] == it["lane"]), it["lane"]), outline=it.get("outline") or it["title"],
         needs=", ".join(it.get("needs", [])) or "-", uses=", ".join(it.get("uses", [])) or "-",
@@ -1802,7 +1850,7 @@ def build_parser() -> argparse.ArgumentParser:
     s = add("init", cmd_init, "create a board in .barid/ of the current folder")
     s.add_argument("--project")
     s.add_argument("--lanes", default="main,second", help="comma list, id or id:Title (one lane per agent session)")
-    s.add_argument("--lang", default="en", choices=["en", "ru"])
+    s.add_argument("--lang", default="en", choices=["en", "ru", "kk", "kz"])
     s.add_argument("--force", action="store_true")
     add("where", cmd_where, "print the board file in use")
 

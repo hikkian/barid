@@ -190,7 +190,7 @@ var STR = {
    unknown_resource:"Unknown resource: {name}", cycle:"That would create a dependency loop", no_text:"{id} has no prompt text yet: generate or write it first", not_found:"No such task: {id}",
    wrong_state:"{id} is now “{status}”: this action is not possible", human_only:"Only you can do this", empty_note:"The note is empty", bad_status:"Unknown status", bad_outcome:"Unknown outcome", no_git:"This folder is not a git repository", bad_color:"Color must look like #feb83b", bad_agent:"Agent name: letters, digits, space, . _ + - (up to 24 characters)"}},
  ru: {now:"Что делать сейчас", flow:"Порядок работ и что можно запускать вместе", inbox_p:"Предложения агентов", inbox_r:"Отчёты на проверку", archive:"Архив", activity:"Журнал действий",
-  add:"+ Новая задача", search:"Поиск…", lang:"English", idle:"Для этой сессии сейчас нет задач.", nothing_ready:"Пока нечего запускать. Ожидает: ",
+  add:"+ Новая задача", search:"Поиск…", lang:"Қазақша", idle:"Для этой сессии сейчас нет задач.", nothing_ready:"Пока нечего запускать. Ожидает: ",
   running:"В работе", held_by:"у {name} с {time}", proposed_by:"предложил(а) {name}",
   stale:"срок занятия истёк: сессия ещё работает?", copy:"Скопировать промпт", sent:"Отметить как отправленный", release:"Вернуть в очередь", approve:"Одобрить", reject:"Отклонить",
   edit:"Редактировать", accept:"Принять отчёт", sendback:"Вернуть на доработку", cancel:"Отменить задачу", restore:"Восстановить", gen:"Сгенерировать промпт",
@@ -207,7 +207,26 @@ var STR = {
   ok_status:"Статус изменён", ok_requeued:"Возвращено в очередь", ok_note:"Заметка добавлена", ok_outcome:"Итог изменён", ok_saved:"Сохранено", ok_created:"Задача создана",
   ERR:{exists:"Задача с ID {id} уже существует", bad_id:"ID: латинские буквы, цифры, «.», «_» или «-», до 32 символов", unknown_lane:"Нет такой сессии: {lane}", unknown_task:"Нет такой задачи в зависимостях: {id}",
    unknown_resource:"Нет такого ресурса: {name}", cycle:"Получился бы цикл зависимостей", no_text:"У {id} ещё нет текста промпта: сначала сгенерируйте или напишите его", not_found:"Задачи {id} нет",
-   wrong_state:"Задача {id} сейчас «{status}»: это действие невозможно", human_only:"Это может сделать только человек", empty_note:"Заметка пустая", bad_status:"Неизвестный статус", bad_outcome:"Неизвестный итог", no_git:"Эта папка не является git-репозиторием", bad_color:"Цвет в формате #feb83b", bad_agent:"Имя агента: буквы, цифры, пробел, . _ + - (до 24 знаков)"}}
+   wrong_state:"Задача {id} сейчас «{status}»: это действие невозможно", human_only:"Это может сделать только человек", empty_note:"Заметка пустая", bad_status:"Неизвестный статус", bad_outcome:"Неизвестный итог", no_git:"Эта папка не является git-репозиторием", bad_color:"Цвет в формате #feb83b", bad_agent:"Имя агента: буквы, цифры, пробел, . _ + - (до 24 знаков)"}},
+ kk: {now:"Қазір не істеу керек", flow:"Жұмыс реті және қайсысын бірге іске қосуға болады", inbox_p:"Агенттердің ұсыныстары", inbox_r:"Тексеруге арналған есептер", archive:"Архив", activity:"Әрекеттер журналы",
+  add:"+ Жаңа тапсырма", search:"Іздеу…", lang:"English", idle:"Бұл сессия үшін қазір тапсырма жоқ.", nothing_ready:"Әзірге іске қосатын ештеңе жоқ. Күтілуде: ",
+  running:"Орындалуда", held_by:"{name} алды, {time} бастап", proposed_by:"{name} ұсынды",
+  stale:"броньның мерзімі өтті: сессия әлі жұмыс істеп тұр ма?", copy:"Промптты көшіру", sent:"Жіберілді деп белгілеу", release:"Кезекке қайтару", approve:"Мақұлдау", reject:"Қабылдамау",
+  edit:"Өзгерту", accept:"Есепті қабылдау", sendback:"Қайта жұмысқа қайтару", cancel:"Тапсырманы болдырмау", restore:"Қалпына келтіру", gen:"Промпт жасату",
+  genhint:"ЖИ-агентіңізге арналған сұрауды көшіреді. Агент промптты жазып, осы жерге сақтайды.",
+  copied:"Көшірілді", copied_gen:"Сұрау көшірілді. ЖИ-агентіңізге қойыңыз.", saved:"Сақталды", close:"Жабу", save:"Сақтау", step:"Қадам", together:"бір мезгілде орындалуы мүмкін", after:"кейін",
+  blocked_by:"күтіп тұр:", next:"Келесі", can:"Мыналарды бір мезгілде іске қосуға болады: ", cant:"Бірінен соң бірін орындаңыз (қайшылық): ",
+  status:"Күйі", notes:"Жазбалар", addnote:"Жаңа жазба (сақтау үшін Enter)", history:"Тарих", report:"Есеп", needs:"Тәуелді", uses:"Ресурстар", lane:"Сессия", when:"Қашан", created:"Жасаған", claim:"Алған",
+  prompt:"Промпт", noprompt:"Промпт мәтіні әлі жоқ.", title:"Атауы", outline:"Қысқаша мазмұны (промпт нені орындауы керек)", needs_l:"Тәуелділік (ID, үтір арқылы)", uses_l:"Ресурстар (үтір арқылы)",
+  quiet:"тыныштық керек", noisy:"жүктеме жасайды", id:"ID", text:"Промпт мәтіні", create:"Жасау", offline:"Тақта серверімен байланыс жоқ. Қайта көріп жатырмыз…",
+  copy_path:"Есеп жолын көшіру", reopen:"Қайта ашу", sessions:"Сессиялар", lane_new:"Жаңа сессия", lane_name_ph:"Сессия атауы (мысалы: Codex, тесттер)", agent_which:"Онда қай агент жұмыс істейді?", lane_create:"Сессия жасау", lane_created:"«{name}» сессиясы жасалды", connect:"Қосу", connect_help_short:"Агент терезесін осы сессияға қалай қосуға болады", connect_title:"«{name}» сессиясын қосу", connect_help:"Сол агентті (Codex, Claude Code…) жоба қалтасында ашып, осы мәтінді бірінші хабарлама ретінде қойыңыз. Содан кейін ол тапсырмаларды тақтадан өзі алады.", copy_connect:"Қосу мәтінін көшіру", color_reset:"Түсті бастапқыға қайтару", agent_ph:"Агент (claude, codex…)", ag_claude:"Claude Code", ag_codex:"Codex", ag_opencode:"OpenCode", ag_gemini:"Gemini CLI", ag_cursor:"Cursor", ag_aider:"Aider", ag_local:"Жергілікті модель", why_paths:"сол файлдар", touches_l:"Өзгерте алатын файлдар мен қалталар (үтір арқылы)", files:"Файлдар", workdir:"Жұмыс көшірмесі", branch:"Тармақ", viol_chip:"файлдарды қараңыз", viol_protected:"қорғалған файлды өзгертті", viol_outside:"өз аймағынан тыс файлды өзгертті", viol_collision:"{id} жұмыс істеп жатқан файлға тиді", changed_n:"өзгерген файл: {n} ({branch} тармағы)", viol_warn:"Barid қабылдамас бұрын қарап шығу керек файл өзгерістерін тапты.", updated:"жаңартылды", theme:"Көрініс", mode_auto:"Авто", mode_light:"Ашық", mode_dark:"Қараңғы", palette:"Түстер", pal_forest:"Орман", pal_teal:"Көгілдір", pal_graphite:"Графит", pal_midnight:"Түн жарымы", out:"Нәтиже", out_complete:"толық орындалды", out_partial:"ішінара орындалды", out_failed:"орындалмады", out_none:"нәтиже көрсетілмеген", accept_asis:"Қалай болса солай қабылдау", partial_warn:"Сессия ерте тоқтады немесе бәрін аяқтамады. Тәуелді тапсырмалар сіздің шешіміңізді күтеді.", turn:"оның кезегі келді", empty_flow:"Тапсырма әзірге жоқ. Агентіңізден қосуды сұраңыз немесе «+ Жаңа тапсырма» түймесін басыңыз.",
+  s:{ready:"іске дайын",waiting:"күтуде",blocked:"бос емес",queued:"кезекте",draft:"жоба",proposed:"ұсынылған",sent:"жіберілген",running:"орындалуда",review:"тексеруде",done:"дайын",cancelled:"болдырылмаған"},
+  with_:"Бірге орындалады", wait_:"Тәуелді", conf_:"Күтуде", why:{lane:"сол сессия",quiet:"тыныштық пен жүктеме сыймайды"}, rev:"нұсқа", snapshot:"Бұл тек оқуға арналған көшірме",
+  ok_sent:"Жіберілді деп белгіленді", ok_release:"Кезекке қайтарылды", ok_approve:"Мақұлданды", ok_reject:"Қабылданбады", ok_accept:"Есеп қабылданды", ok_cancel:"Тапсырма болдырылмады", ok_restore:"Тапсырма қалпына келтірілді",
+  ok_status:"Күйі өзгертілді", ok_requeued:"Кезекке қайтарылды", ok_note:"Жазба қосылды", ok_outcome:"Нәтиже өзгертілді", ok_saved:"Сақталды", ok_created:"Тапсырма жасалды",
+  ERR:{exists:"ID {id} бар тапсырма әлдеқашан бар", bad_id:"ID: әріптер, цифрлар, «.», «_» немесе «-», 32 таңбаға дейін", unknown_lane:"Белгісіз сессия: {lane}", unknown_task:"Тәуелділік тізіміндегі белгісіз тапсырма: {id}",
+   unknown_resource:"Белгісіз ресурс: {name}", cycle:"Бұл тәуелділік циклін тудырар еді", no_text:"{id} тапсырмасында промпт мәтіні әлі жоқ: алдымен оны жасатыңыз немесе жазыңыз", not_found:"Мұндай тапсырма жоқ: {id}",
+   wrong_state:"{id} тапсырмасы қазір «{status}» күйінде: бұл әрекет мүмкін емес", human_only:"Мұны тек сіз істей аласыз", empty_note:"Жазба бос", bad_status:"Белгісіз күй", bad_outcome:"Белгісіз нәтиже", no_git:"Бұл қалта git репозиторийі емес", bad_color:"Түс #feb83b сияқты болуы керек", bad_agent:"Агент атауы: әріптер, цифрлар, бос орын, . _ + - (24 таңбаға дейін)"}}
 };
 var S = {board:null, lang:"en", lanes:{}, sel:null, q:"", laneOff:{}, arch:false, act:false, editing:false, rev:-1, offline:false};
 try { S.lang = localStorage.getItem("rb.lang") || ""; S.arch = localStorage.getItem("rb.arch") === "1"; S.act = localStorage.getItem("rb.act") === "1"; } catch (e) {}
@@ -284,7 +303,7 @@ function match(c) {
   var q = S.q.toLowerCase();
   return (c.id + " " + c.title + " " + (c.outline || "") + " " + (c.text || "")).toLowerCase().indexOf(q) >= 0;
 }
-function fmtTime(s) { if (!s) return ""; var d = new Date(s); return isNaN(d) ? s : d.toLocaleString(S.lang === "ru" ? "ru-RU" : "en-US", {month: "short", day: "numeric", hour: "2-digit", minute: "2-digit"}); }
+function fmtTime(s) { if (!s) return ""; var d = new Date(s); return isNaN(d) ? s : d.toLocaleString(S.lang === "ru" ? "ru-RU" : S.lang === "kk" ? "kk-KZ" : "en-US", {month: "short", day: "numeric", hour: "2-digit", minute: "2-digit"}); }
 function outLabel(o) { return o === "complete" ? t("out_complete") : o === "partial" ? t("out_partial") : o === "failed" ? t("out_failed") : t("out_none"); }
 function hasViol(c) { return !!(c.violations && c.violations.length); }
 function badOutcome(c) { return c.state === "review" && (c.outcome !== "complete" || hasViol(c)); }
@@ -327,7 +346,7 @@ function setStatic() {
 
 function render() {
   var B = S.board; if (!B) return;
-  if (!S.lang) S.lang = B.lang === "ru" ? "ru" : ((navigator.language || "en").slice(0, 2) === "ru" ? "ru" : "en");
+  if (!STR[S.lang]) { var nl = (navigator.language || "en").slice(0, 2); S.lang = STR[B.lang] && B.lang !== "en" ? B.lang : (B.lang === "kz" ? "kk" : (nl === "kz" ? "kk" : STR[nl] ? nl : "en")); }
   setStatic();
   $("proj").textContent = B.project + " · " + t("rev") + " " + B.rev;
   document.title = "Barid · " + B.project;
@@ -606,7 +625,7 @@ function poll() {
 
 $("q").addEventListener("input", function () { S.q = $("q").value; render(); });
 $("addbtn").addEventListener("click", openAdd);
-$("langbtn").addEventListener("click", function () { S.lang = S.lang === "ru" ? "en" : "ru"; try { localStorage.setItem("rb.lang", S.lang); } catch (e) {} render(); });
+$("langbtn").addEventListener("click", function () { S.lang = S.lang === "en" ? "ru" : (S.lang === "ru" ? "kk" : "en"); try { localStorage.setItem("rb.lang", S.lang); } catch (e) {} render(); });
 $("archbtn").addEventListener("click", function () { S.arch = !S.arch; try { localStorage.setItem("rb.arch", S.arch ? "1" : "0"); } catch (e) {} setStatic(); });
 $("actbtn").addEventListener("click", function () { S.act = !S.act; try { localStorage.setItem("rb.act", S.act ? "1" : "0"); } catch (e) {} setStatic(); });
 function renderThemePop() {

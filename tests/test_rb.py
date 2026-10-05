@@ -214,6 +214,17 @@ class CoreTests(unittest.TestCase):
         with self.assertRaises(rb.RBError):
             rb.mutate(self.path, lambda d: rb.op_lane_add(d, AGENT, "extra2", "x"))
 
+    def test_kazakh_texts_exist_and_kz_means_kk(self):
+        for table in (rb.FOOTER, rb.GEN, rb.CONNECT, rb.HANDOFF, rb.AGENT_HINT, rb.SCOPE_FOOTER):
+            self.assertIn("kk", table)
+        rb.mutate(self.path, lambda d: d.update(lang="kz"))
+        d = rb.load(self.path)
+        self.assertEqual(d["lang"], "kk")
+        self.assertIn("Сен", rb.connect_text(d, "main", self.path))
+        footer = rb.FOOTER["kk"].format(id="T1", py="python3", rb="x", board="b")
+        self.assertIn("claim T1", footer)
+        self.assertIn("finish T1", footer)
+
     def test_connect_text_names_the_lane_and_the_next_command(self):
         rb.mutate(self.path, lambda d: rb.op_lane_edit(d, HUMAN, "main", agent="local"))
         d = rb.load(self.path)
@@ -673,13 +684,15 @@ class PanelI18nTests(unittest.TestCase):
                 out[prefix + k] = v
         return out
 
-    def test_both_languages_have_the_same_keys_and_placeholders(self):
+    def test_all_languages_have_the_same_keys_and_placeholders(self):
         import re
-        en, ru = self.flat(self.STR["en"]), self.flat(self.STR["ru"])
-        self.assertEqual(sorted(en), sorted(ru))
-        for k in en:
-            self.assertTrue(en[k].strip() and ru[k].strip(), k)
-            self.assertEqual(sorted(re.findall(r"\{(\w+)\}", en[k])), sorted(re.findall(r"\{(\w+)\}", ru[k])), f"placeholders differ in {k}")
+        en = self.flat(self.STR["en"])
+        for lang in ("ru", "kk"):
+            other = self.flat(self.STR[lang])
+            self.assertEqual(sorted(en), sorted(other), lang)
+            for k in en:
+                self.assertTrue(en[k].strip() and other[k].strip(), f"{lang}: {k}")
+                self.assertEqual(sorted(re.findall(r"\{(\w+)\}", en[k])), sorted(re.findall(r"\{(\w+)\}", other[k])), f"placeholders differ in {lang}: {k}")
 
     def test_every_key_used_by_the_panel_exists(self):
         import re
@@ -688,6 +701,7 @@ class PanelI18nTests(unittest.TestCase):
         self.assertFalse(used - keys, f"undefined keys: {used - keys}")
         for status in rb.STATUSES:
             self.assertIn(status, self.STR["ru"]["s"])
+            self.assertIn(status, self.STR["kk"]["s"])
         for key in re.findall(r'"(ok_\w+)"', self.html):
             self.assertIn(key, self.STR["en"], key)
 
@@ -698,18 +712,18 @@ class PanelI18nTests(unittest.TestCase):
                 self.assertIn(f'html[data-pal="{pal}"][data-theme="{mode}"]', self.html)
         listed = re.search(r"var PALS = \[(.*?)\]", self.html).group(1)
         for pal in re.findall(r'"(\w+)"', listed):
-            for lang in ("en", "ru"):
+            for lang in ("en", "ru", "kk"):
                 self.assertIn("pal_" + pal, self.STR[lang])
 
     def test_every_error_code_raised_by_rb_has_a_translation(self):
         import re
         codes = set(re.findall(r'RBError\([^\n]*?, "(\w+)"', RB_PATH.read_text("utf-8")))
         self.assertTrue(codes)
-        for lang in ("en", "ru"):
+        for lang in ("en", "ru", "kk"):
             self.assertFalse(codes - set(self.STR[lang]["ERR"]), f"{lang}: {codes - set(self.STR[lang]['ERR'])}")
 
     def test_feedback_after_an_action_is_past_tense_not_the_button_label(self):
-        for lang in ("en", "ru"):
+        for lang in ("en", "ru", "kk"):
             d = self.STR[lang]
             self.assertNotEqual(d["ok_accept"], d["accept"])
             self.assertNotEqual(d["ok_approve"], d["approve"])
