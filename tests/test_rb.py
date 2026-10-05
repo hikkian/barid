@@ -371,6 +371,33 @@ class ScopeTests(unittest.TestCase):
         self.assertEqual(done["changed"]["count"], 1)
         self.assertEqual(done["violations"], [])
 
+    @unittest.skipUnless(_git_available() and hasattr(os, "symlink"), "git or symlinks are not available")
+    def test_a_symlinked_project_folder_gives_the_same_answers(self):
+        """macOS temp folders are symlinks (/var -> /private/var) while git reports the real path."""
+        real = Path(self._tmp.name) / "real"
+        real.mkdir()
+        link = Path(self._tmp.name) / "link"
+        try:
+            os.symlink(real, link, target_is_directory=True)
+        except (OSError, NotImplementedError):
+            self.skipTest("cannot create symlinks here")
+        board = link / ".relayboard" / "board.json"
+        board.parent.mkdir(parents=True)
+        d = rb.new_board("t", [("main", "Main")])
+        d["policy"]["direct_agents"] = ["planner"]
+        rb.save(board, d)
+        _run_git(real, "init", "-q")
+        (real / "a.txt").write_text("1")
+        _run_git(real, "add", "-A")
+        _run_git(real, "commit", "-q", "-m", "init")
+        add(board, PLANNER, "A", lane="main", touches="a.txt")
+        rb.mutate(board, lambda d: rb.op_claim(d, AGENT, "A"))
+        (real / "a.txt").write_text("2")
+        rb.mutate(board, lambda d: rb.op_finish(d, AGENT, "A", report="r.md", outcome="complete"))
+        it = rb.load(board)["items"][0]
+        self.assertEqual(it["changed"]["count"], 1)
+        self.assertEqual(it["violations"], [])
+
     def test_check_command_and_documented_forms(self):
         add(self.path, PLANNER, "A", lane="main", touches="src")
         add(self.path, PLANNER, "B", lane="second", touches="src/x.py")

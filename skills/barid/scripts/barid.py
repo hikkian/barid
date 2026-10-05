@@ -167,7 +167,7 @@ def load(path: Path) -> dict:
         raise RBError(f"board file is not valid JSON ({path}): {e}")
     if d.get("schema") != SCHEMA:
         raise RBError(f"unsupported board schema {d.get('schema')!r} (this barid understands {SCHEMA})")
-    d["_root"] = str(path.parent.parent)  # the project folder; lives in memory only
+    d["_root"] = str(path.resolve().parent.parent)  # the project folder (real path); lives in memory only
     return d
 
 
@@ -228,14 +228,15 @@ def _case(p: str) -> str:
 
 def task_root(d: dict, it: dict) -> Path:
     """Where a task's relative scopes live: its own worktree, else the project folder."""
-    return Path(it["workdir"]).expanduser() if it.get("workdir") else project_root(d)
+    return Path(os.path.realpath(os.path.expanduser(it["workdir"]))) if it.get("workdir") else project_root(d)
 
 
 def norm_scope(d: dict, s: str, root=None) -> str:
     """A scope is a file, a folder or a glob; relative ones are relative to the task's checkout (default: the project folder)."""
     s = os.path.expanduser(str(s).strip())
     p = s if os.path.isabs(s) else str(Path(root) / s if root else project_root(d) / s)
-    return _case(os.path.normpath(p).replace("\\", "/"))
+    # real path: /var is /private/var on macOS and git reports the real one; Windows short names collapse too
+    return _case(os.path.realpath(os.path.normpath(p)).replace("\\", "/"))
 
 
 def show_scope(d: dict, p: str, root=None) -> str:
