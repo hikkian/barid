@@ -54,7 +54,8 @@ h2 small{font-weight:500;letter-spacing:0;text-transform:none}
 /* NOW */
 .now{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:12px}
 .lane-card{padding:14px;border-left:4px solid var(--lane,var(--ac))}
-.lane-card .lh{display:flex;align-items:center;gap:8px;font-weight:700;margin-bottom:8px}
+.lane-card .lh{display:flex;align-items:center;flex-wrap:wrap;gap:6px 8px;font-weight:700;margin-bottom:8px}
+.lane-card .lh .btn,.lane-card .lh .tag{white-space:nowrap}
 .dot{width:10px;height:10px;border-radius:50%;background:var(--lane,var(--ac));display:inline-block}
 .big{font-size:16px;font-weight:700}
 .sub{color:var(--mute);font-size:13px}
@@ -618,9 +619,14 @@ function stamp() {
   $("live").textContent = "● " + t("updated") + " " + z(d.getHours()) + ":" + z(d.getMinutes()) + ":" + z(d.getSeconds());
   $("live").style.color = "var(--ok)";
 }
+function applyHash() {
+  // deep links, also used for screenshots: #add, #newlane, #connect:LANE, #theme, #lang, #T3 (task), #T3!edit
+  var hs = decodeURIComponent(location.hash.slice(1));
+  if (hs === "add") openAdd(); else if (hs === "theme") toggleThemePop(true); else if (hs === "lang") toggleLangPop(true); else if (hs === "newlane") openLaneAdd(); else if (hs.indexOf("connect:") === 0) openConnect(hs.slice(8)); else if (hs.slice(-5) === "!edit" && byId(hs.slice(0, -5))) openDrawer(hs.slice(0, -5), true); else if (byId(hs)) openDrawer(hs);
+}
 function load() {
-  if (window.__RB_BOARD__) { S.board = window.__RB_BOARD__; S.rev = S.board.rev; render(); var hs = decodeURIComponent(location.hash.slice(1)); if (hs === "add") openAdd(); else if (hs === "theme") toggleThemePop(true); else if (hs === "lang") toggleLangPop(true); else if (hs === "newlane") openLaneAdd(); else if (hs.indexOf("connect:") === 0) openConnect(hs.slice(8)); else if (hs.slice(-5) === "!edit" && byId(hs.slice(0, -5))) openDrawer(hs.slice(0, -5), true); else if (byId(hs)) openDrawer(hs); return Promise.resolve(); }
-  return api("/api/board").then(function (b) { stamp(); S.board = b; S.rev = b.rev; if (S.offline) { S.offline = false; $("banner").hidden = true; } render(); })
+  if (window.__RB_BOARD__) { S.board = window.__RB_BOARD__; S.rev = S.board.rev; render(); applyHash(); return Promise.resolve(); }
+  return api("/api/board").then(function (b) { stamp(); S.board = b; S.rev = b.rev; if (S.offline) { S.offline = false; $("banner").hidden = true; } render(); if (!S.hashDone) { S.hashDone = true; applyHash(); } })
     .catch(function () { if (!S.offline) { S.offline = true; $("banner").textContent = t("offline"); $("banner").hidden = false; } });
 }
 function poll() {

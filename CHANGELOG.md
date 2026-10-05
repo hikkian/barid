@@ -2,7 +2,7 @@
 
 ## Unreleased
 
-- README (all three languages): adding sessions, the Connect button and `barid connect`, Kazakh; fresh panel screenshots.
+- README (all three languages): adding sessions, the Connect button and `barid connect`, Kazakh; a new demo GIF and panel screenshots. Deep links also work in the live panel (`#newlane`, `#connect:LANE`, `#lang`, `#T3`); session cards no longer wrap their Connect button.
 
 ## 0.4.1 (2026-10-05)
 
