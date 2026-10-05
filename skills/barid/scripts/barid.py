@@ -395,23 +395,182 @@ def verify_at_finish(d: dict, it: dict) -> tuple:
     return viol[:60], changed
 
 
-def conflict_reason(d: dict, a: dict, b: dict):
-    """Why two tasks must not run at the same time (None if they can)."""
+# ----------------------------------------------------------------------------- what a task declares, and how tasks conflict
+
+# A profile is a named bundle of marks, so that nobody has to remember the flags. A board can add its own (`barid profile add`).
+# "light" is an explicit statement "this task loads nothing": it counts as described, so the panel can really check it.
+BUILTIN_PROFILES = {
+    "light": {"label": "Light work: no special needs", "quiet": False, "noisy": False, "uses": []},
+    "dev": {"label": "Development: builds and tests load the machine", "quiet": False, "noisy": True, "uses": []},
+    "bench": {"label": "Measurement: needs a quiet machine and loads it itself", "quiet": True, "noisy": True, "uses": []},
+    "attended": {"label": "The person is present: needs quiet and the 'user' resource", "quiet": True, "noisy": False, "uses": ["user"]},
+}
+LINT_CODES = ("no_marks", "gpu_missing", "load_missing", "quiet_missing", "port_missing")
+
+
+def profile_def(d: dict, name):
+    if not name:
+        return None
+    return d.get("profiles", {}).get(name) or BUILTIN_PROFILES.get(name)
+
+
+def all_profiles(d: dict) -> dict:
+    out = {k: dict(v, builtin=True) for k, v in BUILTIN_PROFILES.items()}
+    for k, v in d.get("profiles", {}).items():
+        out[k] = dict(v, builtin=False)
+    return out
+
+
+def effective(d: dict, it: dict) -> dict:
+    """What a task really declares: its own marks plus those of its profile (resources the board does not define are skipped)."""
+    uses = list(it.get("uses", []))
+    quiet, noisy = bool(it.get("quiet")), bool(it.get("noisy"))
+    p = profile_def(d, it.get("profile"))
+    if p:
+        for r in p.get("uses", []):
+            if r in d.get("resources", {}) and r not in uses:
+                uses.append(r)
+        quiet = quiet or bool(p.get("quiet"))
+        noisy = noisy or bool(p.get("noisy"))
+    return {"uses": uses, "quiet": quiet, "noisy": noisy}
+
+
+def is_described(d: dict, it: dict) -> bool:
+    """Does the task say anything about what it needs? Without that there is nothing to check, and the panel must not claim a check."""
+    e = effective(d, it)
+    return bool(e["uses"] or e["quiet"] or e["noisy"] or it.get("touches") or it.get("profile"))
+
+
+def conflicts_between(d: dict, a: dict, b: dict) -> list:
+    """Every reason why two tasks must not run at the same time. One pure function: symmetric, and a task never conflicts with itself."""
+    if a["id"] == b["id"]:
+        return []
+    out = []
     if a["lane"] == b["lane"]:
-        return "lane"
+        out.append({"rule": "lane", "why": "lane"})
     res = d.get("resources", {})
-    for r in a.get("uses", []):
-        if r in b.get("uses", []) and res.get(r, {}).get("exclusive", True):
-            return r
-    if (a.get("quiet") and b.get("noisy")) or (a.get("noisy") and b.get("quiet")):
-        return "quiet"
+    ea, eb = effective(d, a), effective(d, b)
+    for r in ea["uses"]:
+        if r in eb["uses"] and res.get(r, {}).get("exclusive", True):
+            out.append({"rule": "resource", "why": r})
+    if (ea["quiet"] and eb["noisy"]) or (ea["noisy"] and eb["quiet"]):
+        out.append({"rule": "quiet", "why": "quiet"})
     # different checkouts (git worktrees) cannot overwrite each other's files; their changes meet at merge time
     if a.get("touches") and b.get("touches") and _case(str(task_root(d, a))) == _case(str(task_root(d, b))):
+        done = False
         for x in own_scopes(d, a):
             for y in own_scopes(d, b):
-                if scopes_overlap(x, y):
-                    return "paths:" + show_scope(d, x if len(x) >= len(y) else y, task_root(d, a))
-    return None
+                if not done and scopes_overlap(x, y):
+                    out.append({"rule": "paths", "why": "paths:" + show_scope(d, x if len(x) >= len(y) else y, task_root(d, a))})
+                    done = True
+    return out
+
+
+def conflict_reason(d: dict, a: dict, b: dict):
+    """Why two tasks must not run at the same time (the first reason, None if they can)."""
+    c = conflicts_between(d, a, b)
+    return c[0]["why"] if c else None
+
+
+_GPU_RE = re.compile(r"\b(gpu|vram|cuda|nvidia-smi|llama-server|llama-bench|llama\.cpp)\b", re.I)
+_LOAD_RE = re.compile(r"\b(pytest|unittest|npm (?:run )?(?:test|build)|cargo (?:build|test)|cmake|make -j|compil\w*|сборк\w*|собер\w*|компил\w*|прогон\w* тест\w*)\b", re.I)
+_QUIET_RE = re.compile(r"\b(benchmark|bench|latency|throughput|tok/s|tokens/s|замер\w*|измер\w*|ток/с)\b", re.I)
+_PORT_RE = re.compile(r"(?:--port[ =]+|\bport[ =:]+|localhost:|127\.0\.0\.1:)(\d{3,5})", re.I)
+
+
+def lint_task(d: dict, it: dict) -> list:
+    """Suggestions where the description of a task looks incomplete. Only suggestions: the person or planner decides (`--lint-ok CODE` silences one)."""
+    if it["status"] not in ("draft", "queued", "proposed"):
+        return []
+    silenced = set(it.get("lint_ok", []))
+    e = effective(d, it)
+    text = " ".join(str(it.get(k) or "") for k in ("title", "outline", "text"))
+    out = []
+    if not is_described(d, it):
+        out.append({"code": "no_marks"})
+    if "gpu" in d.get("resources", {}) and "gpu" not in e["uses"] and _GPU_RE.search(text):
+        out.append({"code": "gpu_missing"})
+    if not e["noisy"] and _LOAD_RE.search(text):
+        out.append({"code": "load_missing"})
+    if not e["quiet"] and _QUIET_RE.search(text):
+        out.append({"code": "quiet_missing"})
+    seen = set()
+    for m in _PORT_RE.finditer(text):
+        port = m.group(1)
+        if port not in seen and "port:" + port not in e["uses"]:
+            seen.add(port)
+            out.append({"code": "port_missing", "arg": port})
+    return [x for x in out if x["code"] not in silenced]
+
+
+LINT_TEXT = {
+    "no_marks": "nothing is declared (no profile, resources, quiet/noisy or files), so Barid cannot check it against other tasks; add --profile light if it really needs nothing",
+    "gpu_missing": "the text mentions the GPU or a model server, but the task does not use the 'gpu' resource (--uses gpu)",
+    "load_missing": "the text mentions builds or tests, but the task is not marked as loading the machine (--noisy or --profile dev)",
+    "quiet_missing": "the text mentions measuring speed, but the task is not marked as needing a quiet machine (--quiet or --profile bench)",
+    "port_missing": "the text mentions port {arg}, but the task does not use the resource 'port:{arg}' (add it with `barid resource add port:{arg}` and --uses)",
+}
+
+
+def lint_line(x: dict) -> str:
+    return LINT_TEXT[x["code"]].format(arg=x.get("arg", ""))
+
+
+def explain_pair(d: dict, a: dict, b: dict) -> dict:
+    """Everything Barid looks at when it answers 'can these two run together', rule by rule."""
+    items = {i["id"]: i for i in d["items"]}
+    ea, eb = effective(d, a), effective(d, b)
+    res = d.get("resources", {})
+    shared = [r for r in ea["uses"] if r in eb["uses"]]
+    found = conflicts_between(d, a, b)
+    hit = {c["rule"] for c in found}
+    related = a["id"] in _closure(items, b["id"]) or b["id"] in _closure(items, a["id"])
+    rules = [
+        {"rule": "lane", "hit": "lane" in hit, "detail": f"{a['lane']} / {b['lane']}"},
+        {"rule": "resource", "hit": "resource" in hit, "detail": ", ".join(r + (" (exclusive)" if res.get(r, {}).get("exclusive", True) else " (shared)") for r in shared) or "no common resource"},
+        {"rule": "quiet", "hit": "quiet" in hit, "detail": f"{a['id']}: quiet={ea['quiet']} noisy={ea['noisy']}; {b['id']}: quiet={eb['quiet']} noisy={eb['noisy']}"},
+        {"rule": "paths", "hit": "paths" in hit, "detail": next((c["why"][6:] for c in found if c["rule"] == "paths"), "no overlapping files, or not both declared")},
+    ]
+    da, db = is_described(d, a), is_described(d, b)
+    if found:
+        verdict = "conflict"
+    elif related:
+        verdict = "related"
+    elif not (da and db):
+        verdict = "unchecked"
+    else:
+        verdict = "ok"
+    return {"a": a["id"], "b": b["id"], "described": {a["id"]: da, b["id"]: db}, "rules": rules, "related": related, "verdict": verdict,
+            "why": found[0]["why"] if found else ""}
+
+
+# ----------------------------------------------------------------------------- what ran next to what (a record that does not depend on the marks)
+
+def _close_run(it: dict) -> dict:
+    cl = it.get("claim") or {}
+    if cl.get("at"):
+        it["ran"] = {"from": cl["at"], "to": now_iso()}
+    return it.get("ran") or {}
+
+
+def overlap_with(d: dict, it: dict, run: dict) -> list:
+    """Tasks that were active at any moment of this task's run (still active now, or with a recorded run that intersects)."""
+    start, end = parse_ts(run.get("from")), parse_ts(run.get("to"))
+    out = []
+    if not start or not end:
+        return out
+    for o in d["items"]:
+        if o["id"] == it["id"]:
+            continue
+        hit = o["status"] in ACTIVE
+        r = o.get("ran")
+        if not hit and r:
+            a, b = parse_ts(r.get("from")), parse_ts(r.get("to"))
+            hit = bool(a and b and a <= end and b >= start)  # timestamps have one-second resolution: touching counts as overlapping
+        if hit:
+            e = effective(d, o)
+            out.append({"id": o["id"], "lane": o["lane"], "noisy": e["noisy"], "described": is_described(d, o)})
+    return out
 
 
 def _satisfied(d: dict, items: dict, nid: str) -> bool:
@@ -441,6 +600,10 @@ def compute(d: dict, now=None) -> list:
     out = []
     for i in d["items"]:
         c = dict(i)
+        c.setdefault("profile", "")
+        c["effective"] = effective(d, i)
+        c["described"] = is_described(d, i)
+        c["lint"] = lint_task(d, i)
         c["waiting_on"] = [n for n in i.get("needs", []) if not _satisfied(d, items, n)]
         c["waiting_info"] = {n: {"status": items[n]["status"], "outcome": items[n].get("outcome", "")} for n in c["waiting_on"] if n in items}
         c["conflicts"] = []
@@ -572,6 +735,18 @@ def check_refs(d: dict, lane, needs, uses) -> None:
             raise RBError(f"unknown resource {r!r}; define it with `barid resource add {r}`", "unknown_resource", name=r)
 
 
+def check_profile(d: dict, name) -> None:
+    if name and not profile_def(d, name):
+        raise RBError(f"unknown profile {name!r}; known: {', '.join(all_profiles(d))} (add one with `barid profile add`)", "unknown_profile", name=name)
+
+
+def check_lint_ok(codes) -> list:
+    bad = [c for c in codes if c not in LINT_CODES]
+    if bad:
+        raise RBError(f"unknown lint code {bad[0]!r}; known: {', '.join(LINT_CODES)}", "bad_lint", name=bad[0])
+    return list(dict.fromkeys(codes))
+
+
 def op_add(d: dict, actor: Actor, f: dict) -> dict:
     iid = f["id"]
     if not ID_RE.match(iid or ""):
@@ -581,6 +756,9 @@ def op_add(d: dict, actor: Actor, f: dict) -> dict:
     lane = f.get("lane") or d["lanes"][0]["id"]
     needs, uses = split_list(f.get("needs")), split_list(f.get("uses"))
     check_refs(d, lane, needs, uses)
+    profile = (f.get("profile") or "").strip()
+    check_profile(d, profile)
+    lint_ok = check_lint_ok(split_list(f.get("lint_ok")))
     text = (f.get("text") or "").strip()
     status = "draft" if not text else "queued"
     if f.get("draft"):
@@ -589,8 +767,8 @@ def op_add(d: dict, actor: Actor, f: dict) -> dict:
         status = "proposed"
     item = {
         "id": iid, "lane": lane, "title": (f.get("title") or iid).strip(), "status": status, "needs": needs, "uses": uses,
-        "quiet": bool(f.get("quiet")), "noisy": bool(f.get("noisy")), "when": f.get("when") or "", "outline": f.get("outline") or "",
-        "touches": split_list(f.get("touches")), "workdir": f.get("workdir") or "", "branch": f.get("branch") or "",
+        "quiet": bool(f.get("quiet")), "noisy": bool(f.get("noisy")), "profile": profile, "lint_ok": lint_ok,
+        "when": f.get("when") or "", "outline": f.get("outline") or "", "touches": split_list(f.get("touches")), "workdir": f.get("workdir") or "", "branch": f.get("branch") or "",
         "text": text, "report": "", "notes": [], "created": now_iso(), "updated": now_iso(), "created_by": actor.name, "claim": None,
     }
     d["items"].append(item)
@@ -633,6 +811,11 @@ def op_edit(d: dict, actor: Actor, iid: str, f: dict) -> dict:
     for k in ("quiet", "noisy"):
         if f.get(k) is not None:
             it[k] = bool(f[k])
+    if f.get("profile") is not None:
+        check_profile(d, f["profile"])
+        it["profile"] = f["profile"].strip()
+    if f.get("lint_ok") is not None:
+        it["lint_ok"] = check_lint_ok(split_list(f["lint_ok"]))
     if f.get("replace"):
         old, new = f["replace"]
         n = it["text"].count(old)
@@ -780,6 +963,11 @@ def op_finish(d: dict, actor: Actor, iid: str, report: str = "", note: str = "",
     it["violations"] = violations
     if changed is not None:
         it["changed"] = changed
+    run = _close_run(it)
+    it["ran_with"] = overlap_with(d, it, run)
+    it["disturbed_by"] = []
+    if effective(d, it)["quiet"]:
+        it["disturbed_by"] = [{"id": o["id"], "why": "load" if o["noisy"] else "unknown"} for o in it["ran_with"] if o["noisy"] or not o["described"]]
     it["status"] = "review"
     it["outcome"] = outcome
     it["report"] = report or it.get("report", "")
@@ -787,7 +975,8 @@ def op_finish(d: dict, actor: Actor, iid: str, report: str = "", note: str = "",
     it["updated"] = now_iso()
     if note:
         it["notes"].append({"t": now_iso(), "by": actor.name, "text": note})
-    log_event(d, actor, "finish", iid, f"{outcome or 'no outcome stated'}: {report}" + (f" ({len(violations)} file warnings)" if violations else ""))
+    log_event(d, actor, "finish", iid, f"{outcome or 'no outcome stated'}: {report}" + (f" ({len(violations)} file warnings)" if violations else "")
+              + (f" (ran next to a loaded or undescribed task: {', '.join(x['id'] for x in it['disturbed_by'])})" if it["disturbed_by"] else ""))
     return it
 
 
@@ -822,6 +1011,7 @@ def op_release(d: dict, actor: Actor, iid: str, force: bool = False) -> dict:
     if it["status"] not in ("running", "sent"):
         raise RBError(f"{iid} is {it['status']}: nothing to release", "wrong_state", id=iid, status=it["status"])
     _owner_check(it, actor, force, "release")
+    _close_run(it)
     it["status"] = "queued"
     it["claim"] = None
     it["updated"] = now_iso()
@@ -899,6 +1089,33 @@ def op_board_lang(d: dict, actor: Actor, lang: str) -> str:
     d["lang"] = lang
     log_event(d, actor, "lang", "", lang)
     return lang
+
+
+def op_profile_add(d: dict, actor: Actor, name: str, uses=None, quiet=False, noisy=False, label="") -> dict:
+    """A board's own profile: a named bundle of resources and quiet/noisy marks."""
+    if not direct_allowed(d, actor):
+        raise RBError("only the person (or a trusted planner agent) can change profiles", "human_only")
+    if not ID_RE.match(name or ""):
+        raise RBError("bad profile name", "bad_id")
+    if name in BUILTIN_PROFILES:
+        raise RBError(f"{name!r} is a built-in profile", "exists", id=name)
+    uses = split_list(uses)
+    check_refs(d, None, None, uses)
+    d.setdefault("profiles", {})[name] = {"label": (label or name)[:80], "uses": uses, "quiet": bool(quiet), "noisy": bool(noisy)}
+    log_event(d, actor, "profile", name, "add")
+    return d["profiles"][name]
+
+
+def op_profile_rm(d: dict, actor: Actor, name: str) -> None:
+    if not direct_allowed(d, actor):
+        raise RBError("only the person (or a trusted planner agent) can change profiles", "human_only")
+    if name not in d.get("profiles", {}):
+        raise RBError(f"no such custom profile: {name}", "unknown_profile", name=name)
+    users = [i["id"] for i in d["items"] if i.get("profile") == name and i["status"] not in ("done", "cancelled")]
+    if users:
+        raise RBError(f"profile {name} is still used by {', '.join(users)}", "wrong_state", id=name, status="in use")
+    del d["profiles"][name]
+    log_event(d, actor, "profile", name, "remove")
 
 
 def op_lane_edit(d: dict, actor: Actor, lane_id: str, title=None, color=None, agent=None) -> dict:
@@ -1246,17 +1463,28 @@ def lane_focus(comp: list, lanes: list) -> dict:
             f["hint"] = {"kind": "wait", "with": [{"id": x["id"], "why": x["why"]} for x in c["conflicts"]]}
         elif [x for x in c["cannot_run_with"] if x["id"] in near and near[x["id"]] != lid]:
             f["hint"] = {"kind": "not", "with": [{"id": x["id"], "why": x["why"]} for x in c["cannot_run_with"] if x["id"] in near and near[x["id"]] != lid]}
-        elif other(c["can_run_with"]):
-            f["hint"] = {"kind": "ok", "ids": other(c["can_run_with"])}
         else:
-            others = [i for i, l2 in near.items() if l2 != lid and by_id[i]["state"] in ("running", "sent")]
-            f["hint"] = {"kind": "ok", "ids": others} if others else {"kind": "none"}
+            # nothing conflicts: say whether that was really checked. A check needs both tasks to declare something.
+            others = [i for i in other(c["can_run_with"])]
+            if not others:
+                others = [i for i, l2 in near.items() if l2 != lid and by_id[i]["state"] in ("running", "sent")]
+            if not c["described"]:
+                f["hint"] = {"kind": "undescribed", "ids": others}
+            else:
+                good = [i for i in others if by_id[i]["described"]]
+                unchecked = [i for i in others if not by_id[i]["described"]]
+                if good:
+                    f["hint"] = {"kind": "ok", "ids": good, "unchecked": unchecked}
+                elif unchecked:
+                    f["hint"] = {"kind": "unchecked", "ids": unchecked}
+                else:
+                    f["hint"] = {"kind": "none"}
     return focus
 
 
 def focus_summary(focus: dict) -> dict:
     """One line of truth for the whole 'what to do now' section, from the same focus data as the cards."""
-    out = {"running": [], "can_start": [], "wait": [], "choose": [], "deps": []}
+    out = {"running": [], "can_start": [], "wait": [], "choose": [], "deps": [], "unchecked": []}
     seen = set()
     for lid, f in focus.items():
         h = f.get("hint")
@@ -1272,6 +1500,8 @@ def focus_summary(focus: dict) -> dict:
                 if key not in seen:
                     seen.add(key)
                     out["choose"].append({"ids": list(key), "why": w["why"]})
+        elif h["kind"] in ("unchecked", "undescribed"):
+            out["unchecked"].append({"id": f["id"], "kind": h["kind"], "ids": h.get("ids", [])})
         else:
             out["can_start"].append(f["id"])
     return out
@@ -1289,7 +1519,7 @@ def board_view(path: Path) -> dict:
         "version": __version__, "project": d.get("project", ""), "rev": d.get("rev", 0), "updated": d.get("updated"),
         "lang": d.get("lang", "en"), "lanes": d["lanes"], "resources": d.get("resources", {}),
         "policy": {k: d.get("policy", {}).get(k) for k in ("dependents_wait_for_accept", "lease_hours", "footer", "direct_agents")},
-        "items": comp, "steps": steps, "next_by_lane": now_by_lane, "focus": lane_focus(comp, d["lanes"]), "summary": focus_summary(lane_focus(comp, d["lanes"])), "events": d.get("events", [])[-60:],
+        "items": comp, "profiles": all_profiles(d), "steps": steps, "next_by_lane": now_by_lane, "focus": lane_focus(comp, d["lanes"]), "summary": focus_summary(lane_focus(comp, d["lanes"])), "events": d.get("events", [])[-60:],
         "proposed": [c["id"] for c in comp if c["state"] == "proposed"],
         "review": [c["id"] for c in comp if c["state"] == "review"],
     }
@@ -1413,7 +1643,7 @@ def apply_action(board: Path, req: dict):
             f["id"] = iid
             return op_add(d, h, f)["id"]
         if a == "edit":
-            f = {k: args.get(k) for k in ("title", "lane", "needs", "uses", "quiet", "noisy", "when", "outline", "text", "touches", "workdir", "branch") if k in args}
+            f = {k: args.get(k) for k in ("title", "lane", "needs", "uses", "quiet", "noisy", "profile", "lint_ok", "when", "outline", "text", "touches", "workdir", "branch") if k in args}
             return op_edit(d, h, iid, f)["id"]
         if a == "status":
             return op_set_status(d, h, iid, str(args.get("status", "")))["status"]
@@ -1573,20 +1803,88 @@ def cmd_add(args):
     board = find_board(getattr(args, "board", None))
     f = {"id": args.id, "lane": args.lane, "title": args.title, "needs": args.needs, "uses": args.uses, "quiet": args.quiet,
          "noisy": args.noisy, "when": args.when, "outline": args.outline, "text": read_text_arg(args), "draft": args.draft,
-         "touches": args.touches, "workdir": args.workdir}
+         "touches": args.touches, "workdir": args.workdir, "profile": args.profile, "lint_ok": ",".join(args.lint_ok or [])}
     item = mutate(board, lambda d: op_add(d, cli_actor(args), f))
     out(args, item, f"{item['id']} added as {item['status']}" + (" (waiting for the person to approve it)" if item["status"] == "proposed" else ""))
+    print_lint(board, item["id"], args)
 
 
 def cmd_edit(args):
     board = find_board(getattr(args, "board", None))
     f = {"title": args.title, "lane": args.lane, "needs": args.needs, "uses": args.uses, "when": args.when, "outline": args.outline,
-         "quiet": args.quiet, "noisy": args.noisy, "text": read_text_arg(args), "touches": args.touches, "workdir": args.workdir}
+         "quiet": args.quiet, "noisy": args.noisy, "text": read_text_arg(args), "touches": args.touches, "workdir": args.workdir,
+         "profile": args.profile}
+    if args.lint_ok is not None:
+        f["lint_ok"] = ",".join(args.lint_ok)
     if args.replace:
         f["replace"] = args.replace
     f = {k: v for k, v in f.items() if v is not None}
     item = mutate(board, lambda d: op_edit(d, cli_actor(args), args.id, f))
     out(args, item, f"{item['id']} updated (status {item['status']})")
+    print_lint(board, item["id"], args)
+
+
+def print_lint(board, iid: str, args) -> None:
+    """After add and edit: say right away what looks incomplete in the description (stderr, so --json output stays clean)."""
+    if getattr(args, "json", False):
+        return
+    try:
+        c = {x["id"]: x for x in compute(load(board))}.get(iid)
+    except RBError:
+        return
+    for x in (c or {}).get("lint", []):
+        print(f"  ! {iid}: {lint_line(x)}", file=sys.stderr)
+
+
+def cmd_lint(args):
+    board = find_board(getattr(args, "board", None))
+    comp = compute(load(board))
+    rows = [c for c in comp if (not args.id or c["id"] == args.id) and c["lint"]]
+    if getattr(args, "json", False):
+        print(json.dumps([{"id": c["id"], "lint": [dict(x, text=lint_line(x)) for x in c["lint"]]} for c in rows], ensure_ascii=False, indent=1))
+    else:
+        for c in rows:
+            for x in c["lint"]:
+                print(f"{c['id']:<6} {x['code']:<14} {lint_line(x)}")
+        if not rows:
+            print("every open task is described well enough to be checked")
+    if rows and args.strict:
+        raise SystemExit(1)
+
+
+def cmd_explain(args):
+    board = find_board(getattr(args, "board", None))
+    d = load(board)
+    a, b = get_item(d, args.a), get_item(d, args.b)
+    ex = explain_pair(d, a, b)
+    if getattr(args, "json", False):
+        print(json.dumps(ex, ensure_ascii=False, indent=1))
+        return
+    for r in ex["rules"]:
+        print(f"{'CONFLICT' if r['hit'] else 'ok      '} {r['rule']:<9} {r['detail']}")
+    marks = ", ".join(f"{i}: {'described' if v else 'NOT described'}" for i, v in ex["described"].items())
+    verdict = {"conflict": f"must not run together ({ex['why']})", "related": "one depends on the other, so they cannot run together anyway",
+               "unchecked": "no conflict found, but not checked: at least one of them declares nothing", "ok": "can run together (checked)"}[ex["verdict"]]
+    print(f"{marks}\n=> {verdict}")
+
+
+def cmd_profile(args):
+    board = find_board(getattr(args, "board", None))
+    actor = cli_actor(args)
+    if args.action == "list":
+        d = load(board)
+        for k, v in all_profiles(d).items():
+            marks = " ".join(filter(None, ["quiet" if v.get("quiet") else "", "noisy" if v.get("noisy") else "", ("uses " + ",".join(v["uses"])) if v.get("uses") else ""])) or "nothing special"
+            print(f"{k:<10} {'(built in)' if v.get('builtin') else '          '} {marks:<28} {v.get('label', '')}")
+        return
+    if not args.name:
+        raise RBError("give the profile name")
+    if args.action == "add":
+        mutate(board, lambda d: op_profile_add(d, actor, args.name, args.uses, args.quiet, args.noisy, args.label or ""))
+        print(f"profile {args.name} added")
+    else:
+        mutate(board, lambda d: op_profile_rm(d, actor, args.name))
+        print(f"profile {args.name} removed")
 
 
 def cmd_list(args):
@@ -1961,6 +2259,8 @@ def build_parser() -> argparse.ArgumentParser:
     s.add_argument("--uses", help="comma list of exclusive resources, e.g. gpu,user")
     s.add_argument("--quiet", action="store_true", help="needs a quiet machine (no noisy task in parallel)")
     s.add_argument("--noisy", action="store_true", help="loads CPU or the desktop (blocks quiet tasks)")
+    s.add_argument("--profile", help="a bundle of marks: light, dev, bench, attended or your own (`barid profile list`)")
+    s.add_argument("--lint-ok", action="append", metavar="CODE", help="silence one suggestion of `barid lint` for this task (repeatable)")
     s.add_argument("--touches", help="comma list of files, folders or globs this task may change; tasks with overlapping scopes never run together")
     s.add_argument("--workdir", help="the only checkout this task may work in (see `worktree`)")
     s.add_argument("--when")
@@ -1975,8 +2275,23 @@ def build_parser() -> argparse.ArgumentParser:
         s.add_argument("--" + k)
     s.add_argument("--quiet", action=argparse.BooleanOptionalAction, default=None)
     s.add_argument("--noisy", action=argparse.BooleanOptionalAction, default=None)
+    s.add_argument("--profile", help="a bundle of marks; an empty value removes it")
+    s.add_argument("--lint-ok", action="append", metavar="CODE", default=None, help="silence one suggestion of `barid lint` (repeatable; replaces the list)")
     s.add_argument("--replace", nargs=2, metavar=("OLD", "NEW"), help="replace one exact fragment of the prompt text")
 
+    s = add("lint", cmd_lint, "check that every open task says enough about what it needs (profile, resources, quiet/noisy, files) to be checked")
+    s.add_argument("id", nargs="?")
+    s.add_argument("--strict", action="store_true", help="exit code 1 if anything is suggested")
+    s = add("explain", cmd_explain, "why two tasks can or cannot run together, rule by rule")
+    s.add_argument("a")
+    s.add_argument("b")
+    s = add("profile", cmd_profile, "named bundles of marks: `profile list`, `profile add NAME --uses gpu --quiet`, `profile rm NAME`")
+    s.add_argument("action", choices=["list", "add", "rm"])
+    s.add_argument("name", nargs="?")
+    s.add_argument("--uses")
+    s.add_argument("--quiet", action="store_true")
+    s.add_argument("--noisy", action="store_true")
+    s.add_argument("--label")
     s = add("list", cmd_list, "list tasks with their computed state")
     s.add_argument("--lane")
     s.add_argument("--status")

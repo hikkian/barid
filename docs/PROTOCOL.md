@@ -33,6 +33,12 @@ Two tasks conflict (must not be active together) when any of these holds:
 3. one has `quiet: true` and the other `noisy: true` (`why: "quiet"`);
 4. their file scopes overlap (`why: "paths:<path>"`): both tasks declare `touches` (files, folders or globs, relative ones resolved against the task's checkout: its `workdir`, else the project folder) and the scopes could name the same file. The test is conservative. Tasks with different `workdir`s never conflict on paths: they work in different checkouts.
 
+Rules 2 and 3 look at the task's *effective* marks: its own `uses`, `quiet`, `noisy` plus those of its `profile`. Built-in profiles: `light` (declares that the task needs nothing special), `dev` (noisy), `bench` (quiet and noisy: a measurement that needs a quiet machine and loads it), `attended` (quiet, and the `user` resource when the board has it). A board can add its own in `profiles` (`barid profile add NAME --uses gpu --quiet`). A resource can be anything exclusive, a port (`port:8091`) or a folder included.
+
+**A task that declares nothing is not checked.** A task is *described* when it has a profile, resources, quiet/noisy marks or file scopes. The panel says "compatible" only when both tasks are described; otherwise it says "not checked". `barid lint` (and every `add`/`edit`) suggests marks the text gives away: it mentions the GPU or a model server without `uses gpu`, builds or tests without noisy, speed measuring without quiet, a port without `port:N` (`--lint-ok CODE` silences one suggestion). `barid explain A B` shows every rule for a pair.
+
+**The run journal does not depend on the marks.** `claim` stores the start, and `finish` stores `ran` and `ran_with`: the tasks that were active at any moment of the run. A task that asked for quiet gets `disturbed_by` when something that loads the machine, or declares nothing, ran next to it; the panel shows it on the report.
+
 Active tasks are those in `sent` or `running`. `claim` is refused when it would conflict with an active task, unless the task is already `sent` (the person chose it, a warning is returned) or `--force` is used.
 
 `can_run_with` lists active/ready tasks that do not conflict and are unrelated by dependencies. `steps` (from `barid plan`) is a greedy schedule in list order: each task goes into the earliest step after its unfinished needs where nothing it conflicts with is placed.
@@ -77,6 +83,7 @@ Active tasks are those in `sent` or `running`. `claim` is refused when it would 
   "schema": 1, "project": "name", "rev": 42, "created": "...", "updated": "...", "lang": "en",
   "lanes": [{"id": "main", "title": "Main session", "color": "#7c5cff", "agent": "codex"}],
   "resources": {"gpu": {"label": "GPU", "exclusive": true}},
+  "profiles": {"gpu-bench": {"label": "GPU measurement", "uses": ["gpu"], "quiet": true, "noisy": true}},
   "policy": {"direct_agents": ["planner"], "dependents_wait_for_accept": false, "lease_hours": 12, "footer": true},
   "context": ["README.md"],
   "protect": ["config/live.json"],
@@ -84,7 +91,7 @@ Active tasks are those in `sent` or `running`. `claim` is refused when it would 
     "id": "T1", "lane": "main", "title": "Build", "status": "running",
     "needs": ["T0"], "uses": ["gpu"], "quiet": false, "noisy": true,
     "when": "", "outline": "", "text": "the prompt without the footer",
-    "touches": ["src/api"], "workdir": "", "branch": "", "report": "", "outcome": "complete|partial|failed|", "violations": [], "changed": {}, "notes": [{"t": "...", "by": "agent", "text": "..."}],
+    "profile": "dev", "lint_ok": [], "touches": ["src/api"], "workdir": "", "branch": "", "report": "", "outcome": "complete|partial|failed|", "violations": [], "changed": {}, "ran": {"from": "...", "to": "..."}, "ran_with": [{"id": "T2", "lane": "b", "noisy": true, "described": true}], "disturbed_by": [], "notes": [{"t": "...", "by": "agent", "text": "..."}],
     "created": "...", "updated": "...", "created_by": "planner",
     "claim": {"by": "worker-a", "at": "...", "lease_until": "..."}
   }],

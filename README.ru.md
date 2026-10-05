@@ -123,6 +123,16 @@ barid lane edit local  --agent local  --color "#86f9e4" --human
 
 Для кого это не подходит: если вам нужно, чтобы агенты работали без присмотра, сами разбивали цель на подзадачи и сливали ветки, берите оркестратор из таблицы. Barid для тех, кто предпочитает держать руль в своих руках.
 
+## Можно ли запускать вместе? Как Barid решает
+
+Barid не угадывает, что делает задача: он сравнивает то, что каждая задача **объявила**. У задачи есть **профиль** (`light`, `dev`, `bench` для замера, `attended`, или ваш собственный), эксклюзивные **ресурсы** (GPU, тестовый сервер, порт вроде `port:8091`), **области файлов** и отметки «тишина/нагрузка». Две задачи конфликтуют, если у них общая сессия, общий эксклюзивный ресурс, пара «тишина против нагрузки» или пересекающиеся файлы; `barid explain A B` показывает каждое правило.
+
+Три вещи держат это честным:
+
+- **«Не проверено» не значит «совместимо».** Задача, которая ничего не объявила, показывается как *не проверенная*. `barid lint` (и каждый `add`/`edit`) подсказывает отметки, которые выдаёт текст: GPU, сборки, замер скорости, порт.
+- **Один расчёт.** Подсказка на каждой карточке и сводка под ними берутся из одних и тех же данных на сервере и проверены тестами на всех сочетаниях состояний.
+- **Запись, не зависящая от отметок.** Когда задача заканчивается, Barid сохраняет, какие задачи шли рядом. Если замер шёл рядом с тем, что нагружало машину или ничего не объявило, отчёт об этом говорит.
+
 ## Как не дать сессиям мешать друг другу
 
 Две сессии редко конфликтуют только из-за GPU: они ещё и перезаписывают файлы друг друга. Barid решает это на четырёх уровнях:
@@ -168,6 +178,9 @@ barid add T3 --lane a --touches src/api --text-file p.md   # file scope: overlap
 barid protect add config/live.json        # no task may change it (verified at finish)
 barid worktree T3                         # an isolated git worktree and branch for the task
 barid check T3                            # what could collide with it
+barid lint                                   # which tasks say too little to be checked against others
+barid explain T1 T2                           # why two tasks can or cannot run together
+barid add T4 --lane a --profile bench --uses gpu --text-file p.md   # profiles: light, dev, bench, attended (or `barid profile add`)
 barid lane edit a --title Builder --color "#7c5cff" --agent codex   # name, colour and agent of a session
 barid lane add tests --title Tests --agent codex       # a new session (or the "+" button in the panel)
 barid connect tests                          # the first message to paste into that agent's window

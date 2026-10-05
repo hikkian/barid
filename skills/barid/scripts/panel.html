@@ -138,6 +138,9 @@ label{font-size:12px;color:var(--mute);display:block;margin-bottom:3px}
 .go{margin:6px 0 2px;font-weight:600}
 .go.ok{color:var(--ok)}
 .go.wait{color:var(--warn)}
+.go.unk{color:var(--mute);font-weight:500}
+.go.warnlint{color:var(--warn);font-weight:500;font-size:12.5px}
+.together.unk{border-color:var(--line);color:var(--mute)}
 .agchip{border:1px solid var(--line);background:var(--panel2);color:inherit;border-radius:999px;padding:2px 9px;font-size:12px;cursor:pointer}
 .agchip.on{background:var(--ac);color:var(--acfg);border-color:transparent}
 .pill.add{min-width:32px;padding:0 10px;font-weight:700}
@@ -181,7 +184,7 @@ details>summary{cursor:pointer;color:var(--mute);margin:6px 0}
 (function () {
 var STR = {
  en: {now:"What to do now", flow:"Order, and what can run together", inbox_p:"Proposed by agents", inbox_r:"Reports to review", archive:"Archive", activity:"Activity log",
-  add:"+ New task", search:"Search…", lang:"Русский", idle:"Nothing to do for this session right now.", nothing_ready:"Nothing is ready yet. Waiting for: ", nothing_ready_now:"Next in line, but it cannot start yet.", sum_running:"Running now: {list}", sum_ok:"Can start now: {list}", sum_together:"Can start together: {list}", sum_choose:"Start one at a time, they conflict ({why}): {list}", sum_wait:"{id} waits for {list}", sum_deps:"{id} waits for the tasks it depends on: {list}",
+  add:"+ New task", search:"Search…", lang:"Русский", idle:"Nothing to do for this session right now.", nothing_ready:"Nothing is ready yet. Waiting for: ", nothing_ready_now:"Next in line, but it cannot start yet.", profile:"Profile", prof_none:"No profile", prof_light:"Light work", prof_dev:"Development (loads the machine)", prof_bench:"Measurement (needs a quiet machine)", prof_attended:"You are present", ran_with:"Ran next to", disturbed:"This ran next to a task that loads the machine or declares nothing, so a measurement may be off: {list}", why_load:"loads the machine", why_unknown:"not described", lint_head:"Check the description", lint_no_marks:"nothing is declared, so it cannot be checked against other tasks (pick a profile; “Light work” if it needs nothing)", lint_gpu_missing:"mentions the GPU or a model server, but does not use the GPU resource", lint_load_missing:"mentions builds or tests, but is not marked as loading the machine", lint_quiet_missing:"mentions measuring speed, but does not ask for a quiet machine", lint_port_missing:"mentions port {arg}, but does not use that port as a resource", go_unchecked:"not checked, nothing declared for: {list}", go_undescribed:"This task declares nothing (no profile, resources or files), so compatibility cannot be checked", sum_unchecked:"{id}: compatibility not checked, nothing declared", sum_running:"Running now: {list}", sum_ok:"Can start now: {list}", sum_together:"Can start together: {list}", sum_choose:"Start one at a time, they conflict ({why}): {list}", sum_wait:"{id} waits for {list}", sum_deps:"{id} waits for the tasks it depends on: {list}",
   running:"In progress", held_by:"held by {name} since {time}", proposed_by:"proposed by {name}",
   stale:"the claim has expired: is the session still running?", copy:"Copy prompt", sent:"Mark as sent", release:"Return to queue", approve:"Approve", reject:"Reject",
   edit:"Edit", accept:"Accept report", sendback:"Send back", cancel:"Cancel task", restore:"Restore", gen:"Generate prompt",
@@ -196,11 +199,11 @@ var STR = {
   with_:"Can run with", wait_:"Depends on", conf_:"Waiting for", why:{lane:"same session",quiet:"quiet and load do not mix"}, rev:"rev", snapshot:"This is a read-only snapshot",
   ok_sent:"Marked as sent", ok_release:"Returned to the queue", ok_approve:"Approved", ok_reject:"Rejected", ok_accept:"Report accepted", ok_cancel:"Task cancelled", ok_restore:"Task restored",
   ok_status:"Status changed", ok_requeued:"Returned to the queue", ok_note:"Note added", ok_outcome:"Outcome changed", ok_saved:"Saved", ok_created:"Task created",
-  ERR:{exists:"A task with ID {id} already exists", bad_id:"ID: letters, digits, “.”, “_” or “-”, up to 32 characters", unknown_lane:"Unknown session: {lane}", unknown_task:"Unknown task in the dependency list: {id}", bad_lang:"Language must be en, ru or kk",
+  ERR:{exists:"A task with ID {id} already exists", bad_id:"ID: letters, digits, “.”, “_” or “-”, up to 32 characters", unknown_lane:"Unknown session: {lane}", unknown_task:"Unknown task in the dependency list: {id}", unknown_profile:"Unknown profile: {name}", bad_lint:"Unknown suggestion code: {name}", bad_lang:"Language must be en, ru or kk",
    unknown_resource:"Unknown resource: {name}", cycle:"That would create a dependency loop", no_text:"{id} has no prompt text yet: generate or write it first", not_found:"No such task: {id}",
    wrong_state:"{id} is now “{status}”: this action is not possible", human_only:"Only you can do this", empty_note:"The note is empty", bad_status:"Unknown status", bad_outcome:"Unknown outcome", no_git:"This folder is not a git repository", bad_color:"Color must look like #feb83b", bad_agent:"Agent name: letters, digits, space, . _ + - (up to 24 characters)"}},
  ru: {now:"Что делать сейчас", flow:"Порядок работ и что можно запускать вместе", inbox_p:"Предложения агентов", inbox_r:"Отчёты на проверку", archive:"Архив", activity:"Журнал действий",
-  add:"+ Новая задача", search:"Поиск…", lang:"Қазақша", idle:"Для этой сессии сейчас нет задач.", nothing_ready:"Пока нечего запускать. Ожидает: ", nothing_ready_now:"Следующая по очереди, но запустить её пока нельзя.", sum_running:"Идёт сейчас: {list}", sum_ok:"Можно запускать сейчас: {list}", sum_together:"Можно запускать одновременно: {list}", sum_choose:"Запускайте по одной, они конфликтуют ({why}): {list}", sum_wait:"{id} ждёт: {list}", sum_deps:"{id} ждёт задачи, от которых зависит: {list}",
+  add:"+ Новая задача", search:"Поиск…", lang:"Қазақша", idle:"Для этой сессии сейчас нет задач.", nothing_ready:"Пока нечего запускать. Ожидает: ", nothing_ready_now:"Следующая по очереди, но запустить её пока нельзя.", profile:"Профиль", prof_none:"Без профиля", prof_light:"Лёгкая работа", prof_dev:"Разработка (нагружает машину)", prof_bench:"Замер (нужна тишина)", prof_attended:"Вы рядом", ran_with:"Шла рядом с", disturbed:"Шла рядом с задачей, которая нагружает машину или ничего не объявила, замер может быть неточным: {list}", why_load:"нагружает машину", why_unknown:"не описана", lint_head:"Проверьте описание", lint_no_marks:"ничего не указано, поэтому сравнить с другими задачами нельзя (выберите профиль; «Лёгкая работа», если ничего не нужно)", lint_gpu_missing:"в тексте GPU или сервер модели, но ресурс GPU не отмечен", lint_load_missing:"в тексте сборки или тесты, но задача не отмечена как нагружающая машину", lint_quiet_missing:"в тексте замер скорости, но тишина не запрошена", lint_port_missing:"в тексте порт {arg}, но он не отмечен как ресурс", go_unchecked:"не проверено, у них ничего не указано: {list}", go_undescribed:"У этой задачи ничего не указано (ни профиля, ни ресурсов, ни файлов), совместимость проверить нельзя", sum_unchecked:"{id}: совместимость не проверена, ничего не указано", sum_running:"Идёт сейчас: {list}", sum_ok:"Можно запускать сейчас: {list}", sum_together:"Можно запускать одновременно: {list}", sum_choose:"Запускайте по одной, они конфликтуют ({why}): {list}", sum_wait:"{id} ждёт: {list}", sum_deps:"{id} ждёт задачи, от которых зависит: {list}",
   running:"В работе", held_by:"у {name} с {time}", proposed_by:"предложил(а) {name}",
   stale:"срок занятия истёк: сессия ещё работает?", copy:"Скопировать промпт", sent:"Отметить как отправленный", release:"Вернуть в очередь", approve:"Одобрить", reject:"Отклонить",
   edit:"Редактировать", accept:"Принять отчёт", sendback:"Вернуть на доработку", cancel:"Отменить задачу", restore:"Восстановить", gen:"Сгенерировать промпт",
@@ -215,11 +218,11 @@ var STR = {
   with_:"Можно вместе с", wait_:"Ждёт задачи", conf_:"Ждёт завершения", why:{lane:"та же сессия",quiet:"тишина и нагрузка несовместимы"}, rev:"версия", snapshot:"Это снимок только для чтения",
   ok_sent:"Отмечено как отправленное", ok_release:"Возвращено в очередь", ok_approve:"Одобрено", ok_reject:"Отклонено", ok_accept:"Отчёт принят", ok_cancel:"Задача отменена", ok_restore:"Задача восстановлена",
   ok_status:"Статус изменён", ok_requeued:"Возвращено в очередь", ok_note:"Заметка добавлена", ok_outcome:"Итог изменён", ok_saved:"Сохранено", ok_created:"Задача создана",
-  ERR:{exists:"Задача с ID {id} уже существует", bad_id:"ID: латинские буквы, цифры, «.», «_» или «-», до 32 символов", unknown_lane:"Нет такой сессии: {lane}", unknown_task:"Нет такой задачи в зависимостях: {id}", bad_lang:"Язык: en, ru или kk",
+  ERR:{exists:"Задача с ID {id} уже существует", bad_id:"ID: латинские буквы, цифры, «.», «_» или «-», до 32 символов", unknown_lane:"Нет такой сессии: {lane}", unknown_task:"Нет такой задачи в зависимостях: {id}", unknown_profile:"Нет такого профиля: {name}", bad_lint:"Неизвестный код подсказки: {name}", bad_lang:"Язык: en, ru или kk",
    unknown_resource:"Нет такого ресурса: {name}", cycle:"Получился бы цикл зависимостей", no_text:"У {id} ещё нет текста промпта: сначала сгенерируйте или напишите его", not_found:"Задачи {id} нет",
    wrong_state:"Задача {id} сейчас «{status}»: это действие невозможно", human_only:"Это может сделать только человек", empty_note:"Заметка пустая", bad_status:"Неизвестный статус", bad_outcome:"Неизвестный итог", no_git:"Эта папка не является git-репозиторием", bad_color:"Цвет в формате #feb83b", bad_agent:"Имя агента: буквы, цифры, пробел, . _ + - (до 24 знаков)"}},
  kk: {now:"Қазір не істеу керек", flow:"Жұмыс реті және қайсысын бірге іске қосуға болады", inbox_p:"Агенттердің ұсыныстары", inbox_r:"Тексеруге арналған есептер", archive:"Архив", activity:"Әрекеттер журналы",
-  add:"+ Жаңа тапсырма", search:"Іздеу…", lang:"English", idle:"Бұл сессия үшін қазір тапсырма жоқ.", nothing_ready:"Әзірге іске қосатын ештеңе жоқ. Күтілуде: ", nothing_ready_now:"Кезектегі келесі, бірақ әзірге іске қосуға болмайды.", sum_running:"Қазір орындалуда: {list}", sum_ok:"Қазір іске қосуға болады: {list}", sum_together:"Бірге іске қосуға болады: {list}", sum_choose:"Бір-бірлеп іске қосыңыз, олар қайшы келеді ({why}): {list}", sum_wait:"{id} күтуде: {list}", sum_deps:"{id} өзі тәуелді тапсырмаларды күтуде: {list}",
+  add:"+ Жаңа тапсырма", search:"Іздеу…", lang:"English", idle:"Бұл сессия үшін қазір тапсырма жоқ.", nothing_ready:"Әзірге іске қосатын ештеңе жоқ. Күтілуде: ", nothing_ready_now:"Кезектегі келесі, бірақ әзірге іске қосуға болмайды.", profile:"Профиль", prof_none:"Профильсіз", prof_light:"Жеңіл жұмыс", prof_dev:"Әзірлеу (машинаны жүктейді)", prof_bench:"Өлшеу (тыныштық керек)", prof_attended:"Сіз жақындасыз", ran_with:"Қатар жүрген", disturbed:"Бұл машинаны жүктейтін немесе ештеңе көрсетпеген тапсырманың қасында жүрді, өлшем дәл болмауы мүмкін: {list}", why_load:"машинаны жүктейді", why_unknown:"сипатталмаған", lint_head:"Сипаттаманы тексеріңіз", lint_no_marks:"ештеңе көрсетілмеген, сондықтан басқа тапсырмалармен салыстыруға болмайды (профиль таңдаңыз; ештеңе керек болмаса «Жеңіл жұмыс»)", lint_gpu_missing:"мәтінде GPU немесе модель сервері бар, бірақ GPU ресурсы белгіленбеген", lint_load_missing:"мәтінде құрастыру немесе тесттер бар, бірақ тапсырма машинаны жүктейтін деп белгіленбеген", lint_quiet_missing:"мәтінде жылдамдықты өлшеу бар, бірақ тыныштық сұралмаған", lint_port_missing:"мәтінде {arg} порты бар, бірақ ол ресурс ретінде белгіленбеген", go_unchecked:"тексерілмеді, мыналарда ештеңе көрсетілмеген: {list}", go_undescribed:"Бұл тапсырмада ештеңе көрсетілмеген (профиль, ресурс, файл жоқ), үйлесімділікті тексеру мүмкін емес", sum_unchecked:"{id}: үйлесімділік тексерілмеді, ештеңе көрсетілмеген", sum_running:"Қазір орындалуда: {list}", sum_ok:"Қазір іске қосуға болады: {list}", sum_together:"Бірге іске қосуға болады: {list}", sum_choose:"Бір-бірлеп іске қосыңыз, олар қайшы келеді ({why}): {list}", sum_wait:"{id} күтуде: {list}", sum_deps:"{id} өзі тәуелді тапсырмаларды күтуде: {list}",
   running:"Орындалуда", held_by:"{name} алды, {time} бастап", proposed_by:"{name} ұсынды",
   stale:"броньның мерзімі өтті: сессия әлі жұмыс істеп тұр ма?", copy:"Промптты көшіру", sent:"Жіберілді деп белгілеу", release:"Кезекке қайтару", approve:"Мақұлдау", reject:"Қабылдамау",
   edit:"Өзгерту", accept:"Есепті қабылдау", sendback:"Қайта жұмысқа қайтару", cancel:"Тапсырманы болдырмау", restore:"Қалпына келтіру", gen:"Промпт жасату",
@@ -234,7 +237,7 @@ var STR = {
   with_:"Бірге орындалады", wait_:"Тәуелді", conf_:"Күтуде", why:{lane:"сол сессия",quiet:"тыныштық пен жүктеме сыймайды"}, rev:"нұсқа", snapshot:"Бұл тек оқуға арналған көшірме",
   ok_sent:"Жіберілді деп белгіленді", ok_release:"Кезекке қайтарылды", ok_approve:"Мақұлданды", ok_reject:"Қабылданбады", ok_accept:"Есеп қабылданды", ok_cancel:"Тапсырма болдырылмады", ok_restore:"Тапсырма қалпына келтірілді",
   ok_status:"Күйі өзгертілді", ok_requeued:"Кезекке қайтарылды", ok_note:"Жазба қосылды", ok_outcome:"Нәтиже өзгертілді", ok_saved:"Сақталды", ok_created:"Тапсырма жасалды",
-  ERR:{exists:"ID {id} бар тапсырма әлдеқашан бар", bad_id:"ID: әріптер, цифрлар, «.», «_» немесе «-», 32 таңбаға дейін", unknown_lane:"Белгісіз сессия: {lane}", unknown_task:"Тәуелділік тізіміндегі белгісіз тапсырма: {id}", bad_lang:"Тіл: en, ru немесе kk",
+  ERR:{exists:"ID {id} бар тапсырма әлдеқашан бар", bad_id:"ID: әріптер, цифрлар, «.», «_» немесе «-», 32 таңбаға дейін", unknown_lane:"Белгісіз сессия: {lane}", unknown_task:"Тәуелділік тізіміндегі белгісіз тапсырма: {id}", unknown_profile:"Белгісіз профиль: {name}", bad_lint:"Белгісіз кеңес коды: {name}", bad_lang:"Тіл: en, ru немесе kk",
    unknown_resource:"Белгісіз ресурс: {name}", cycle:"Бұл тәуелділік циклін тудырар еді", no_text:"{id} тапсырмасында промпт мәтіні әлі жоқ: алдымен оны жасатыңыз немесе жазыңыз", not_found:"Мұндай тапсырма жоқ: {id}",
    wrong_state:"{id} тапсырмасы қазір «{status}» күйінде: бұл әрекет мүмкін емес", human_only:"Мұны тек сіз істей аласыз", empty_note:"Жазба бос", bad_status:"Белгісіз күй", bad_outcome:"Белгісіз нәтиже", no_git:"Бұл қалта git репозиторийі емес", bad_color:"Түс #feb83b сияқты болуы керек", bad_agent:"Агент атауы: әріптер, цифрлар, бос орын, . _ + - (24 таңбаға дейін)"}}
 };
@@ -329,8 +332,24 @@ function hintLine(f) {
   var wl = function (a) { return a.map(function (x) { return x.id + " (" + whyText(x.why) + ")"; }).join(", "); };
   if (k === "wait") return h("div", {class: "sub go wait", text: "⏳ " + fmt(t("go_wait"), {list: wl(f.hint.with)})});
   if (k === "not") return h("div", {class: "sub go wait", text: "⛔ " + fmt(t("go_not"), {list: wl(f.hint.with)})});
-  if (k === "ok") return h("div", {class: "sub go ok", text: "✓ " + fmt(t("go_ok"), {list: f.hint.ids.join(", ")})});
+  if (k === "ok") return h("div", {class: "sub go ok", text: "✓ " + fmt(t("go_ok"), {list: f.hint.ids.join(", ")}) + (f.hint.unchecked && f.hint.unchecked.length ? " · " + fmt(t("go_unchecked"), {list: f.hint.unchecked.join(", ")}) : "")});
+  if (k === "unchecked") return h("div", {class: "sub go unk", text: "· " + fmt(t("go_unchecked"), {list: f.hint.ids.join(", ")})});
+  if (k === "undescribed") return h("div", {class: "sub go unk", text: "· " + t("go_undescribed")});
   return null;
+}
+function lintText(x) { return t("lint_" + x.code).replace("{arg}", x.arg || ""); }
+function lintLine(c) {
+  if (!c || !c.lint || !c.lint.length) return null;
+  return h("div", {class: "sub go warnlint", text: "⚠ " + t("lint_head") + ": " + lintText(c.lint[0]) + (c.lint.length > 1 ? " (+" + (c.lint.length - 1) + ")" : "")});
+}
+function distLine(c) {
+  if (!c || !c.disturbed_by || !c.disturbed_by.length) return null;
+  return h("div", {class: "note", style: "border-color:var(--warn)"}, "⚠ " + fmt(t("disturbed"), {list: c.disturbed_by.map(function (x) { return x.id + " (" + t(x.why === "load" ? "why_load" : "why_unknown") + ")"; }).join(", ")}));
+}
+function profLabel(name) {
+  var p = S.board.profiles && S.board.profiles[name]; if (!name) return "";
+  var k = "prof_" + name; var d = STR[S.lang] || STR.en;
+  return d[k] != null ? d[k] : (p && p.label ? p.label : name);
 }
 function violText(v) { return t("viol_" + (v.type === "outside_scope" ? "outside" : v.type)).replace("{id}", v.with || "") + ": " + v.path; }
 function violBox(c) {
@@ -348,11 +367,13 @@ function waitText(c) {
   return c.waiting_on.map(function (id) { var i = (c.waiting_info || {})[id]; return i && i.status === "review" ? id + " (" + outLabel(i.outcome) + ")" : id; }).join(", ");
 }
 function tags(c) {
-  var out = [];
-  (c.uses || []).forEach(function (r) { out.push(h("span", {class: "tag res", text: (S.board.resources[r] && S.board.resources[r].label) || r})); });
+  var out = [], e = c.effective || {uses: c.uses || [], quiet: c.quiet, noisy: c.noisy};
+  if (c.profile) out.push(h("span", {class: "tag", style: "color:var(--ac)", text: "◆ " + profLabel(c.profile)}));
+  (e.uses || []).forEach(function (r) { out.push(h("span", {class: "tag res", text: (S.board.resources[r] && S.board.resources[r].label) || r})); });
   if ((c.touches || []).length) out.push(h("span", {class: "tag", title: c.touches.join(", "), text: "📁 " + c.touches[0] + (c.touches.length > 1 ? " +" + (c.touches.length - 1) : "")}));
-  if (c.quiet) out.push(h("span", {class: "tag", text: "🔇 " + t("quiet")}));
-  if (c.noisy) out.push(h("span", {class: "tag", text: "🔊 " + t("noisy")}));
+  if (e.quiet) out.push(h("span", {class: "tag", text: "🔇 " + t("quiet")}));
+  if (e.noisy) out.push(h("span", {class: "tag", text: "🔊 " + t("noisy")}));
+  if (!c.described && (c.status === "draft" || c.status === "queued")) out.push(h("span", {class: "tag", style: "color:var(--warn)", text: "? " + t("prof_none")}));
   return out;
 }
 function turnOf(c) { return c.status === "draft" && c.waiting_on.length === 0; }
@@ -400,18 +421,21 @@ function renderNow() {
         card.appendChild(h("div", {class: "sub", text: t("next")}));
         card.appendChild(h("div", {class: "big", text: fc.id + " · " + fc.title}));
         if (hl) card.appendChild(hl);
+        var ll = lintLine(fc); if (ll) card.appendChild(ll);
         card.appendChild(h("div", {class: "row"}, h("button", {class: "btn pri", text: t("copy"), onclick: function () { copyPrompt(fc.id); }}),
           h("button", {class: "btn", text: t("sent"), onclick: function () { act("sent", fc.id, {}, t("sent")); }}), h("button", {class: "btn sm", text: "…", onclick: function () { openDrawer(fc.id); }})));
       } else if (fo.role === "turn") {
         card.appendChild(h("div", {class: "sub", text: t("turn")}));
         card.appendChild(h("div", {class: "big", text: fc.id + " · " + fc.title}));
         if (hl) card.appendChild(hl);
+        var ll2 = lintLine(fc); if (ll2) card.appendChild(ll2);
         card.appendChild(h("div", {class: "row"}, h("button", {class: "btn pri", title: t("genhint"), text: t("gen"), onclick: function () { copyGen(fc.id); }}), h("button", {class: "btn sm", text: t("edit"), onclick: function () { openDrawer(fc.id, true); }})));
       } else {
         // blocked (conflict) or waiting (dependencies): say why, with the same line as everywhere
         card.appendChild(h("div", {class: "sub", text: fo.role === "waiting" ? t("nothing_ready") + waitText(fc) : t("nothing_ready_now")}));
         card.appendChild(h("div", {class: "big", style: "margin-top:6px", text: fc.id + " · " + fc.title}));
         if (hl && fo.role !== "waiting") card.appendChild(hl);
+        var ll3 = lintLine(fc); if (ll3) card.appendChild(ll3);
         card.appendChild(h("div", {class: "row"}, h("button", {class: "btn sm", text: "…", onclick: function () { openDrawer(fc.id); }})));
       }
     } else if (!running.length) card.appendChild(h("div", {class: "empty", text: t("idle")}));
@@ -424,6 +448,7 @@ function renderNow() {
   if ((sm.can_start || []).length) line("good", "✔", fmt(t(sm.can_start.length > 1 ? "sum_together" : "sum_ok"), {list: sm.can_start.join(sm.can_start.length > 1 ? " ∥ " : ", ")}));
   (sm.choose || []).forEach(function (c) { line("warn", "⛔", fmt(t("sum_choose"), {list: c.ids.join(" / "), why: why(c.why)})); });
   (sm.wait || []).forEach(function (w) { line("warn", "⏳", fmt(t("sum_wait"), {id: w.id, list: w.with.map(function (x) { return x.id + " (" + why(x.why) + ")"; }).join(", ")})); });
+  (sm.unchecked || []).forEach(function (u) { line("unk", "·", fmt(t("sum_unchecked"), {id: u.id})); });
   (sm.deps || []).forEach(function (d) { line("", "…", fmt(t("sum_deps"), {id: d.id, list: d.ids.join(", ")})); });
 }
 
@@ -448,7 +473,7 @@ function renderInbox() {
       var lastNote = (c.notes || []).slice(-1)[0];
       var bad = badOutcome(c);
       l2.appendChild(h("div", {class: "card ib", style: "border-left:4px solid " + (bad ? (c.outcome === "failed" ? "var(--bad)" : "var(--warn)") : "var(--ok)")},
-        h("div", {class: "body"}, h("div", null, h("b", {text: c.id}), " · " + c.title + " ", chip(c)), h("div", {class: "sub", text: t("report") + ": " + (c.report || "—")}), bad && c.outcome !== "complete" ? h("div", {class: "note", style: "border-color:var(--warn)"}, "⚠ " + t("partial_warn")) : null, hasViol(c) ? violBox(c) : null, c.changed ? h("div", {class: "sub", text: changedText(c)}) : null, lastNote ? h("div", {class: "note"}, h("small", {text: lastNote.by + ": "}), lastNote.text) : null),
+        h("div", {class: "body"}, h("div", null, h("b", {text: c.id}), " · " + c.title + " ", chip(c)), h("div", {class: "sub", text: t("report") + ": " + (c.report || "—")}), distLine(c), bad && c.outcome !== "complete" ? h("div", {class: "note", style: "border-color:var(--warn)"}, "⚠ " + t("partial_warn")) : null, hasViol(c) ? violBox(c) : null, c.changed ? h("div", {class: "sub", text: changedText(c)}) : null, lastNote ? h("div", {class: "note"}, h("small", {text: lastNote.by + ": "}), lastNote.text) : null),
         h("div", {class: "row"}, h("button", {class: bad ? "btn" : "btn ok", text: bad ? t("accept_asis") : t("accept"), onclick: function () { act("accept", c.id, {}, t("accept")); }}), c.report ? h("button", {class: "btn", text: t("copy_path"), onclick: function () { copy(c.report); }}) : null,
           h("button", {class: "btn", text: t("sendback"), onclick: function () { act("status", c.id, {status: "queued"}); }}), h("button", {class: "btn sm", text: "…", onclick: function () { openDrawer(c.id); }}))));
     });
@@ -511,7 +536,7 @@ function renderDrawer() {
   if (S.editing) { renderEdit(c, db); return; }
   var kv = h("dl", {class: "kv"});
   function row(k, v) { if (v == null || v === "" || (Array.isArray(v) && !v.length)) return; kv.appendChild(h("dt", {text: k})); kv.appendChild(h("dd", null, v)); }
-  row(t("lane"), laneTitle(c.lane)); row(t("needs"), c.needs.join(", ")); row(t("uses"), (c.uses || []).join(", ") + (c.quiet ? " 🔇" : "") + (c.noisy ? " 🔊" : ""));
+  row(t("lane"), laneTitle(c.lane)); row(t("profile"), profLabel(c.profile)); row(t("needs"), c.needs.join(", ")); row(t("uses"), (c.uses || []).join(", ") + (c.quiet ? " 🔇" : "") + (c.noisy ? " 🔊" : ""));
   row(t("when"), c.when); row(t("created"), c.created_by + " · " + fmtTime(c.created)); row(t("claim"), c.claim ? c.claim.by + " · " + fmtTime(c.claim.at) + (c.stale ? " ⚠ " + t("stale") : "") : "");
   row(t("report"), c.report);
   row(t("files"), (c.touches || []).join(", ")); row(t("workdir"), c.workdir); row(t("branch"), c.branch);
@@ -521,6 +546,10 @@ function renderDrawer() {
   if (c.state === "review" || c.state === "done") row(t("out"), outLabel(c.outcome));
   if (c.conflicts.length) row(t("conf_"), c.conflicts.map(function (x) { return x.id + " (" + whyText(x.why) + ")"; }).join(", "));
   if (c.can_run_with.length) row(t("with_"), c.can_run_with.join(", "));
+  if (!c.described && (c.state === "queued" || c.state === "ready" || c.state === "draft" || c.state === "blocked" || c.state === "waiting")) row("·", t("go_undescribed"));
+  (c.lint || []).forEach(function (x) { row("⚠ " + t("lint_head"), lintText(x)); });
+  if ((c.ran_with || []).length) row(t("ran_with"), c.ran_with.map(function (x) { return x.id; }).join(", "));
+  if (c.disturbed_by && c.disturbed_by.length) row("⚠", distLine(c).textContent.slice(2));
   db.appendChild(kv);
   var bar = h("div", {class: "row", style: "margin:0 0 12px"});
   function b(label, cls, fn) { bar.appendChild(h("button", {class: "btn " + cls, text: label, onclick: fn})); }
@@ -568,15 +597,17 @@ function editForm(c, isNew) {
   f.touches = h("input", {type: "text", value: (c.touches || []).join(", ")});
   f.when = h("input", {type: "text", value: c.when || ""});
   f.outline = h("input", {type: "text", value: c.outline || ""});
+  f.profile = h("select", null, h("option", {value: "", text: t("prof_none")}));
+  Object.keys((S.board && S.board.profiles) || {}).forEach(function (k) { var o = h("option", {value: k, text: profLabel(k)}); if (k === c.profile) o.selected = true; f.profile.appendChild(o); });
   f.quiet = h("input", {type: "checkbox"}); f.quiet.checked = !!c.quiet;
   f.noisy = h("input", {type: "checkbox"}); f.noisy.checked = !!c.noisy;
   f.text = h("textarea"); f.text.value = c.text || "";
-  var g = h("div", {class: "formgrid"}, field(t("id"), f.id), field(t("lane"), f.lane), field(t("title"), f.title, true), field(t("needs_l"), f.needs), field(t("uses_l"), f.uses), field(t("touches_l"), f.touches, true),
+  var g = h("div", {class: "formgrid"}, field(t("id"), f.id), field(t("lane"), f.lane), field(t("title"), f.title, true), field(t("needs_l"), f.needs), field(t("profile"), f.profile), field(t("uses_l"), f.uses), field(t("touches_l"), f.touches, true),
     field(t("when"), f.when, true), field(t("outline"), f.outline, true),
     h("div", null, h("label", null, f.quiet, " " + t("quiet"))), h("div", null, h("label", null, f.noisy, " " + t("noisy"))), field(t("text"), f.text, true));
   g._f = f; return g;
 }
-function formArgs(f) { return {title: f.title.value, lane: f.lane.value, needs: f.needs.value, uses: f.uses.value, touches: f.touches.value, when: f.when.value, outline: f.outline.value, quiet: f.quiet.checked, noisy: f.noisy.checked, text: f.text.value}; }
+function formArgs(f) { return {title: f.title.value, lane: f.lane.value, needs: f.needs.value, uses: f.uses.value, touches: f.touches.value, when: f.when.value, outline: f.outline.value, quiet: f.quiet.checked, noisy: f.noisy.checked, profile: f.profile.value, text: f.text.value}; }
 function renderEdit(c, db) {
   var g = editForm(c, false); db.appendChild(g);
   db.appendChild(h("div", {class: "row", style: "margin-top:14px"}, h("button", {class: "btn pri", text: t("save"), onclick: function () { S.editing = false; act("edit", c.id, formArgs(g._f), t("saved")); }}),

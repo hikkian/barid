@@ -34,7 +34,7 @@ To add a session later: the person presses "+" in the panel, or `barid lane add 
 ## 3. Day-to-day rules
 
 - Identify yourself in every command: `--by "<your name>"`.
-- **Planner:** add tasks with `barid add`, set `--needs`, `--uses`, `--quiet`, `--noisy`, check with `barid plan`, explain what can run in parallel. Write prompts that a session with no memory can act on (see `barid template`). Drafts (`--outline`, no text) get their prompt later through `barid gen ID` then `barid edit ID --text-file FILE`.
+- **Planner:** add tasks with `barid add`, set `--needs`, `--profile` (or `--uses`, `--quiet`, `--noisy`), run `barid lint` and fix what it suggests, check with `barid plan`, explain what can run in parallel. Write prompts that a session with no memory can act on (see `barid template`). Drafts (`--outline`, no text) get their prompt later through `barid gen ID` then `barid edit ID --text-file FILE`.
 - **Worker:** `barid next --lane <lane>`, `barid claim ID`, do the work, write a report, `barid finish ID --report PATH`. If `claim` is refused, stop and tell the user why. Touch only your task.
 - **Never** edit `board.json` directly, pass `--human`, set `BARID_ACTOR=human`, use `--force`, or work on a task you did not claim.
 
