@@ -1,4 +1,4 @@
-<p align="center"><img src="assets/icon.svg" width="96" alt="Barid"></p>
+<p align="center"><img src="assets/banner.jpg" width="720" alt="Barid (بريد): a relay board for AI agent sessions"></p>
 
 # Barid
 
