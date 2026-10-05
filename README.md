@@ -1,6 +1,12 @@
-<p align="center"><img src="assets/banner.jpg" width="720" alt="Barid (بريد): a relay board for AI agent sessions"></p>
+<p align="center"><img src="assets/hero.png" width="900" alt="Barid (بريد): a relay board for AI agent sessions"></p>
 
-# Barid
+<p align="center">
+<a href="https://github.com/hikkian/barid/actions/workflows/ci.yml"><img src="https://github.com/hikkian/barid/actions/workflows/ci.yml/badge.svg" alt="tests"></a>
+<img src="https://img.shields.io/badge/license-MIT-2ea44f" alt="MIT">
+<img src="https://img.shields.io/badge/python-3.9%2B-3776ab" alt="Python 3.9+">
+<img src="https://img.shields.io/badge/dependencies-none-feb83b" alt="no dependencies">
+<img src="https://img.shields.io/badge/agent-skill-005b5d" alt="agent skill">
+</p>
 
 **A prompt board for people who run several AI agent sessions at once.**
 Your planner agent writes the prompts, you copy them into the other sessions, and the board keeps track of the order, what depends on what, what may run in parallel, and who is holding the GPU. It ships as an **agent skill** (so your agent can run it for you) plus a small **browser panel** (so you can see and click).
