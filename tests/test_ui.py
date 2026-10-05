@@ -179,6 +179,14 @@ class PanelInBrowser(unittest.TestCase):
         barid(self.board, "finish", "T1", "--report", "r.md", "--outcome", "complete", "--by", "w1")
         self.b.wait("document.getElementById('inboxwrap').textContent.indexOf('ran next to') >= 0", what="the disturbed-measurement warning")
 
+    def test_the_card_shows_the_task_that_is_first_in_the_plan(self):
+        barid(self.board, "claim", "T2", "--by", "w1", "--force")  # a measurement runs in lane b
+        barid(self.board, "add", "LATER", "--lane", "a", "--title", "Later draft", "--outline", "only an outline", "--profile", "dev")
+        self.b.wait("document.querySelector('#now').textContent.indexOf('Wait, conflict') >= 0", what="the blocked first task")
+        card = self.b.exec("return document.querySelector('#now .lane-card').textContent;")
+        self.assertIn("First", card)       # T1 comes first in the plan for this session
+        self.assertNotIn("Later draft", card)
+
     def test_narrow_screen_has_no_horizontal_scroll(self):
         self.b.cmd("WebDriver:SetWindowRect", {"width": 390, "height": 800})
         self.addCleanup(lambda: self.b.cmd("WebDriver:SetWindowRect", {"width": 1280, "height": 900}))

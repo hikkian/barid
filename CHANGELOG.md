@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- Fix: the "What to do now" card showed a later draft whose prompt was due instead of the session's first task in the plan when that first task was blocked. The card now shows the task the plan puts first (and drafts that wait for other tasks count as waiting).
+- examples: the example board describes its tasks with profiles, so `barid lint` is clean on it.
 ## 0.5.1 (2026-10-06)
 
 - The panel is now tested in a real browser: 20 tests drive Firefox headless over Marionette (standard library only, `tests/test_ui.py`): language list, "+" new session, Connect, the Appearance menu, forms, drawer, review inbox, hints, colours of the status labels, narrow screens, Kazakh. They were checked against three bugs we had (a menu that closed, colourless status labels, a missing conflict hint). CI runs them on one Linux job; `BARID_SKIP_UI=1` skips them.

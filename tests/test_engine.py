@@ -185,6 +185,37 @@ class EngineTests(unittest.TestCase):
         rb.mutate(self.path, lambda d: rb.op_finish(d, AGENT, "BENCH2", report="r.md", force=True))
         self.assertIn("SHORT", [x["id"] for x in task(self.d(), "BENCH2")["ran_with"]])
 
+    def test_the_card_shows_the_task_the_plan_puts_first_not_just_any_task_whose_turn_came(self):
+        # the live board: a measurement runs elsewhere, the session's first task is blocked by it, a later draft is only waiting for its prompt
+        add(self.path, "RUN", lane="b", profile="bench", uses="gpu")
+        rb.mutate(self.path, lambda d: rb.op_claim(d, AGENT, "RUN", force=True))
+        add(self.path, "FIRST", lane="a", profile="bench", uses="gpu")
+        add(self.path, "LATER", lane="a", text="", outline="a draft", profile="dev")
+        view = rb.board_view(self.path)
+        self.assertEqual(view["focus"]["a"]["id"], "FIRST")
+        self.assertEqual(view["focus"]["a"]["role"], "blocked")
+        flat = [i for step in view["steps"] for i in step]
+        self.assertLess(flat.index("FIRST"), flat.index("LATER"))
+
+    def test_a_ready_task_that_the_plan_places_earlier_wins_over_a_blocked_one(self):
+        add(self.path, "RUN", lane="b", profile="bench", uses="gpu")
+        rb.mutate(self.path, lambda d: rb.op_claim(d, AGENT, "RUN", force=True))
+        add(self.path, "BLOCKED", lane="a", profile="bench", uses="gpu")
+        add(self.path, "OPEN", lane="c", profile="light")
+        add(self.path, "OPEN2", lane="a", profile="light")  # same lane as BLOCKED, but nothing in its way except BLOCKED itself
+        view = rb.board_view(self.path)
+        self.assertEqual(view["focus"]["c"]["id"], "OPEN")
+        flat = [i for step in view["steps"] for i in step]
+        self.assertEqual(view["focus"]["a"]["id"], min(["BLOCKED", "OPEN2"], key=flat.index))
+
+    def test_a_draft_waiting_for_other_tasks_is_a_waiting_focus(self):
+        add(self.path, "DEP", lane="b", profile="light")
+        rb.mutate(self.path, lambda d: rb.op_edit(d, HUMAN, "DEP", {}))
+        add(self.path, "DR", lane="a", text="", outline="wait", needs="DEP", profile="light")
+        view = rb.board_view(self.path)
+        self.assertEqual(view["focus"]["a"]["role"], "waiting")
+        self.assertEqual(view["focus"]["a"]["hint"]["kind"], "deps")
+
     def test_claiming_in_two_lanes_under_one_name_warns(self):
         add(self.path, "W1", lane="a")
         add(self.path, "W2", lane="b")
