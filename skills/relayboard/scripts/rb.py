@@ -603,6 +603,19 @@ def op_note(d: dict, actor: Actor, iid: str, text: str) -> dict:
     return it
 
 
+def op_move(d: dict, actor: Actor, iid: str, position: int) -> dict:
+    """Change the priority of a task: the plan fills steps in list order, so earlier tasks get the earlier slots."""
+    if not direct_allowed(d, actor):
+        raise RBError("only the person (or a trusted planner agent) can reorder tasks")
+    it = get_item(d, iid)
+    if not 1 <= position <= len(d["items"]):
+        raise RBError(f"position must be between 1 and {len(d['items'])}")
+    d["items"].remove(it)
+    d["items"].insert(position - 1, it)
+    log_event(d, actor, "move", iid, str(position))
+    return it
+
+
 def op_purge(d: dict, actor: Actor, iid: str) -> None:
     require_human(actor, "purge a task for good")
     it = get_item(d, iid)
@@ -1361,6 +1374,9 @@ def build_parser() -> argparse.ArgumentParser:
     s = add("reject", simple(lambda d, a, g: op_reject(d, a, g.id, g.reason or ""), "{id} rejected"), "person: reject a proposal")
     s.add_argument("id")
     s.add_argument("--reason")
+    s = add("move", simple(lambda d, a, g: op_move(d, a, g.id, g.position), "{id} moved"), "reorder: tasks earlier in the list get earlier slots in the plan")
+    s.add_argument("id")
+    s.add_argument("position", type=int, help="1 = first")
     s = add("status", simple(lambda d, a, g: op_set_status(d, a, g.id, g.value), "{id} status changed"), "person: set any status")
     s.add_argument("id")
     s.add_argument("value", choices=STATUSES)

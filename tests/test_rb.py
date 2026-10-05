@@ -226,6 +226,17 @@ class SchedulerTests(unittest.TestCase):
         self.assertLess(flat.index("M1"), flat.index("M2"))
         self.assertLess(flat.index("M2"), flat.index("M3"))
 
+    def test_moving_a_task_up_gives_it_the_earlier_step(self):
+        add(self.path, PLANNER, "N", lane="second", noisy=True)
+        add(self.path, PLANNER, "Q", lane="main", quiet=True)
+        self.assertEqual(self.steps(), [["N"], ["Q"]])  # list order decides who goes first
+        rb.mutate(self.path, lambda d: rb.op_move(d, PLANNER, "Q", 1))
+        self.assertEqual(self.steps(), [["Q"], ["N"]])
+        with self.assertRaises(rb.RBError):
+            rb.mutate(self.path, lambda d: rb.op_move(d, AGENT, "Q", 2))
+        with self.assertRaises(rb.RBError):
+            rb.mutate(self.path, lambda d: rb.op_move(d, PLANNER, "Q", 9))
+
     def test_noisy_tasks_are_pushed_away_from_quiet_ones(self):
         add(self.path, PLANNER, "Q", lane="main", quiet=True)
         add(self.path, PLANNER, "N", lane="second", noisy=True)

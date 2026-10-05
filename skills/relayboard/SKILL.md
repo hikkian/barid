@@ -91,7 +91,7 @@ Touch only your own task. Never edit, cancel or delete other tasks.
 | Goal | Command |
 |---|---|
 | create board | `rb init --lanes a,b` |
-| add / change task | `rb add ID ...`, `rb edit ID ...` (`--replace OLD NEW` swaps one exact fragment) |
+| add / change / reorder task | `rb add ID ...`, `rb edit ID ...` (`--replace OLD NEW` swaps one exact fragment), `rb move ID POSITION` (earlier in the list = earlier slot in the plan) |
 | see order and parallelism | `rb plan`, `rb list` |
 | next task for a lane | `rb next --lane L` |
 | take / finish / give back | `rb claim ID`, `rb finish ID --report P`, `rb release ID` |

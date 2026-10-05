@@ -103,6 +103,7 @@ rb next --lane helper                     # the next ready prompt for a lane (ex
 rb claim T1 --by worker-a                 # refused when a conflicting task is running
 rb finish T1 --report reports/t1.md --by worker-a
 rb gen T2                                 # request that makes an agent write T2's prompt
+rb move T3 1                              # priority: earlier in the list = earlier slot in the plan
 rb open                                   # panel;  rb export board.html  = read-only snapshot
 ```
 
