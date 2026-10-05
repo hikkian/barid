@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.5.0 (2026-10-06)
 
 - **A more reliable "can these run together".** Tasks get a `profile` (built in: `light`, `dev`, `bench`, `attended`; your own with `barid profile add`) next to resources, quiet/noisy marks and file scopes. The conflict rules are one pure function (`conflicts_between`) with a symmetry test over random boards. A task that declares nothing is shown as *not checked*, never as compatible. `barid lint` (and `add`/`edit`) suggests marks the text gives away (GPU, builds, speed measurement, ports; silence with `--lint-ok`). `barid explain A B` shows each rule. The run journal records which tasks ran next to a finished one and flags a measurement that ran next to something that loaded the machine or declared nothing. A port or a folder can be an exclusive resource (`port:8091`). The panel shows profiles, "not checked", lint hints and the journal in all three languages.
 - "What to do now" has a summary under the cards for the whole board: what runs now, what can start (together or one at a time), and what waits and why. The hint line on each card and this summary now come from one place on the server (`focus`, `summary` in `/api/board`) and are tested against every combination of states of two sessions, so no kind of task can be left without its line.
