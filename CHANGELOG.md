@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Fix: status labels (in progress, ready, waiting…) lost their colours because the new agent buttons reused the same style name.
 - Kazakh (Қазақша) in the panel, in the prompt footers, handoff and connection texts (`barid init --lang kz`), next to English and Russian; the language button cycles through the three.
 - README: a "How is this different?" section comparing Barid with Claude Squad, Vibe Kanban, MCP Agent Mail, Aqua and Claude Code agent teams; README translations in Russian (`README.ru.md`) and Kazakh (`README.kz.md`).
 

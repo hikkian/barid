@@ -128,8 +128,8 @@ label{font-size:12px;color:var(--mute);display:block;margin-bottom:3px}
 .lagent{grid-column:1/-1;display:grid;gap:6px}
 .agentbtn{justify-self:start;border:0;background:none;color:var(--mute);font-size:12px;padding:0 2px;cursor:pointer}
 .chips{display:flex;flex-wrap:wrap;gap:4px}
-.chip{border:1px solid var(--line);background:var(--panel2);color:inherit;border-radius:999px;padding:2px 9px;font-size:12px;cursor:pointer}
-.chip.on{background:var(--ac);color:var(--acfg);border-color:transparent}
+.agchip{border:1px solid var(--line);background:var(--panel2);color:inherit;border-radius:999px;padding:2px 9px;font-size:12px;cursor:pointer}
+.agchip.on{background:var(--ac);color:var(--acfg);border-color:transparent}
 .pill.add{min-width:32px;padding:0 10px;font-weight:700}
 .connectbox{max-height:46vh;overflow:auto;white-space:pre-wrap;word-break:break-word;font:12px/1.45 ui-monospace,Menlo,Consolas,monospace;background:var(--panel2);border:1px solid var(--line);border-radius:10px;padding:10px;margin:0}
 .pal i{width:22px;height:22px;border-radius:50%;display:inline-block;border:1px solid rgba(128,128,128,.4)}
@@ -590,7 +590,7 @@ function openLaneAdd() {
   box.appendChild(nameIn);
   box.appendChild(h("div", {class: "sub", style: "margin:12px 0 6px", text: t("agent_which")}));
   var chips = h("div", {class: "chips"}), chipEls = {};
-  AGENTS.forEach(function (a) { var b = h("button", {class: "chip", text: agentLabel(a), onclick: function () { agent = agent === a ? "" : a; AGENTS.forEach(function (x) { chipEls[x].classList.toggle("on", x === agent); }); }}); chipEls[a] = b; chips.appendChild(b); });
+  AGENTS.forEach(function (a) { var b = h("button", {class: "agchip", text: agentLabel(a), onclick: function () { agent = agent === a ? "" : a; AGENTS.forEach(function (x) { chipEls[x].classList.toggle("on", x === agent); }); }}); chipEls[a] = b; chips.appendChild(b); });
   box.appendChild(chips);
   function create() {
     var name = nameIn.value.trim(); if (!name) { nameIn.focus(); return; }
@@ -658,7 +658,7 @@ function renderThemePop() {
         agentIn.addEventListener("change", function () { act("lane", l.id, {agent: agentIn.value.trim()}).then(renderThemePop); });
         var chips = h("div", {class: "chips"});
         AGENTS.forEach(function (a) {
-          chips.appendChild(h("button", {class: "chip" + (l.agent === a ? " on" : ""), text: agentLabel(a), onclick: function () { act("lane", l.id, {agent: l.agent === a ? "" : a}).then(renderThemePop); }}));
+          chips.appendChild(h("button", {class: "agchip" + (l.agent === a ? " on" : ""), text: agentLabel(a), onclick: function () { act("lane", l.id, {agent: l.agent === a ? "" : a}).then(renderThemePop); }}));
         });
         lagent.appendChild(chips); lagent.appendChild(agentIn);
       }
