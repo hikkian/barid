@@ -29,6 +29,8 @@ barid context add README.md                                            # files a
 
 Tell the user to run `barid trust add "<your agent name>" --human` if they want your additions to skip the approval step; otherwise your tasks arrive as proposals in the panel. Then show them the panel: `barid open`.
 
+To add a session later: the person presses "+" in the panel, or `barid lane add ID --title "Name" --agent codex`. Then `barid connect ID` prints the text to paste as the first message of that agent's window; from then on it works through `next --lane ID`, `claim` and `finish` by itself.
+
 ## 3. Day-to-day rules
 
 - Identify yourself in every command: `--by "<your name>"`.

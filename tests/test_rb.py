@@ -214,6 +214,18 @@ class CoreTests(unittest.TestCase):
         with self.assertRaises(rb.RBError):
             rb.mutate(self.path, lambda d: rb.op_lane_add(d, AGENT, "extra2", "x"))
 
+    def test_connect_text_names_the_lane_and_the_next_command(self):
+        rb.mutate(self.path, lambda d: rb.op_lane_edit(d, HUMAN, "main", agent="local"))
+        d = rb.load(self.path)
+        text = rb.connect_text(d, "main", self.path)
+        self.assertIn("--lane main", text)
+        self.assertIn(str(self.path), text)
+        self.assertIn("smaller or local model", text)
+        d["lang"] = "ru"
+        self.assertIn("Ты сессия", rb.connect_text(d, "main", self.path))
+        with self.assertRaises(rb.RBError):
+            rb.connect_text(d, "nope", self.path)
+
     def test_lane_colour_and_agent_are_validated_and_trusted_only(self):
         rb.mutate(self.path, lambda d: rb.op_lane_edit(d, HUMAN, "main", title="Build", color="#FEB83B", agent="codex"))
         lane = rb.load(self.path)["lanes"][0]

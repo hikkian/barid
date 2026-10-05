@@ -97,6 +97,8 @@ Touch only your own task. Never edit, cancel or delete other tasks. If the promp
 | add / change / reorder task | `barid add ID ...`, `barid edit ID ...` (`--replace OLD NEW` swaps one exact fragment), `barid move ID POSITION` (earlier in the list = earlier slot in the plan) |
 | see order and parallelism | `barid plan`, `barid list` |
 | next task for a lane | `barid next --lane L` |
+| add a session | `barid lane add ID --title T --agent codex` (or "+" in the panel) |
+| connect an agent window to a session | `barid connect L` prints the first message to paste into that window |
 | scopes, protection, isolation | `barid add ID --touches P`, `barid protect add P`, `barid worktree ID`, `barid check ID` |
 | take / finish / give back | `barid claim ID`, `barid finish ID --report P --outcome complete\|partial\|failed`, `barid release ID` |
 | note, cancel | `barid note ID "text"`, `barid cancel ID --reason ...` |

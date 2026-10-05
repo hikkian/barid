@@ -2,7 +2,7 @@
 
 ## Unreleased
 
-- Panel: a "+ Session" form in the Appearance menu adds a session without the command line (agents still can: `barid lane add`). The agent kind is picked from chips that open on click, replacing the native drop-down that could jump to the wrong place on some desktops.
+- Sessions from the panel: a "+" button next to the session chips creates one (name and agent), then shows the connection text; every session card has a "Connect" button. `barid connect LANE` prints the same text: paste it as the first message of the agent window and the agent takes its tasks from the board (`next --lane`, `claim`, `finish`). The agent kind is picked from chips instead of a native drop-down that could jump to the wrong place on some desktops.
 - Many sessions: from the seventh on, each session gets its own hue (the first six use the palette); long "can run together" lists are shortened. Checked with 8 sessions and 60 tasks (plan and export in under 0.1 s).
 - Handoff between agents: the prompt of a task automatically includes what the tasks it builds on handed over (outcome, who and which agent, report, branch, changed files, last notes). A lane whose agent is `local` gets a short hint for smaller models.
 

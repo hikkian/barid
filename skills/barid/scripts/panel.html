@@ -130,8 +130,8 @@ label{font-size:12px;color:var(--mute);display:block;margin-bottom:3px}
 .chips{display:flex;flex-wrap:wrap;gap:4px}
 .chip{border:1px solid var(--line);background:var(--panel2);color:inherit;border-radius:999px;padding:2px 9px;font-size:12px;cursor:pointer}
 .chip.on{background:var(--ac);color:var(--acfg);border-color:transparent}
-.laneadd{display:grid;grid-template-columns:1fr auto;gap:6px;margin-top:4px}
-#themepop .hint{font-size:12px;opacity:.7;margin:8px 0 0;line-height:1.35}
+.pill.add{min-width:32px;padding:0 10px;font-weight:700}
+.connectbox{max-height:46vh;overflow:auto;white-space:pre-wrap;word-break:break-word;font:12px/1.45 ui-monospace,Menlo,Consolas,monospace;background:var(--panel2);border:1px solid var(--line);border-radius:10px;padding:10px;margin:0}
 .pal i{width:22px;height:22px;border-radius:50%;display:inline-block;border:1px solid rgba(128,128,128,.4)}
 details>summary{cursor:pointer;color:var(--mute);margin:6px 0}
 .ev{font-size:12.5px;color:var(--mute);padding:2px 0}
@@ -181,7 +181,7 @@ var STR = {
   status:"Status", notes:"Notes", addnote:"New note (Enter to save)", history:"History", report:"Report", needs:"Depends on", uses:"Resources", lane:"Session", when:"When", created:"Created by", claim:"Held by",
   prompt:"Prompt", noprompt:"There is no prompt text yet.", title:"Title", outline:"Outline (what the prompt must achieve)", needs_l:"Depends on (IDs, comma separated)", uses_l:"Resources (comma separated)",
   quiet:"needs a quiet machine", noisy:"creates load", id:"ID", text:"Prompt text", create:"Create", offline:"No connection to the board server. Retrying…",
-  copy_path:"Copy report path", reopen:"Reopen", sessions:"Sessions", lane_name_ph:"New session name", lane_add:"+ Session", lane_hint:"An agent can add one too: barid lane add ID --title \"Name\" --agent codex (needs trust).", color_reset:"Reset color", agent_ph:"Agent (claude, codex…)", ag_claude:"Claude Code", ag_codex:"Codex", ag_opencode:"OpenCode", ag_gemini:"Gemini CLI", ag_cursor:"Cursor", ag_aider:"Aider", ag_local:"Local model", why_paths:"same files", touches_l:"Files and folders it may change (comma separated)", files:"Files", workdir:"Checkout", branch:"Branch", viol_chip:"files need a look", viol_protected:"changed a protected file", viol_outside:"changed a file outside its scope", viol_collision:"touched a file that {id} is working on", changed_n:"{n} files changed on {branch}", viol_warn:"Barid found file changes you should look at before accepting.", updated:"updated", theme:"Appearance", mode_auto:"Auto", mode_light:"Light", mode_dark:"Dark", palette:"Colors", pal_forest:"Forest", pal_teal:"Teal", pal_graphite:"Graphite", pal_midnight:"Midnight", out:"Outcome", out_complete:"complete", out_partial:"partial", out_failed:"failed", out_none:"outcome not stated", accept_asis:"Accept as is", partial_warn:"The session stopped early or did not finish everything. Dependent tasks wait for your decision.", turn:"its turn has come", empty_flow:"No tasks yet. Ask your agent to add some, or press “+ New task”.",
+  copy_path:"Copy report path", reopen:"Reopen", sessions:"Sessions", lane_new:"New session", lane_name_ph:"Session name (for example: Codex, tests)", agent_which:"Which agent will work in it?", lane_create:"Create session", lane_created:"Session “{name}” created", connect:"Connect", connect_help_short:"How to attach an agent window to this session", connect_title:"Connect “{name}”", connect_help:"Open that agent (Codex, Claude Code…) in the project folder and paste this text as its first message. After that it takes its tasks from the board by itself.", copy_connect:"Copy connection text", color_reset:"Reset color", agent_ph:"Agent (claude, codex…)", ag_claude:"Claude Code", ag_codex:"Codex", ag_opencode:"OpenCode", ag_gemini:"Gemini CLI", ag_cursor:"Cursor", ag_aider:"Aider", ag_local:"Local model", why_paths:"same files", touches_l:"Files and folders it may change (comma separated)", files:"Files", workdir:"Checkout", branch:"Branch", viol_chip:"files need a look", viol_protected:"changed a protected file", viol_outside:"changed a file outside its scope", viol_collision:"touched a file that {id} is working on", changed_n:"{n} files changed on {branch}", viol_warn:"Barid found file changes you should look at before accepting.", updated:"updated", theme:"Appearance", mode_auto:"Auto", mode_light:"Light", mode_dark:"Dark", palette:"Colors", pal_forest:"Forest", pal_teal:"Teal", pal_graphite:"Graphite", pal_midnight:"Midnight", out:"Outcome", out_complete:"complete", out_partial:"partial", out_failed:"failed", out_none:"outcome not stated", accept_asis:"Accept as is", partial_warn:"The session stopped early or did not finish everything. Dependent tasks wait for your decision.", turn:"its turn has come", empty_flow:"No tasks yet. Ask your agent to add some, or press “+ New task”.",
   s:{ready:"ready to run",waiting:"waiting",blocked:"busy",queued:"queued",draft:"draft",proposed:"proposed",sent:"sent",running:"in progress",review:"to review",done:"done",cancelled:"cancelled"},
   with_:"Can run with", wait_:"Depends on", conf_:"Waiting for", why:{lane:"same session",quiet:"quiet and load do not mix"}, rev:"rev", snapshot:"This is a read-only snapshot",
   ok_sent:"Marked as sent", ok_release:"Returned to the queue", ok_approve:"Approved", ok_reject:"Rejected", ok_accept:"Report accepted", ok_cancel:"Task cancelled", ok_restore:"Task restored",
@@ -200,7 +200,7 @@ var STR = {
   status:"Статус", notes:"Заметки", addnote:"Новая заметка (Enter — сохранить)", history:"История", report:"Отчёт", needs:"Зависит от", uses:"Ресурсы", lane:"Сессия", when:"Когда", created:"Автор", claim:"В работе у",
   prompt:"Промпт", noprompt:"Текста промпта ещё нет.", title:"Название", outline:"Суть (что должен сделать промпт)", needs_l:"Зависит от (ID через запятую)", uses_l:"Ресурсы (через запятую)",
   quiet:"нужна тишина", noisy:"создаёт нагрузку", id:"ID", text:"Текст промпта", create:"Создать", offline:"Нет связи с сервером доски. Пробую снова…",
-  copy_path:"Скопировать путь к отчёту", reopen:"Открыть заново", sessions:"Сессии", lane_name_ph:"Название новой сессии", lane_add:"+ Сессия", lane_hint:"Агент тоже может добавить сессию: barid lane add ID --title \"Название\" --agent codex (нужно доверие к агенту).", color_reset:"Сбросить цвет", agent_ph:"Агент (claude, codex…)", ag_claude:"Claude Code", ag_codex:"Codex", ag_opencode:"OpenCode", ag_gemini:"Gemini CLI", ag_cursor:"Cursor", ag_aider:"Aider", ag_local:"Локальная модель", why_paths:"те же файлы", touches_l:"Какие файлы и папки можно менять (через запятую)", files:"Файлы", workdir:"Рабочая копия", branch:"Ветка", viol_chip:"проверьте файлы", viol_protected:"изменён защищённый файл", viol_outside:"изменён файл вне своей области", viol_collision:"тронут файл, с которым работает {id}", changed_n:"изменено файлов: {n} (ветка {branch})", viol_warn:"Barid нашёл изменения файлов, которые стоит проверить перед принятием.", updated:"обновлено", theme:"Оформление", mode_auto:"Авто", mode_light:"Светлая", mode_dark:"Тёмная", palette:"Цвета", pal_forest:"Лес", pal_teal:"Бирюза", pal_graphite:"Графит", pal_midnight:"Полночь", out:"Итог", out_complete:"выполнено полностью", out_partial:"выполнено частично", out_failed:"не удалось", out_none:"итог не указан", accept_asis:"Принять как есть", partial_warn:"Сессия остановилась раньше или сделала не всё. Зависимые задачи ждут вашего решения.", turn:"подошла очередь", empty_flow:"Задач пока нет. Попросите агента добавить их или нажмите «+ Новая задача».",
+  copy_path:"Скопировать путь к отчёту", reopen:"Открыть заново", sessions:"Сессии", lane_new:"Новая сессия", lane_name_ph:"Название сессии (например: Codex, тесты)", agent_which:"Какой агент в ней будет работать?", lane_create:"Создать сессию", lane_created:"Сессия «{name}» создана", connect:"Подключить", connect_help_short:"Как подключить окно агента к этой сессии", connect_title:"Подключить «{name}»", connect_help:"Откройте этого агента (Codex, Claude Code…) в папке проекта и вставьте этот текст первым сообщением. Дальше он сам берёт задачи с доски.", copy_connect:"Скопировать текст подключения", color_reset:"Сбросить цвет", agent_ph:"Агент (claude, codex…)", ag_claude:"Claude Code", ag_codex:"Codex", ag_opencode:"OpenCode", ag_gemini:"Gemini CLI", ag_cursor:"Cursor", ag_aider:"Aider", ag_local:"Локальная модель", why_paths:"те же файлы", touches_l:"Какие файлы и папки можно менять (через запятую)", files:"Файлы", workdir:"Рабочая копия", branch:"Ветка", viol_chip:"проверьте файлы", viol_protected:"изменён защищённый файл", viol_outside:"изменён файл вне своей области", viol_collision:"тронут файл, с которым работает {id}", changed_n:"изменено файлов: {n} (ветка {branch})", viol_warn:"Barid нашёл изменения файлов, которые стоит проверить перед принятием.", updated:"обновлено", theme:"Оформление", mode_auto:"Авто", mode_light:"Светлая", mode_dark:"Тёмная", palette:"Цвета", pal_forest:"Лес", pal_teal:"Бирюза", pal_graphite:"Графит", pal_midnight:"Полночь", out:"Итог", out_complete:"выполнено полностью", out_partial:"выполнено частично", out_failed:"не удалось", out_none:"итог не указан", accept_asis:"Принять как есть", partial_warn:"Сессия остановилась раньше или сделала не всё. Зависимые задачи ждут вашего решения.", turn:"подошла очередь", empty_flow:"Задач пока нет. Попросите агента добавить их или нажмите «+ Новая задача».",
   s:{ready:"можно запускать",waiting:"ждёт",blocked:"занято",queued:"в очереди",draft:"черновик",proposed:"предложено",sent:"отправлено",running:"в работе",review:"на проверке",done:"выполнено",cancelled:"отменено"},
   with_:"Можно вместе с", wait_:"Ждёт задачи", conf_:"Ждёт завершения", why:{lane:"та же сессия",quiet:"тишина и нагрузка несовместимы"}, rev:"версия", snapshot:"Это снимок только для чтения",
   ok_sent:"Отмечено как отправленное", ok_release:"Возвращено в очередь", ok_approve:"Одобрено", ok_reject:"Отклонено", ok_accept:"Отчёт принят", ok_cancel:"Задача отменена", ok_restore:"Задача восстановлена",
@@ -334,6 +334,7 @@ function render() {
   // lane filter chips
   var lf = clear($("lanefilters"));
   B.lanes.forEach(function (l) { lf.appendChild(h("button", {class: "pill" + (S.laneOff[l.id] ? "" : " on"), style: S.laneOff[l.id] ? "" : "background:" + laneColor(l.id) + ";border-color:" + laneColor(l.id) + ";color:" + fgFor(laneColor(l.id)), title: agentLabel(l.agent), text: l.title || l.id, onclick: function () { S.laneOff[l.id] = !S.laneOff[l.id]; render(); }})); });
+  lf.appendChild(h("button", {class: "pill add", title: t("lane_new"), text: "+", onclick: function () { openLaneAdd(); }}));
   renderNow(); renderInbox(); renderFlow(); renderArchive(); renderActivity();
   if (S.sel && byId(S.sel)) renderDrawer(); else if (!S.editing) closeDrawer(true);
 }
@@ -345,7 +346,7 @@ function renderNow() {
     var mine = B.items.filter(function (c) { return c.lane === l.id; });
     var running = mine.filter(function (c) { return c.state === "running" || c.state === "sent"; });
     var ready = mine.filter(function (c) { return c.state === "ready"; });
-    var card = h("div", {class: "card lane-card", style: "--lane:" + laneColor(l.id)}, h("div", {class: "lh"}, h("span", {class: "dot"}), l.title || l.id, l.agent ? h("span", {class: "tag", style: "margin-left:auto", text: agentLabel(l.agent)}) : null));
+    var card = h("div", {class: "card lane-card", style: "--lane:" + laneColor(l.id)}, h("div", {class: "lh"}, h("span", {class: "dot"}), l.title || l.id, l.agent ? h("span", {class: "tag", style: "margin-left:auto", text: agentLabel(l.agent)}) : h("span", {style: "margin-left:auto"}), h("button", {class: "btn sm", style: "margin-left:8px", title: t("connect_help_short"), text: "⇄ " + t("connect"), onclick: function () { openConnect(l.id); }})));
     running.forEach(function (c) {
       var cl = c.claim;
       card.appendChild(h("div", {style: "margin-bottom:8px"}, h("div", {class: "sub", text: t("running")}), h("div", {class: "big", text: c.id + " · " + c.title}),
@@ -552,6 +553,39 @@ function openAdd() {
   $("modal").classList.add("open");
 }
 
+function connectView(box, laneId) {
+  box.appendChild(h("div", {class: "big", style: "margin-bottom:6px", text: fmt(t("connect_title"), {name: laneTitle(laneId)})}));
+  box.appendChild(h("p", {class: "sub", text: t("connect_help")}));
+  var pre = h("pre", {class: "connectbox", text: "…"});
+  box.appendChild(pre);
+  var text = "";
+  api("/api/connect/" + encodeURIComponent(laneId)).then(function (j) { text = j.text; pre.textContent = text; }).catch(function (e) { pre.textContent = errText(e); });
+  box.appendChild(h("div", {class: "row", style: "margin-top:14px"}, h("button", {class: "btn pri", text: t("copy_connect"), onclick: function () { if (text) copy(text); }}),
+    h("button", {class: "btn", text: t("close"), onclick: function () { $("modal").classList.remove("open"); }})));
+}
+function openConnect(laneId) { var box = clear($("modalbox")); connectView(box, laneId); $("modal").classList.add("open"); }
+function openLaneAdd() {
+  var box = clear($("modalbox")), agent = "";
+  box.appendChild(h("div", {class: "big", style: "margin-bottom:12px", text: t("lane_new")}));
+  var nameIn = h("input", {type: "text", placeholder: t("lane_name_ph"), maxlength: "60"});
+  box.appendChild(nameIn);
+  box.appendChild(h("div", {class: "sub", style: "margin:12px 0 6px", text: t("agent_which")}));
+  var chips = h("div", {class: "chips"}), chipEls = {};
+  AGENTS.forEach(function (a) { var b = h("button", {class: "chip", text: agentLabel(a), onclick: function () { agent = agent === a ? "" : a; AGENTS.forEach(function (x) { chipEls[x].classList.toggle("on", x === agent); }); }}); chipEls[a] = b; chips.appendChild(b); });
+  box.appendChild(chips);
+  function create() {
+    var name = nameIn.value.trim(); if (!name) { nameIn.focus(); return; }
+    var id = name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 24), n = S.board.lanes.length + 1, taken = function (x) { return !!laneObj(x); };
+    if (!id || taken(id)) id = "s" + n; while (taken(id)) id = "s" + (++n);
+    var args = {title: name}; if (agent) args.agent = agent;
+    api("/api/act", {method: "POST", headers: {"Content-Type": "application/json", "X-Barid-Edit": "1"}, body: JSON.stringify({action: "laneadd", id: id, args: args})})
+      .then(function () { toast(fmt(t("lane_created"), {name: name})); return load(); }).then(function () { var b2 = clear($("modalbox")); connectView(b2, id); }).catch(function (e) { toast(errText(e), true); });
+  }
+  nameIn.addEventListener("keydown", function (e) { if (e.key === "Enter") create(); });
+  box.appendChild(h("div", {class: "row", style: "margin-top:14px"}, h("button", {class: "btn pri", text: t("lane_create"), onclick: create}), h("button", {class: "btn", text: t("close"), onclick: function () { $("modal").classList.remove("open"); }})));
+  $("modal").classList.add("open"); nameIn.focus();
+}
+
 function stamp() {
   if (window.__RB_BOARD__) return;
   var d = new Date(), z = function (n) { return (n < 10 ? "0" : "") + n; };
@@ -560,7 +594,7 @@ function stamp() {
   $("live").style.color = "var(--ok)";
 }
 function load() {
-  if (window.__RB_BOARD__) { S.board = window.__RB_BOARD__; S.rev = S.board.rev; render(); var hs = decodeURIComponent(location.hash.slice(1)); if (hs === "add") openAdd(); else if (hs === "theme") toggleThemePop(true); else if (hs.slice(-5) === "!edit" && byId(hs.slice(0, -5))) openDrawer(hs.slice(0, -5), true); else if (byId(hs)) openDrawer(hs); return Promise.resolve(); }
+  if (window.__RB_BOARD__) { S.board = window.__RB_BOARD__; S.rev = S.board.rev; render(); var hs = decodeURIComponent(location.hash.slice(1)); if (hs === "add") openAdd(); else if (hs === "theme") toggleThemePop(true); else if (hs === "newlane") openLaneAdd(); else if (hs.indexOf("connect:") === 0) openConnect(hs.slice(8)); else if (hs.slice(-5) === "!edit" && byId(hs.slice(0, -5))) openDrawer(hs.slice(0, -5), true); else if (byId(hs)) openDrawer(hs); return Promise.resolve(); }
   return api("/api/board").then(function (b) { stamp(); S.board = b; S.rev = b.rev; if (S.offline) { S.offline = false; $("banner").hidden = true; } render(); })
     .catch(function () { if (!S.offline) { S.offline = true; $("banner").textContent = t("offline"); $("banner").hidden = false; } });
 }
@@ -611,16 +645,6 @@ function renderThemePop() {
       }
       pop.appendChild(h("div", {class: "lrow"}, colorIn, titleIn, reset, lagent));
     });
-    var nameIn = h("input", {type: "text", placeholder: t("lane_name_ph"), maxlength: "60"});
-    function addLane() {
-      var name = nameIn.value.trim(); if (!name) return;
-      var id = name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 24), n = S.board.lanes.length + 1, taken = function (x) { return !!laneObj(x); };
-      if (!id || taken(id)) id = "s" + n; while (taken(id)) id = "s" + (++n);
-      act("laneadd", id, {title: name}).then(renderThemePop);
-    }
-    nameIn.addEventListener("keydown", function (e) { if (e.key === "Enter") addLane(); });
-    pop.appendChild(h("div", {class: "laneadd"}, nameIn, h("button", {class: "btn sm", text: t("lane_add"), onclick: addLane})));
-    pop.appendChild(h("p", {class: "hint", text: t("lane_hint")}));
   }
 }
 function toggleThemePop(open) {

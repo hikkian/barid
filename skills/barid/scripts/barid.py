@@ -1020,6 +1020,39 @@ def footer_for(d: dict, it: dict, board: Path) -> str:
     return base + ("\n" + extra if extra else "")
 
 
+CONNECT = {
+    "en": textwrap.dedent("""\
+        You are the session "{title}" (lane `{lane}`{agent}) of the project "{project}". Your prompts come from a shared Barid board. Python 3 is all you need.
+        How to work:
+        1. Ask the board for your next task:  {py} "{rb}" --board "{board}" next --lane {lane}
+           It prints a task prompt that ends with the commands to claim and finish that task. Do exactly what the prompt says.
+        2. If it says nothing is ready, tell the user and stop. Do not invent work.
+        3. When you have finished a task and written its report, run the command above again.
+        Rules: work only on tasks of lane {lane}; never use --human or --force and never edit board.json by hand; if a command is refused, stop and tell the user why."""),
+    "ru": textwrap.dedent("""\
+        Ты сессия "{title}" (линия `{lane}`{agent}) проекта "{project}". Твои промпты приходят с общей доски Barid. Нужен только Python 3.
+        Как работать:
+        1. Спроси у доски следующую задачу:  {py} "{rb}" --board "{board}" next --lane {lane}
+           Она напечатает промпт задачи, в конце которого команды, чтобы взять и закончить эту задачу. Делай ровно то, что написано в промпте.
+        2. Если там сказано, что ничего нет готового, сообщи об этом пользователю и остановись. Не придумывай работу.
+        3. Когда закончил задачу и записал отчёт, снова запусти команду выше.
+        Правила: работай только с задачами линии {lane}; не используй --human и --force и не правь board.json руками; если команда отказала, остановись и сообщи пользователю причину."""),
+}
+
+
+def connect_text(d: dict, lane_id: str, board: Path) -> str:
+    """The first message to paste into an agent session so that it takes its tasks from this lane."""
+    lane = next((l for l in d["lanes"] if l["id"] == lane_id), None)
+    if lane is None:
+        raise RBError(f"unknown lane {lane_id!r}", "unknown_lane", lane=lane_id)
+    lang = d.get("lang", "en")
+    agent = lane.get("agent", "")
+    text = CONNECT.get(lang, CONNECT["en"]).format(title=lane.get("title") or lane_id, lane=lane_id, agent=(", " + agent) if agent else "",
+                                                   project=d.get("project", ""), py=py_cmd(), rb=str(Path(__file__).resolve()), board=str(board))
+    hint = agent_hint(d, {"lane": lane_id})
+    return text + ("\n" + hint if hint else "")
+
+
 HANDOFF = {
     "en": {"head": "Handoff from the tasks this one builds on (read it first):", "outcome": "outcome", "report": "report", "by": "done by", "branch": "branch",
            "files": "files changed", "note": "note", "unstated": "not stated"},
@@ -1192,6 +1225,9 @@ def make_handler(board: Path, tracker: dict):
                     return self._send(200, {"rev": load(board).get("rev", 0)})
                 if path == "/api/board":
                     return self._send(200, board_view(board))
+                m = re.match(r"^/api/connect/([A-Za-z0-9][A-Za-z0-9_.-]{0,31})$", path)
+                if m:
+                    return self._send(200, {"text": connect_text(load(board), m.group(1), board)})
                 m = re.match(r"^/api/(prompt|gen)/([A-Za-z0-9][A-Za-z0-9_.-]{0,31})$", path)
                 if m:
                     d = load(board)
@@ -1471,6 +1507,11 @@ def cmd_next(args):
     else:
         print(msg)
     sys.exit(2)
+
+
+def cmd_connect(args):
+    board = find_board(getattr(args, "board", None))
+    print(connect_text(load(board), args.lane, board))
 
 
 def cmd_gen(args):
@@ -1799,6 +1840,8 @@ def build_parser() -> argparse.ArgumentParser:
     s.add_argument("--text", action="store_true")
     s = add("next", cmd_next, "print the next task that is ready for a lane (exit code 2 if none)")
     s.add_argument("--lane")
+    s = add("connect", cmd_connect, "print the message that connects an agent session to a lane (paste it as the session's first message)")
+    s.add_argument("lane")
     s = add("gen", cmd_gen, "print the request that makes an agent write this task's prompt")
     s.add_argument("id")
 
