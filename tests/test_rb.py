@@ -203,6 +203,17 @@ class CoreTests(unittest.TestCase):
         with self.assertRaises(rb.RBError):
             add(self.path, PLANNER, "bad id!", lane="main")
 
+    def test_lane_can_be_added_from_the_panel_action(self):
+        rb.mutate(self.path, lambda d: rb.op_lane_add(d, HUMAN, "extra", "Third", "#112233", "claude"))
+        lane = [l for l in rb.load(self.path)["lanes"] if l["id"] == "extra"][0]
+        self.assertEqual((lane["title"], lane["color"], lane["agent"]), ("Third", "#112233", "claude"))
+        with self.assertRaises(rb.RBError):
+            rb.mutate(self.path, lambda d: rb.op_lane_add(d, HUMAN, "extra", "Again"))
+        with self.assertRaises(rb.RBError):
+            rb.mutate(self.path, lambda d: rb.op_lane_add(d, HUMAN, "bad id!", "x"))
+        with self.assertRaises(rb.RBError):
+            rb.mutate(self.path, lambda d: rb.op_lane_add(d, AGENT, "extra2", "x"))
+
     def test_lane_colour_and_agent_are_validated_and_trusted_only(self):
         rb.mutate(self.path, lambda d: rb.op_lane_edit(d, HUMAN, "main", title="Build", color="#FEB83B", agent="codex"))
         lane = rb.load(self.path)["lanes"][0]

@@ -863,6 +863,19 @@ def op_protect(d: dict, actor: Actor, action: str, path: str = "") -> list:
     return lst
 
 
+def op_lane_add(d: dict, actor: Actor, lane_id: str, title=None, color=None, agent=None) -> dict:
+    """A new lane (session). Same rights as editing one."""
+    if not direct_allowed(d, actor):
+        raise RBError("only the person (or a trusted planner agent) can change lanes", "human_only")
+    if not ID_RE.match(lane_id or ""):
+        raise RBError("bad lane id", "bad_id")
+    if any(l["id"] == lane_id for l in d["lanes"]):
+        raise RBError("lane exists (use `barid lane edit` to change it)", "exists", id=lane_id)
+    d["lanes"].append({"id": lane_id, "title": (title or "").strip()[:60] or lane_id})
+    log_event(d, actor, "lane", lane_id, "add")
+    return op_lane_edit(d, actor, lane_id, None, color, agent)
+
+
 def op_lane_edit(d: dict, actor: Actor, lane_id: str, title=None, color=None, agent=None) -> dict:
     """Name, colour and agent kind of a lane (a session). Colour '' or agent '' reset to the default."""
     if not direct_allowed(d, actor):
@@ -1241,6 +1254,9 @@ def apply_action(board: Path, req: dict):
             return op_cancel(d, h, iid, str(args.get("reason", "")))["status"]
         if a == "outcome":
             return op_outcome(d, h, iid, str(args.get("outcome", "")))["outcome"]
+        if a == "laneadd":
+            lane = op_lane_add(d, h, iid, args.get("title"), args.get("color"), args.get("agent"))
+            return {"id": lane["id"]}
         if a == "lane":
             lane = op_lane_edit(d, h, iid, args.get("title"), args.get("color"), args.get("agent"))
             return {"id": lane["id"]}
@@ -1608,13 +1624,10 @@ def cmd_lane(args):
         exists = any(l["id"] == lane_id for l in d["lanes"])
         if editing and not exists:
             raise RBError(f"unknown lane {lane_id!r}", "unknown_lane", lane=lane_id)
-        if not editing:
-            if not ID_RE.match(lane_id):
-                raise RBError("bad lane id", "bad_id")
-            if exists:
-                raise RBError("lane exists (use `barid lane edit` to change it)", "exists", id=lane_id)
-            d["lanes"].append({"id": lane_id, "title": args.title or lane_id})
-        op_lane_edit(d, actor, lane_id, args.title if editing else None, getattr(args, "color", None), getattr(args, "agent", None))
+        if editing:
+            op_lane_edit(d, actor, lane_id, None if not args.title else args.title, getattr(args, "color", None), getattr(args, "agent", None))
+        else:
+            op_lane_add(d, actor, lane_id, args.title, getattr(args, "color", None), getattr(args, "agent", None))
     mutate(board, fn)
     print(f"lane {lane_id} {'updated' if editing else 'added'}")
 

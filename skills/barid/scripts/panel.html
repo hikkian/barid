@@ -125,7 +125,13 @@ label{font-size:12px;color:var(--mute);display:block;margin-bottom:3px}
 .lrow{display:grid;grid-template-columns:34px 1fr 34px;gap:6px;align-items:center;margin-bottom:8px}
 .lrow input[type=color]{width:34px;height:30px;padding:0;border:1px solid var(--line);border-radius:8px;background:transparent;cursor:pointer}
 .lrow input[type=text]{padding:4px 8px;font-size:13px}
-.lagent{grid-column:1/-1}
+.lagent{grid-column:1/-1;display:grid;gap:6px}
+.agentbtn{justify-self:start;border:0;background:none;color:var(--mute);font-size:12px;padding:0 2px;cursor:pointer}
+.chips{display:flex;flex-wrap:wrap;gap:4px}
+.chip{border:1px solid var(--line);background:var(--panel2);color:inherit;border-radius:999px;padding:2px 9px;font-size:12px;cursor:pointer}
+.chip.on{background:var(--ac);color:var(--acfg);border-color:transparent}
+.laneadd{display:grid;grid-template-columns:1fr auto;gap:6px;margin-top:4px}
+#themepop .hint{font-size:12px;opacity:.7;margin:8px 0 0;line-height:1.35}
 .pal i{width:22px;height:22px;border-radius:50%;display:inline-block;border:1px solid rgba(128,128,128,.4)}
 details>summary{cursor:pointer;color:var(--mute);margin:6px 0}
 .ev{font-size:12.5px;color:var(--mute);padding:2px 0}
@@ -175,7 +181,7 @@ var STR = {
   status:"Status", notes:"Notes", addnote:"New note (Enter to save)", history:"History", report:"Report", needs:"Depends on", uses:"Resources", lane:"Session", when:"When", created:"Created by", claim:"Held by",
   prompt:"Prompt", noprompt:"There is no prompt text yet.", title:"Title", outline:"Outline (what the prompt must achieve)", needs_l:"Depends on (IDs, comma separated)", uses_l:"Resources (comma separated)",
   quiet:"needs a quiet machine", noisy:"creates load", id:"ID", text:"Prompt text", create:"Create", offline:"No connection to the board server. Retrying…",
-  copy_path:"Copy report path", reopen:"Reopen", sessions:"Sessions", color_reset:"Reset color", agent_ph:"Agent (claude, codex…)", ag_claude:"Claude Code", ag_codex:"Codex", ag_opencode:"OpenCode", ag_gemini:"Gemini CLI", ag_cursor:"Cursor", ag_aider:"Aider", ag_local:"Local model", why_paths:"same files", touches_l:"Files and folders it may change (comma separated)", files:"Files", workdir:"Checkout", branch:"Branch", viol_chip:"files need a look", viol_protected:"changed a protected file", viol_outside:"changed a file outside its scope", viol_collision:"touched a file that {id} is working on", changed_n:"{n} files changed on {branch}", viol_warn:"Barid found file changes you should look at before accepting.", updated:"updated", theme:"Appearance", mode_auto:"Auto", mode_light:"Light", mode_dark:"Dark", palette:"Colors", pal_forest:"Forest", pal_teal:"Teal", pal_graphite:"Graphite", pal_midnight:"Midnight", out:"Outcome", out_complete:"complete", out_partial:"partial", out_failed:"failed", out_none:"outcome not stated", accept_asis:"Accept as is", partial_warn:"The session stopped early or did not finish everything. Dependent tasks wait for your decision.", turn:"its turn has come", empty_flow:"No tasks yet. Ask your agent to add some, or press “+ New task”.",
+  copy_path:"Copy report path", reopen:"Reopen", sessions:"Sessions", lane_name_ph:"New session name", lane_add:"+ Session", lane_hint:"An agent can add one too: barid lane add ID --title \"Name\" --agent codex (needs trust).", color_reset:"Reset color", agent_ph:"Agent (claude, codex…)", ag_claude:"Claude Code", ag_codex:"Codex", ag_opencode:"OpenCode", ag_gemini:"Gemini CLI", ag_cursor:"Cursor", ag_aider:"Aider", ag_local:"Local model", why_paths:"same files", touches_l:"Files and folders it may change (comma separated)", files:"Files", workdir:"Checkout", branch:"Branch", viol_chip:"files need a look", viol_protected:"changed a protected file", viol_outside:"changed a file outside its scope", viol_collision:"touched a file that {id} is working on", changed_n:"{n} files changed on {branch}", viol_warn:"Barid found file changes you should look at before accepting.", updated:"updated", theme:"Appearance", mode_auto:"Auto", mode_light:"Light", mode_dark:"Dark", palette:"Colors", pal_forest:"Forest", pal_teal:"Teal", pal_graphite:"Graphite", pal_midnight:"Midnight", out:"Outcome", out_complete:"complete", out_partial:"partial", out_failed:"failed", out_none:"outcome not stated", accept_asis:"Accept as is", partial_warn:"The session stopped early or did not finish everything. Dependent tasks wait for your decision.", turn:"its turn has come", empty_flow:"No tasks yet. Ask your agent to add some, or press “+ New task”.",
   s:{ready:"ready to run",waiting:"waiting",blocked:"busy",queued:"queued",draft:"draft",proposed:"proposed",sent:"sent",running:"in progress",review:"to review",done:"done",cancelled:"cancelled"},
   with_:"Can run with", wait_:"Depends on", conf_:"Waiting for", why:{lane:"same session",quiet:"quiet and load do not mix"}, rev:"rev", snapshot:"This is a read-only snapshot",
   ok_sent:"Marked as sent", ok_release:"Returned to the queue", ok_approve:"Approved", ok_reject:"Rejected", ok_accept:"Report accepted", ok_cancel:"Task cancelled", ok_restore:"Task restored",
@@ -194,7 +200,7 @@ var STR = {
   status:"Статус", notes:"Заметки", addnote:"Новая заметка (Enter — сохранить)", history:"История", report:"Отчёт", needs:"Зависит от", uses:"Ресурсы", lane:"Сессия", when:"Когда", created:"Автор", claim:"В работе у",
   prompt:"Промпт", noprompt:"Текста промпта ещё нет.", title:"Название", outline:"Суть (что должен сделать промпт)", needs_l:"Зависит от (ID через запятую)", uses_l:"Ресурсы (через запятую)",
   quiet:"нужна тишина", noisy:"создаёт нагрузку", id:"ID", text:"Текст промпта", create:"Создать", offline:"Нет связи с сервером доски. Пробую снова…",
-  copy_path:"Скопировать путь к отчёту", reopen:"Открыть заново", sessions:"Сессии", color_reset:"Сбросить цвет", agent_ph:"Агент (claude, codex…)", ag_claude:"Claude Code", ag_codex:"Codex", ag_opencode:"OpenCode", ag_gemini:"Gemini CLI", ag_cursor:"Cursor", ag_aider:"Aider", ag_local:"Локальная модель", why_paths:"те же файлы", touches_l:"Какие файлы и папки можно менять (через запятую)", files:"Файлы", workdir:"Рабочая копия", branch:"Ветка", viol_chip:"проверьте файлы", viol_protected:"изменён защищённый файл", viol_outside:"изменён файл вне своей области", viol_collision:"тронут файл, с которым работает {id}", changed_n:"изменено файлов: {n} (ветка {branch})", viol_warn:"Barid нашёл изменения файлов, которые стоит проверить перед принятием.", updated:"обновлено", theme:"Оформление", mode_auto:"Авто", mode_light:"Светлая", mode_dark:"Тёмная", palette:"Цвета", pal_forest:"Лес", pal_teal:"Бирюза", pal_graphite:"Графит", pal_midnight:"Полночь", out:"Итог", out_complete:"выполнено полностью", out_partial:"выполнено частично", out_failed:"не удалось", out_none:"итог не указан", accept_asis:"Принять как есть", partial_warn:"Сессия остановилась раньше или сделала не всё. Зависимые задачи ждут вашего решения.", turn:"подошла очередь", empty_flow:"Задач пока нет. Попросите агента добавить их или нажмите «+ Новая задача».",
+  copy_path:"Скопировать путь к отчёту", reopen:"Открыть заново", sessions:"Сессии", lane_name_ph:"Название новой сессии", lane_add:"+ Сессия", lane_hint:"Агент тоже может добавить сессию: barid lane add ID --title \"Название\" --agent codex (нужно доверие к агенту).", color_reset:"Сбросить цвет", agent_ph:"Агент (claude, codex…)", ag_claude:"Claude Code", ag_codex:"Codex", ag_opencode:"OpenCode", ag_gemini:"Gemini CLI", ag_cursor:"Cursor", ag_aider:"Aider", ag_local:"Локальная модель", why_paths:"те же файлы", touches_l:"Какие файлы и папки можно менять (через запятую)", files:"Файлы", workdir:"Рабочая копия", branch:"Ветка", viol_chip:"проверьте файлы", viol_protected:"изменён защищённый файл", viol_outside:"изменён файл вне своей области", viol_collision:"тронут файл, с которым работает {id}", changed_n:"изменено файлов: {n} (ветка {branch})", viol_warn:"Barid нашёл изменения файлов, которые стоит проверить перед принятием.", updated:"обновлено", theme:"Оформление", mode_auto:"Авто", mode_light:"Светлая", mode_dark:"Тёмная", palette:"Цвета", pal_forest:"Лес", pal_teal:"Бирюза", pal_graphite:"Графит", pal_midnight:"Полночь", out:"Итог", out_complete:"выполнено полностью", out_partial:"выполнено частично", out_failed:"не удалось", out_none:"итог не указан", accept_asis:"Принять как есть", partial_warn:"Сессия остановилась раньше или сделала не всё. Зависимые задачи ждут вашего решения.", turn:"подошла очередь", empty_flow:"Задач пока нет. Попросите агента добавить их или нажмите «+ Новая задача».",
   s:{ready:"можно запускать",waiting:"ждёт",blocked:"занято",queued:"в очереди",draft:"черновик",proposed:"предложено",sent:"отправлено",running:"в работе",review:"на проверке",done:"выполнено",cancelled:"отменено"},
   with_:"Можно вместе с", wait_:"Ждёт задачи", conf_:"Ждёт завершения", why:{lane:"та же сессия",quiet:"тишина и нагрузка несовместимы"}, rev:"версия", snapshot:"Это снимок только для чтения",
   ok_sent:"Отмечено как отправленное", ok_release:"Возвращено в очередь", ok_approve:"Одобрено", ok_reject:"Отклонено", ok_accept:"Отчёт принят", ok_cancel:"Задача отменена", ok_restore:"Задача восстановлена",
@@ -214,7 +220,7 @@ function errText(e) {
   var info = Object.assign({}, e.info || {}); if (info.status) info.status = st(info.status);
   return fmt(tpl, info);
 }
-var ACT_OK = {sent: "ok_sent", approve: "ok_approve", reject: "ok_reject", accept: "ok_accept", cancel: "ok_cancel", restore: "ok_restore", release: "ok_release", note: "ok_note", outcome: "ok_outcome", lane: "ok_saved", edit: "ok_saved", add: "ok_created"};
+var ACT_OK = {laneadd: "ok_saved", sent: "ok_sent", approve: "ok_approve", reject: "ok_reject", accept: "ok_accept", cancel: "ok_cancel", restore: "ok_restore", release: "ok_release", note: "ok_note", outcome: "ok_outcome", lane: "ok_saved", edit: "ok_saved", add: "ok_created"};
 function st(s) { return (STR[S.lang] || STR.en).s[s] || s; }
 function $(id) { return document.getElementById(id); }
 var PALS = ["forest", "teal", "graphite", "midnight"], SWATCH = {forest: "#34d399", teal: "#feb83b", graphite: "#6ee7b7", midnight: "#5aa9ff"};
@@ -585,19 +591,36 @@ function renderThemePop() {
   pop.appendChild(g);
   if (S.board && S.board.lanes.length) {
     pop.appendChild(h("h4", {style: "margin-top:14px", text: t("sessions")}));
-    var dl = h("datalist", {id: "agentlist"});
-    AGENTS.forEach(function (a) { dl.appendChild(h("option", {value: a})); });
-    pop.appendChild(dl);
     S.board.lanes.forEach(function (l) {
       var colorIn = h("input", {type: "color", value: l.color || defaultLaneHex(l.id), title: t("color_reset") ? "" : ""});
       colorIn.addEventListener("change", function () { act("lane", l.id, {color: colorIn.value}); });
       var reset = h("button", {class: "btn sm", text: "↺", title: t("color_reset"), onclick: function () { act("lane", l.id, {color: ""}).then(renderThemePop); }});
       var titleIn = h("input", {type: "text", value: l.title || l.id});
       titleIn.addEventListener("change", function () { act("lane", l.id, {title: titleIn.value}); });
-      var agentIn = h("input", {type: "text", list: "agentlist", value: l.agent || "", placeholder: t("agent_ph")});
-      agentIn.addEventListener("change", function () { act("lane", l.id, {agent: agentIn.value.trim()}); });
-      pop.appendChild(h("div", {class: "lrow"}, colorIn, titleIn, reset, h("span", {class: "lagent"}, agentIn)));
+      var open = S.openAgent === l.id;
+      var agentBtn = h("button", {class: "agentbtn", text: (l.agent ? agentLabel(l.agent) : t("agent_ph")) + (open ? " ▴" : " ▾"), onclick: function () { S.openAgent = open ? "" : l.id; renderThemePop(); }});
+      var lagent = h("div", {class: "lagent"}, agentBtn);
+      if (open) {
+        var agentIn = h("input", {type: "text", value: l.agent || "", placeholder: t("agent_ph")});
+        agentIn.addEventListener("change", function () { act("lane", l.id, {agent: agentIn.value.trim()}).then(renderThemePop); });
+        var chips = h("div", {class: "chips"});
+        AGENTS.forEach(function (a) {
+          chips.appendChild(h("button", {class: "chip" + (l.agent === a ? " on" : ""), text: agentLabel(a), onclick: function () { act("lane", l.id, {agent: l.agent === a ? "" : a}).then(renderThemePop); }}));
+        });
+        lagent.appendChild(chips); lagent.appendChild(agentIn);
+      }
+      pop.appendChild(h("div", {class: "lrow"}, colorIn, titleIn, reset, lagent));
     });
+    var nameIn = h("input", {type: "text", placeholder: t("lane_name_ph"), maxlength: "60"});
+    function addLane() {
+      var name = nameIn.value.trim(); if (!name) return;
+      var id = name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 24), n = S.board.lanes.length + 1, taken = function (x) { return !!laneObj(x); };
+      if (!id || taken(id)) id = "s" + n; while (taken(id)) id = "s" + (++n);
+      act("laneadd", id, {title: name}).then(renderThemePop);
+    }
+    nameIn.addEventListener("keydown", function (e) { if (e.key === "Enter") addLane(); });
+    pop.appendChild(h("div", {class: "laneadd"}, nameIn, h("button", {class: "btn sm", text: t("lane_add"), onclick: addLane})));
+    pop.appendChild(h("p", {class: "hint", text: t("lane_hint")}));
   }
 }
 function toggleThemePop(open) {
