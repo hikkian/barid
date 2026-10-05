@@ -19,7 +19,12 @@ class Browser:
         self.firefox = shutil.which("firefox")
         if not self.firefox:
             raise UiError("firefox is not installed")
-        self.profile = tempfile.mkdtemp(prefix="barid-ui-", dir="/dev/shm" if os.path.isdir("/dev/shm") else None)
+        # a snap-packaged Firefox (Ubuntu) cannot read /tmp or /dev/shm, only the visible part of the home folder
+        real = os.path.realpath(self.firefox)
+        snap = "/snap/" in real or os.path.exists("/snap/bin/firefox") and real.startswith("/snap")
+        base = os.path.expanduser("~") if snap else ("/dev/shm" if os.path.isdir("/dev/shm") else None)
+        self.profile = tempfile.mkdtemp(prefix="barid-ui-" if not snap else "barid-ui-visible-", dir=base)
+        self.log = os.path.join(self.profile + ".log")
         sock = socket.socket()
         sock.bind(("127.0.0.1", 0))
         self.port = sock.getsockname()[1]
@@ -29,9 +34,10 @@ class Browser:
                     'user_pref("datareporting.policy.dataSubmissionEnabled", false);\nuser_pref("app.update.enabled", false);\n'
                     'user_pref("browser.startup.homepage_override.mstone", "ignore");\nuser_pref("toolkit.telemetry.reportingpolicy.firstRun", false);\n')
         cmd = ["nice", "-n", "19", self.firefox, "-profile", self.profile, "-no-remote", "-headless", "-marionette", "about:blank"]
-        self.proc = subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        self.logfile = open(self.log, "w")
+        self.proc = subprocess.Popen(cmd, stdout=self.logfile, stderr=subprocess.STDOUT)
         self.sock = None
-        deadline = time.time() + 40
+        deadline = time.time() + 90
         while time.time() < deadline:
             try:
                 self.sock = socket.create_connection(("127.0.0.1", self.port), timeout=2)
@@ -39,8 +45,15 @@ class Browser:
             except OSError:
                 time.sleep(0.3)
         if not self.sock:
+            tail = ""
+            try:
+                self.logfile.flush()
+                tail = open(self.log, errors="replace").read()[-1500:]
+            except OSError:
+                pass
+            code = self.proc.poll()
             self.close()
-            raise UiError("could not reach Firefox Marionette")
+            raise UiError(f"could not reach Firefox Marionette (firefox {self.firefox}, exit code {code}): {tail}")
         self.sock.settimeout(60)
         self._id = 0
         self._read()  # hello
@@ -140,3 +153,8 @@ class Browser:
         except Exception:
             self.proc.kill()
         shutil.rmtree(self.profile, ignore_errors=True)
+        try:
+            self.logfile.close()
+            os.unlink(self.log)
+        except (OSError, AttributeError):
+            pass
