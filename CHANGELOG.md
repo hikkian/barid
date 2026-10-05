@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- README (all three languages): adding sessions, the Connect button and `barid connect`, Kazakh; fresh panel screenshots.
+
 ## 0.4.1 (2026-10-05)
 
 - The language button shows the current language and opens a list of all three (English, Русский, Қазақша) with a tick on the active one.

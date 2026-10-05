@@ -76,7 +76,7 @@ https://github.com/hikkian/barid and use `python3 <path>/barid.py` as described 
    +----------------------------------------------------------------------------+
 ```
 
-- **Lanes** are your sessions. A lane runs one task at a time.
+- **Lanes** are your sessions. A lane runs one task at a time. Add one with the "+" button in the panel or `barid lane add`; the *Connect* button (or `barid connect LANE`) gives you the first message to paste into that agent's window, after which it takes its tasks from the board by itself.
 - **Tasks** have a prompt, dependencies (`--needs`), exclusive resources (`--uses gpu`) and two flags: `--quiet` (needs a quiet machine) and `--noisy` (loads the CPU or the desktop). The board computes from them what is *ready*, *waiting* or *blocked*, and plans *steps*: tasks in one step may run at the same time.
 - **Prompts carry their own instructions.** When you press *Copy prompt*, the board appends a short footer with the exact commands (`claim`, `finish`, `note`) and the path of `barid.py`, so even a session without the skill knows how to report.
 - **Draft tasks** hold only an outline. When their turn comes the panel offers *Generate prompt*: it copies a request (outline, the reports of finished dependencies, context files, a prompt skeleton) for your agent, which writes the prompt and stores it with `barid edit`.
@@ -140,13 +140,13 @@ This is **detection plus convention, not a sandbox**: an agent can still write a
 
 | | |
 |---|---|
-| **What to do now** | per lane: the running task, or the next ready one with *Copy prompt* and *Mark as sent*; a line telling whether the picked tasks can run together |
+| **What to do now** | per lane: the running task, or the next ready one with *Copy prompt*, *Mark as sent* and *Connect*; a line telling whether the picked tasks can run together |
 | **Inbox** | proposals from agents (*Approve / Edit / Reject*) and reports to review (*Accept / Send back*) |
 | **Order** | steps with parallel groups, dependency chips, resource tags, why something is blocked |
 | **Details** | prompt text, notes, history, edit form, any status |
 | **Archive / Activity** | finished and cancelled tasks, the event log |
 
-English and Russian built in (auto-detected, switch in the header), light, dark or automatic mode and four colour palettes (Forest, Teal, Graphite, Midnight) from the *Appearance* button, works on a phone. The same menu lets you **name and colour each session** and say which **agent** runs in it (Claude Code, Codex, OpenCode, Gemini CLI, Cursor, Aider, a local model, or any name); the agent shows as a badge on the session. The panel polls only while its tab is visible and costs nothing when closed: the server exits after 30 idle minutes (`barid open --idle-exit 0` keeps it).
+English, Russian and Kazakh built in (auto-detected, pick one from the language list in the header), light, dark or automatic mode and four colour palettes (Forest, Teal, Graphite, Midnight) from the *Appearance* button, works on a phone. The same menu lets you **name and colour each session** and say which **agent** runs in it (Claude Code, Codex, OpenCode, Gemini CLI, Cursor, Aider, a local model, or any name); the agent shows as a badge on the session. The panel polls only while its tab is visible and costs nothing when closed: the server exits after 30 idle minutes (`barid open --idle-exit 0` keeps it).
 
 ![Details drawer](docs/img/panel-light-drawer.png)
 
@@ -169,6 +169,8 @@ barid protect add config/live.json        # no task may change it (verified at f
 barid worktree T3                         # an isolated git worktree and branch for the task
 barid check T3                            # what could collide with it
 barid lane edit a --title Builder --color "#7c5cff" --agent codex   # name, colour and agent of a session
+barid lane add tests --title Tests --agent codex       # a new session (or the "+" button in the panel)
+barid connect tests                          # the first message to paste into that agent's window
 barid open                                   # panel;  barid export board.html  = read-only snapshot
 ```
 
