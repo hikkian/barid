@@ -79,6 +79,19 @@ if HAVE:
         def edit(self, i, actor, needs, lane):
             self.step(lambda d: rb.op_edit(d, actor, i, {"needs": ",".join(needs), "lane": lane}))
 
+        @rule(i=st.sampled_from(IDS), actor=st.sampled_from(ACTORS), after=st.lists(st.sampled_from(IDS), max_size=3, unique=True),
+              when=st.sampled_from(["", "+2h", "23:00", "2026-10-07 23:00", "soon"]), box=st.sampled_from(["", "90m", "8h", "0", "forever"]))
+        def edit_night(self, i, actor, after, when, box):
+            self.step(lambda d: rb.op_edit(d, actor, i, {"after": ",".join(after), "not_before": when, "timebox": box}))
+
+        @rule(i=st.sampled_from(IDS), actor=st.sampled_from(ACTORS))
+        def heartbeat(self, i, actor):
+            self.step(lambda d: rb.op_heartbeat(d, actor, i, 3))
+
+        @rule(lane=st.sampled_from(LANES), state=st.sampled_from(list(rb.PRESENCE_STATES) + ["bogus"]))
+        def seen(self, lane, state):
+            self.step(lambda d: rb.op_seen(d, lane, "w", state, "T1", "why"))
+
         @rule(i=st.sampled_from(IDS), actor=st.sampled_from(ACTORS), force=st.booleans())
         def claim(self, i, actor, force):
             self.step(lambda d: rb.op_claim(d, actor, i, force=force))
@@ -125,7 +138,10 @@ if HAVE:
                 assert it["status"] in rb.STATUSES, it
                 assert it["lane"] in lanes, it
                 assert all(n in ids for n in it["needs"]), ("dangling needs", it)
-                assert it["id"] not in it["needs"]
+                assert all(n in ids for n in it.get("after", [])), ("dangling after", it)
+                assert it["id"] not in it["needs"] and it["id"] not in it.get("after", [])
+                assert not set(it["needs"]) & set(it.get("after", [])), "a task in needs and after"
+                assert it.get("timebox", 0) >= 0
                 if it["status"] == "running":
                     assert it.get("claim"), ("running without a claim", it["id"])
             assert not rb.has_cycle({x["id"]: x for x in d["items"]}), "dependency cycle"
@@ -144,6 +160,17 @@ if HAVE:
                 for need in c["needs"]:
                     if c["id"] in where and need in where and by[need]["status"] not in ("done", "cancelled", "review"):
                         assert where[need] < where[c["id"]] or by[c["id"]]["status"] in rb.ACTIVE, ("order", need, c["id"])
+            for c in comp:
+                if c["status"] == "queued":
+                    assert bool(c["reasons"]) == (c["state"] != "ready"), ("reasons and state disagree", c["id"], c["state"], c["reasons"])
+                    assert all(r["code"] in rb.REASONS for r in c["reasons"])
+                else:
+                    assert c["reasons"] == []
+            for lane_id in LANES:
+                res = rb.next_step(d, lane_id)
+                assert res["status"] in (rb.NEXT_TASK, rb.NEXT_NONE, rb.NEXT_WAIT, rb.NEXT_STUCK)
+                ready = [c for c in comp if c["lane"] == lane_id and c["state"] == "ready"]
+                assert (res["status"] == rb.NEXT_TASK) == bool(ready), ("next and ready disagree", lane_id)
             view = rb.board_view(self.path)
             for lane_id, f in view["focus"].items():
                 assert by[f["id"]]["lane"] == lane_id

@@ -146,6 +146,20 @@ When a task finishes, Barid also asks git what changed since the claim and flags
 
 This is **detection plus convention, not a sandbox**: an agent can still write any file it has permission to write. The prompt tells it the rules, the worktree keeps its changes apart, and Barid makes violations impossible to miss. For hard guarantees combine it with OS-level permissions or containers.
 
+## Nights and unattended runs
+
+For work that runs while nobody watches (an overnight benchmark chain, a long queue of tasks), Barid borrows what batch schedulers settled long ago:
+
+- **A task says why it waits.** `barid list`, `next` and the panel give a reason code like a scheduler does: `begin_time` (an earliest start has not come), `dependency` (a task it waits for is not over), `conflict` (it cannot run next to a running task), `decision` (a report waits for you to accept it, or a draft for you to write it) and `never` (the task it needs was cancelled, so it can never start: fix the dependency). The first three end by themselves; the last two need you, and Barid says so instead of waiting silently.
+- **`needs` and `after`.** `--needs T1` waits for a successful (or accepted) T1. `--after T1` waits for T1 to end in any way (complete, partial, failed or cancelled), like `afterany` in Slurm, so a partial night does not stall the chain. `--not-before 23:00` (or `'2026-10-07 23:00'`, `+3h`) sets an earliest start; `--timebox 8h` the time a task may take.
+- **`next` tells "wait" from "nothing".** Exit codes: `0` a task was printed, `2` the lane has nothing queued, `3` nothing can start yet but will without help (run again, or `next --wait 300` to let it wait), `4` it waits for you. `claim --wait 300` does the same for a task that only has to wait.
+- **Sessions that wait are visible.** Every `next`, `claim`, `note` and `finish` leaves a sign of life; the session cards in the panel show "works on G1", "waiting: GPU held by G1", or "idle", and how long ago. An agent that waits is no longer indistinguishable from one that died.
+- **A connection text for the night.** `barid lane edit LANE --unattended` (or the "Night mode" box in the Connect window) makes `barid connect LANE` print a text that tells the session to loop: ask for the next task, wait on exit code 3, never ask whether to continue, stop only when its lane is empty or you are needed.
+- **A loop outside the model.** `barid worker --lane night --cmd 'codex exec -'` runs the lane without a chat session that has to stay patient: for every task it starts your agent command with a fresh context and the prompt on stdin, keeps the lease alive, stops it at the timebox (its own process group only), closes a task whose agent died without a report, then takes the next. It ends when the lane is empty (exit 0), needs you (4), or nothing could start for `--max-wait` (3).
+- **A morning summary.** `barid digest --since 12h` (and the card "While you were away" in the panel) lists what ended with which outcome and where the report is, what runs, what stalled and what needs you.
+
+More in [docs/UNATTENDED.md](docs/UNATTENDED.md).
+
 ## The panel
 
 | | |
@@ -171,6 +185,10 @@ barid add T2 --lane helper --title "Analyse" --outline "summarise T1's results" 
 barid plan                                   # steps and what can run together
 barid next --lane helper                     # the next ready prompt for a lane (exit code 2 if none)
 barid claim T1 --by worker-a                 # refused when a conflicting task is running
+barid next --lane night --wait 300           # wait up to 5 minutes for a task that only has to wait (exit 3 = ask again, 4 = needs you)
+barid add T5 --lane night --after T4 --not-before 23:00 --timebox 8h --text-file p.md   # after T4 whatever its outcome, not before 23:00
+barid worker --lane night --cmd 'codex exec -'   # run a lane unattended: a fresh agent per task, lease kept, timebox enforced
+barid digest --since 12h                     # what happened while you were away
 barid finish T1 --report reports/t1.md --by worker-a
 barid gen T2                                 # request that makes an agent write T2's prompt
 barid move T3 1                              # priority: earlier in the list = earlier slot in the plan

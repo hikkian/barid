@@ -1,13 +1,24 @@
 # Changelog
 
-## Unreleased
+## 0.6.0 (2026-10-06)
 
+**Nights and unattended runs.** The full description, with the reasons behind each choice, is in [docs/UNATTENDED.md](docs/UNATTENDED.md).
+
+- A queued task now says **why it waits**, with a reason code like a batch scheduler: `begin_time`, `dependency`, `conflict` (they end by themselves), `decision` (a report waits for you to accept it, or a draft for you to write it) and `never` (the task it needs was cancelled, so it can never start). `list --json`, `next` and the panel show them; before, a task that waited for a *partial* report or a cancelled task just waited without a word.
+- `--after T1` (run after T1 whatever its outcome, like Slurm `afterany`) next to `--needs` (after a success); `--not-before` (an earliest start: `23:00`, `'2026-10-07 23:00'`, `+3h`) and `--timebox` (how long a task may take) on `add` and `edit`; all three in the panel's edit form.
+- `next` and `claim` tell **"nothing"** from **"wait"** from **"needs you"** with exit codes (`next`: 0 task, 2 nothing queued, 3 will start by itself, 4 needs the person; `claim`: 3 must wait, 4 needs the person), and `next --wait SECONDS` and `claim --wait SECONDS` wait for a task that only has to wait. A claim is refused before the start time. The default connection text tells a session what each code means.
+- **Sessions show signs of life.** `next`, `claim`, `heartbeat`, `note` and `finish` mark the lane as `working`, `waiting` (and for what) or `idle`; the session cards show it with how long ago. A claim records its last `signal`, and a task with a timebox a `deadline`.
+- **Night mode for a session:** `barid lane edit LANE --unattended` or the "Night mode" box in the Connect window makes the connection text tell the session to wait for its turn on exit code 3, never ask whether to continue, and stop only when its lane is empty or it needs you.
+- **`barid worker --lane L --cmd '<agent command>'`**: a loop outside the model. For each task it starts a fresh agent with the prompt on stdin, keeps a short lease alive, stops the process group at the timebox, closes a task whose agent ended without a report (`partial` after a clean exit, `failed` otherwise), and takes the next; it waits for start times, other tasks and conflicts, and ends when the lane is empty, needs you, or nothing could start for `--max-wait`.
+- **`barid digest [--since 12h]`** and the "While you were away" card in the panel: sessions, what ended with which outcome and report, what runs or has an expired lease, what needs you, what waits and why.
+- "What to do now": a session's card shows its queued work before a draft whose turn has come (a draft had taken the card of a session that had a ready task), and has new hint lines for a start time and for a task that waits for you.
+- `heartbeat` no longer writes an event (a worker sends one every 30 seconds).
+- Tests: 40 new tests (reasons, `after`, start times, exit codes and `--wait` through the real command line, presence, a worker driven by a fake agent that crashes, hangs or forgets to report, the digest, boards without the new fields) and 4 more browser tests.
 - Audit of Barid with random operation sequences (hypothesis, 1500 sequences of 60 steps) and garbage input: two real findings fixed. (1) The panel API crashed with a 500 on a field of the wrong type (`"title": true`, `"needs": false`, `args` as a list); it now answers a clean `bad_input` error (translated in the panel). (2) A task the person set to "running" by hand had no claim (no holder, no lease); it now gets one.
 - New tests: random operation sequences and garbage actions (`tests/test_robust.py`, needs `hypothesis`, skipped without it) and boards made by every earlier release (`tests/fixtures`, `tests/test_migration.py`): they open, plan, export, accept reports and take new tasks with the current code, and reading never rewrites the file.
-## Unreleased
-
 - Fix: the "What to do now" card showed a later draft whose prompt was due instead of the session's first task in the plan when that first task was blocked. The card now shows the task the plan puts first (and drafts that wait for other tasks count as waiting).
 - examples: the example board describes its tasks with profiles, so `barid lint` is clean on it.
+
 ## 0.5.1 (2026-10-06)
 
 - The panel is now tested in a real browser: 20 tests drive Firefox headless over Marionette (standard library only, `tests/test_ui.py`): language list, "+" new session, Connect, the Appearance menu, forms, drawer, review inbox, hints, colours of the status labels, narrow screens, Kazakh. They were checked against three bugs we had (a menu that closed, colourless status labels, a missing conflict hint). CI runs them on one Linux job; `BARID_SKIP_UI=1` skips them.

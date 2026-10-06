@@ -30,7 +30,7 @@ class OldBoards(unittest.TestCase):
         return subprocess.run([sys.executable, str(RB_PATH), "--board", str(path), "--human", *args], capture_output=True, text=True, encoding="utf-8")
 
     def test_there_are_fixtures_for_every_release(self):
-        self.assertGreaterEqual(len(FIXTURES), 4)
+        self.assertGreaterEqual(len(FIXTURES), 5)
 
     def test_every_old_board_opens_plans_and_exports(self):
         for fx in FIXTURES:

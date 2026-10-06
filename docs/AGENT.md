@@ -35,7 +35,8 @@ To add a session later: the person presses "+" in the panel, or `barid lane add 
 
 - Identify yourself in every command: `--by "<your name>"`.
 - **Planner:** add tasks with `barid add`, set `--needs`, `--profile` (or `--uses`, `--quiet`, `--noisy`), run `barid lint` and fix what it suggests, check with `barid plan`, explain what can run in parallel. Write prompts that a session with no memory can act on (see `barid template`). Drafts (`--outline`, no text) get their prompt later through `barid gen ID` then `barid edit ID --text-file FILE`.
-- **Worker:** `barid next --lane <lane>`, `barid claim ID`, do the work, write a report, `barid finish ID --report PATH`. If `claim` is refused, stop and tell the user why. Touch only your task.
+- **Worker:** `barid next --lane <lane>` (exit code 0 task, 2 nothing queued, 3 wait: it will start by itself, 4 needs the person), `barid claim ID`, do the work, write a report, `barid finish ID --report PATH`. If `claim` is refused, stop and tell the user why, except in a night session whose connection text says to wait: there a refusal with exit code 3 means "repeat with `--wait 300`". Touch only your task.
+- **Unattended chains:** [UNATTENDED.md](UNATTENDED.md): `--after`, `--not-before`, `--timebox`, `lane edit --unattended`, `barid worker`, `barid digest`.
 - **Never** edit `board.json` directly, pass `--human`, set `BARID_ACTOR=human`, use `--force`, or work on a task you did not claim.
 
 Full rules: [PROTOCOL.md](PROTOCOL.md). Command reference: `barid --help` and `skills/barid/SKILL.md`.

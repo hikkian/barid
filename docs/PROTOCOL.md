@@ -20,7 +20,9 @@ A lane is one agent session. `color` (`#rrggbb`, empty = the palette default) an
 
 Stored `status`: `draft` (no prompt text yet), `proposed` (added by an untrusted agent, waits for approval), `queued`, `sent` (the person handed the prompt to a session), `running` (claimed), `review` (finished, report written), `done` (accepted), `cancelled`.
 
-Computed `state` for a queued task: `ready`, `waiting` (some `needs` are not finished; `waiting_on` lists them) or `blocked` (a conflicting task is active; `conflicts` lists `{id, why}`). For every other status `state` equals `status`.
+Computed `state` for a queued task: `ready`, `waiting` (some `needs` or `after` are not finished, or `not_before` has not come; `waiting_on` lists the tasks, `begin_in` the seconds left to the start time) or `blocked` (a conflicting task is active; `conflicts` lists `{id, why}`). For every other status `state` equals `status`. A queued task also carries `reasons`, a list of `{code, ...}` with the codes `begin_time`, `dependency`, `conflict` (they end by themselves), `decision` and `never` (they need the person); see [UNATTENDED.md](UNATTENDED.md).
+
+`after` is a second list next to `needs`: it is satisfied when the task is over (`review`, `done` or `cancelled`), whatever the outcome. Both lists count for the order of the plan and for cycle checks. `not_before` (an ISO time) is the earliest start: `claim` is refused with code `begin_time` before it. `timebox` (minutes) is how long the task may run; the claim gets a `deadline` and a lease of at least that plus an hour.
 
 A need is *satisfied* when the task is `done` (the person accepted it, even a partial result), or when it is in `review` with `outcome: "complete"` unless `policy.dependents_wait_for_accept` is true. A report that ended `partial`, `failed` or without a stated outcome never unlocks dependents by itself: the person decides (accept as is, or send it back).
 
@@ -53,7 +55,11 @@ Active tasks are those in `sent` or `running`. `claim` is refused when it would 
 
 ## Leases
 
-`claim` records `{by, at, lease_until}` (`policy.lease_hours`, default 12). `heartbeat` extends it. An expired lease marks the task `stale` in the views but does not free it; the person (or the owner) releases it.
+`claim` records `{by, at, lease_until, signal}` (`policy.lease_hours`, default 12; with a `timebox` also `deadline`, and the lease is at least timebox + 1 hour; `barid worker` uses 3 minutes and renews it every 30 seconds). `heartbeat` extends it and refreshes `signal` (the last sign of life; heartbeats are not logged as events). An expired lease marks the task `stale` in the views but does not free it; the person (or the owner) releases it.
+
+Each lane may carry `seen`: `{at, by, state: idle|waiting|working, task, reason}`, written by `next`, `claim`, `heartbeat`, `note` and `finish` (not by a background process) and shown in the panel; and `unattended: true`, which selects the connection text for a session that waits and never stops to ask.
+
+Exit codes of `next`: `0` a task was printed, `2` nothing is queued in the lane, `3` nothing can start yet but will by itself, `4` nothing will change without the person. `claim` exits `3` when the task must wait (`begin_time`, `waiting`, `conflict`) and `4` when it needs the person (`stuck`); `--wait SECONDS` on both waits for the first kind.
 
 ## Operations and who may do them
 
@@ -81,7 +87,7 @@ Active tasks are those in `sent` or `running`. `claim` is refused when it would 
 ```json
 {
   "schema": 1, "project": "name", "rev": 42, "created": "...", "updated": "...", "lang": "en",
-  "lanes": [{"id": "main", "title": "Main session", "color": "#7c5cff", "agent": "codex"}],
+  "lanes": [{"id": "main", "title": "Main session", "color": "#7c5cff", "agent": "codex", "unattended": false, "seen": {"at": "...", "by": "worker-a", "state": "working", "task": "T1", "reason": ""}}],
   "resources": {"gpu": {"label": "GPU", "exclusive": true}},
   "profiles": {"gpu-bench": {"label": "GPU measurement", "uses": ["gpu"], "quiet": true, "noisy": true}},
   "policy": {"direct_agents": ["planner"], "dependents_wait_for_accept": false, "lease_hours": 12, "footer": true},
@@ -89,11 +95,11 @@ Active tasks are those in `sent` or `running`. `claim` is refused when it would 
   "protect": ["config/live.json"],
   "items": [{
     "id": "T1", "lane": "main", "title": "Build", "status": "running",
-    "needs": ["T0"], "uses": ["gpu"], "quiet": false, "noisy": true,
+    "needs": ["T0"], "after": ["T9"], "not_before": "2026-10-07T18:00:00+00:00", "timebox": 480, "uses": ["gpu"], "quiet": false, "noisy": true,
     "when": "", "outline": "", "text": "the prompt without the footer",
     "profile": "dev", "lint_ok": [], "touches": ["src/api"], "workdir": "", "branch": "", "report": "", "outcome": "complete|partial|failed|", "violations": [], "changed": {}, "ran": {"from": "...", "to": "..."}, "ran_with": [{"id": "T2", "lane": "b", "noisy": true, "described": true}], "disturbed_by": [], "notes": [{"t": "...", "by": "agent", "text": "..."}],
     "created": "...", "updated": "...", "created_by": "planner",
-    "claim": {"by": "worker-a", "at": "...", "lease_until": "..."}
+    "claim": {"by": "worker-a", "at": "...", "lease_until": "...", "signal": "...", "deadline": "..."}
   }],
   "events": [{"t": "...", "by": "worker-a", "action": "claim", "id": "T1", "detail": ""}]
 }

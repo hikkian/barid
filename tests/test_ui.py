@@ -187,6 +187,67 @@ class PanelInBrowser(unittest.TestCase):
         self.assertIn("First", card)       # T1 comes first in the plan for this session
         self.assertNotIn("Later draft", card)
 
+    def agent(self, *args):
+        r = subprocess.run([sys.executable, str(RB), "--board", str(self.board), *args], capture_output=True, text=True, encoding="utf-8")
+        return r
+
+    def test_a_waiting_session_shows_what_it_waits_for_and_a_start_time_is_a_hint(self):
+        self.agent("claim", "T1", "--by", "w1", "--force")
+        self.agent("next", "--lane", "b", "--by", "night-b")             # T2 waits for the GPU: the session reports that it waits
+        self.b.wait("document.querySelector('#now').textContent.indexOf('waiting:') >= 0", what="the presence line")
+        self.assertIn("T1", self.b.exec("return document.querySelectorAll('#now .lane-card')[1].textContent;"))
+        barid(self.board, "edit", "T2", "--not-before", "+3h")
+        barid(self.board, "release", "T1")
+        self.b.wait("document.querySelector('#now').textContent.indexOf('Starts not before') >= 0 || document.querySelector('#now').textContent.indexOf('not before') >= 0", what="the start time hint")
+        self.assertNoJsErrors()
+
+    def test_the_connect_window_has_a_night_mode_that_changes_the_text(self):
+        self.b.click_text("#now .lane-card button", "Connect")
+        self.b.wait("document.querySelector('#modalbox .connectbox') && document.querySelector('#modalbox .connectbox').textContent.length > 50", what="the connection text")
+        self.assertNotIn("--wait 300", self.text("#modalbox .connectbox"))
+        self.b.exec("var c = document.querySelector('#modalbox input[type=checkbox]'); c.checked = true; c.dispatchEvent(new Event('change'));")
+        self.b.wait("document.querySelector('#modalbox .connectbox').textContent.indexOf('--wait 300') >= 0", what="the night text")
+        self.assertIn("exit code 3", self.text("#modalbox .connectbox"))
+        self.assertNoJsErrors()
+
+    def test_a_digest_card_tells_what_finished_while_the_person_was_away(self):
+        self.agent("claim", "T1", "--by", "w1", "--force")
+        self.agent("finish", "T1", "--report", "/tmp/r.md", "--outcome", "partial", "--by", "w1")
+        self.b.exec("location.reload();")
+        self.b.wait("document.querySelector('#digest') && document.querySelector('#digest').textContent.indexOf('While you were away') >= 0", what="the digest card")
+        card = self.text("#digest")
+        self.assertIn("T1", card)
+        self.assertIn("r.md", card)
+        self.assertIn("accept the report of T1", card)
+        self.b.click_text("#digest button", "Got it")
+        self.b.wait("document.querySelector('#digest').textContent.indexOf('While you were away') < 0", what="the card to go away")
+        self.assertIn("T1", self.text("#inbox") if self.b.exec("return !!document.getElementById('inbox');") else self.text("body"))   # the report still waits in its own section
+        self.assertNoJsErrors()
+
+    def test_the_edit_form_saves_start_time_limit_and_after(self):
+        self.b.click_text("#flow .item", "Second")
+        self.b.wait("document.getElementById('drawer').textContent.indexOf('Profile') >= 0", what="the drawer")
+        self.b.click_text("#drawer button", "Edit")
+        self.b.wait("document.querySelector('#drawer .formgrid')", what="the edit form")
+        labels = self.b.exec("return Array.prototype.map.call(document.querySelectorAll('#drawer label'), function (l) { return l.textContent; }).join('|');")
+        self.assertIn("Not before", labels)
+        self.assertIn("Time limit", labels)
+        self.b.exec("""var inputs = document.querySelectorAll('#drawer input[type=text]');
+          Array.prototype.forEach.call(inputs, function (i) { var l = i.parentNode.querySelector('label'); if (!l) return;
+            if (l.textContent.indexOf('Not before') === 0) i.value = '23:00'; if (l.textContent.indexOf('Time limit') === 0) i.value = '3h'; if (l.textContent.indexOf('After') === 0) i.value = 'T1'; });""")
+        self.b.click_text("#drawer button", "Save")
+        self.b.wait("true", what="a moment")
+        import time
+        for _ in range(50):
+            d = json.loads(self.board.read_text("utf-8"))
+            it = [i for i in d["items"] if i["id"] == "T2"][0]
+            if it.get("timebox") == 180:
+                break
+            time.sleep(0.2)
+        self.assertEqual((it["timebox"], it["after"]), (180, ["T1"]))
+        self.assertTrue(it["not_before"])
+        self.assertNoJsErrors()
+
     def test_narrow_screen_has_no_horizontal_scroll(self):
         self.b.cmd("WebDriver:SetWindowRect", {"width": 390, "height": 800})
         self.addCleanup(lambda: self.b.cmd("WebDriver:SetWindowRect", {"width": 1280, "height": 900}))

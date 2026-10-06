@@ -166,6 +166,7 @@ details>summary{cursor:pointer;color:var(--mute);margin:6px 0}
 </header>
 <main>
   <h2 id="h-now"></h2>
+  <div id="digest"></div>
   <div id="now" class="now"></div>
   <div id="together"></div>
   <div id="inboxwrap"></div>
@@ -195,11 +196,17 @@ var STR = {
   prompt:"Prompt", noprompt:"There is no prompt text yet.", title:"Title", outline:"Outline (what the prompt must achieve)", needs_l:"Depends on (IDs, comma separated)", uses_l:"Resources (comma separated)",
   quiet:"needs a quiet machine", noisy:"creates load", id:"ID", text:"Prompt text", create:"Create", offline:"No connection to the board server. Retrying…",
   copy_path:"Copy report path", reopen:"Reopen", sessions:"Sessions", go_ok:"Can run together with: {list}", go_wait:"Wait, conflict: {list}", go_not:"Do not run together with: {list}", lane_new:"New session", lane_name_ph:"Session name (for example: Codex, tests)", agent_which:"Which agent will work in it?", lane_create:"Create session", lane_created:"Session “{name}” created", connect:"Connect", connect_help_short:"How to attach an agent window to this session", connect_title:"Connect “{name}”", connect_help:"Open that agent (Codex, Claude Code…) in the project folder and paste this text as its first message. After that it takes its tasks from the board by itself.", copy_connect:"Copy connection text", color_reset:"Reset color", agent_ph:"Agent (claude, codex…)", ag_claude:"Claude Code", ag_codex:"Codex", ag_opencode:"OpenCode", ag_gemini:"Gemini CLI", ag_cursor:"Cursor", ag_aider:"Aider", ag_local:"Local model", why_paths:"same files", touches_l:"Files and folders it may change (comma separated)", files:"Files", workdir:"Checkout", branch:"Branch", viol_chip:"files need a look", viol_protected:"changed a protected file", viol_outside:"changed a file outside its scope", viol_collision:"touched a file that {id} is working on", changed_n:"{n} files changed on {branch}", viol_warn:"Barid found file changes you should look at before accepting.", updated:"updated", theme:"Appearance", mode_auto:"Auto", mode_light:"Light", mode_dark:"Dark", palette:"Colors", pal_forest:"Forest", pal_teal:"Teal", pal_graphite:"Graphite", pal_midnight:"Midnight", out:"Outcome", out_complete:"complete", out_partial:"partial", out_failed:"failed", out_none:"outcome not stated", accept_asis:"Accept as is", partial_warn:"The session stopped early or did not finish everything. Dependent tasks wait for your decision.", turn:"its turn has come", empty_flow:"No tasks yet. Ask your agent to add some, or press “+ New task”.",
+  go_begin:"Starts not before {time}", go_person:"Waits for you: {list}", sum_begin:"{id} starts not before {time}", sum_person:"{id} waits for your decision ({list})",
+  rs_begin_time:"not before {time}", rs_dependency:"waits for {id} ({status})", rs_decision_accept:"needs you to accept the report of {id}", rs_decision_write:"needs you to write or approve {id}", rs_never:"{id} was cancelled: it can never finish, change the dependency", rs_conflict:"cannot run next to {id} ({why})", reasons_l:"Why it waits",
+  after_l:"After (any outcome; IDs, comma separated)", not_before_l:"Not before (23:00, 2026-10-07 23:00, +3h)", timebox_l:"Time limit (90m, 8h, 1d)", deadline_l:"Deadline", after_row:"After (any outcome)", begin_row:"Not before",
+  pres_working:"works on {task}", pres_waiting:"waiting: {reason}", pres_idle:"idle", pres_none:"no signal yet", pres_ago:"signal {ago}", ago_now:"just now", ago_m:"{n} min ago", ago_h:"{n} h ago", ago_d:"{n} d ago",
+  night_mode:"Night mode: wait for the turn, never stop to ask", night_help:"For a session that works unattended: it waits for start times, other tasks and the GPU, and keeps going until its lane is empty.",
+  digest_title:"While you were away", digest_ended:"Finished", digest_needs:"Needs you", digest_ok:"Got it", digest_accept:"accept the report of {id}", digest_approve:"approve {id}", digest_decision:"{id} waits for your decision on {on}", digest_never:"{id}: fix the dependency on {on}", digest_stale:"{id}: no sign of life, the lease has expired", digest_report:"report",
   s:{ready:"ready to run",waiting:"waiting",blocked:"busy",queued:"queued",draft:"draft",proposed:"proposed",sent:"sent",running:"in progress",review:"to review",done:"done",cancelled:"cancelled"},
   with_:"Can run with", not_with:"Cannot run with", wait_:"Depends on", conf_:"Waiting for", why:{lane:"same session",quiet:"quiet and load do not mix"}, rev:"rev", snapshot:"This is a read-only snapshot",
   ok_sent:"Marked as sent", ok_release:"Returned to the queue", ok_approve:"Approved", ok_reject:"Rejected", ok_accept:"Report accepted", ok_cancel:"Task cancelled", ok_restore:"Task restored",
   ok_status:"Status changed", ok_requeued:"Returned to the queue", ok_note:"Note added", ok_outcome:"Outcome changed", ok_saved:"Saved", ok_created:"Task created",
-  ERR:{exists:"A task with ID {id} already exists", bad_id:"ID: letters, digits, “.”, “_” or “-”, up to 32 characters", unknown_lane:"Unknown session: {lane}", unknown_task:"Unknown task in the dependency list: {id}", unknown_profile:"Unknown profile: {name}", bad_input:"Wrong data in the request: {field}", bad_lint:"Unknown suggestion code: {name}", bad_lang:"Language must be en, ru or kk",
+  ERR:{bad_time:"Cannot read the time “{value}”: use 23:00, 2026-10-07 23:00 or +3h", bad_duration:"Cannot read the duration “{value}”: use 90m, 8h or 1d", begin_time:"{id} may not start yet", waiting:"{id} must wait for other tasks", conflict:"{id} conflicts with a task that runs now", stuck:"{id} waits for you to decide something", exists:"A task with ID {id} already exists", bad_id:"ID: letters, digits, “.”, “_” or “-”, up to 32 characters", unknown_lane:"Unknown session: {lane}", unknown_task:"Unknown task in the dependency list: {id}", unknown_profile:"Unknown profile: {name}", bad_input:"Wrong data in the request: {field}", bad_lint:"Unknown suggestion code: {name}", bad_lang:"Language must be en, ru or kk",
    unknown_resource:"Unknown resource: {name}", cycle:"That would create a dependency loop", no_text:"{id} has no prompt text yet: generate or write it first", not_found:"No such task: {id}",
    wrong_state:"{id} is now “{status}”: this action is not possible", human_only:"Only you can do this", empty_note:"The note is empty", bad_status:"Unknown status", bad_outcome:"Unknown outcome", no_git:"This folder is not a git repository", bad_color:"Color must look like #feb83b", bad_agent:"Agent name: letters, digits, space, . _ + - (up to 24 characters)"}},
  ru: {now:"Что делать сейчас", flow:"Порядок работ и что можно запускать вместе", inbox_p:"Предложения агентов", inbox_r:"Отчёты на проверку", archive:"Архив", activity:"Журнал действий",
@@ -214,11 +221,17 @@ var STR = {
   prompt:"Промпт", noprompt:"Текста промпта ещё нет.", title:"Название", outline:"Суть (что должен сделать промпт)", needs_l:"Зависит от (ID через запятую)", uses_l:"Ресурсы (через запятую)",
   quiet:"нужна тишина", noisy:"создаёт нагрузку", id:"ID", text:"Текст промпта", create:"Создать", offline:"Нет связи с сервером доски. Пробую снова…",
   copy_path:"Скопировать путь к отчёту", reopen:"Открыть заново", sessions:"Сессии", go_ok:"Можно запускать вместе с: {list}", go_wait:"Подождите, конфликт: {list}", go_not:"Нельзя запускать вместе с: {list}", lane_new:"Новая сессия", lane_name_ph:"Название сессии (например: Codex, тесты)", agent_which:"Какой агент в ней будет работать?", lane_create:"Создать сессию", lane_created:"Сессия «{name}» создана", connect:"Подключить", connect_help_short:"Как подключить окно агента к этой сессии", connect_title:"Подключить «{name}»", connect_help:"Откройте этого агента (Codex, Claude Code…) в папке проекта и вставьте этот текст первым сообщением. Дальше он сам берёт задачи с доски.", copy_connect:"Скопировать текст подключения", color_reset:"Сбросить цвет", agent_ph:"Агент (claude, codex…)", ag_claude:"Claude Code", ag_codex:"Codex", ag_opencode:"OpenCode", ag_gemini:"Gemini CLI", ag_cursor:"Cursor", ag_aider:"Aider", ag_local:"Локальная модель", why_paths:"те же файлы", touches_l:"Какие файлы и папки можно менять (через запятую)", files:"Файлы", workdir:"Рабочая копия", branch:"Ветка", viol_chip:"проверьте файлы", viol_protected:"изменён защищённый файл", viol_outside:"изменён файл вне своей области", viol_collision:"тронут файл, с которым работает {id}", changed_n:"изменено файлов: {n} (ветка {branch})", viol_warn:"Barid нашёл изменения файлов, которые стоит проверить перед принятием.", updated:"обновлено", theme:"Оформление", mode_auto:"Авто", mode_light:"Светлая", mode_dark:"Тёмная", palette:"Цвета", pal_forest:"Лес", pal_teal:"Бирюза", pal_graphite:"Графит", pal_midnight:"Полночь", out:"Итог", out_complete:"выполнено полностью", out_partial:"выполнено частично", out_failed:"не удалось", out_none:"итог не указан", accept_asis:"Принять как есть", partial_warn:"Сессия остановилась раньше или сделала не всё. Зависимые задачи ждут вашего решения.", turn:"подошла очередь", empty_flow:"Задач пока нет. Попросите агента добавить их или нажмите «+ Новая задача».",
+  go_begin:"Старт не раньше {time}", go_person:"Ждёт вашего решения: {list}", sum_begin:"{id} стартует не раньше {time}", sum_person:"{id} ждёт вашего решения ({list})",
+  rs_begin_time:"не раньше {time}", rs_dependency:"ждёт {id} ({status})", rs_decision_accept:"ждёт, пока вы примете отчёт {id}", rs_decision_write:"ждёт, пока вы напишете или одобрите {id}", rs_never:"{id} отменена: она не завершится, измените зависимость", rs_conflict:"нельзя рядом с {id} ({why})", reasons_l:"Почему ждёт",
+  after_l:"После (любой исход; ID через запятую)", not_before_l:"Не раньше (23:00, 2026-10-07 23:00, +3h)", timebox_l:"Лимит времени (90m, 8h, 1d)", deadline_l:"Срок", after_row:"После (любой исход)", begin_row:"Не раньше",
+  pres_working:"работает над {task}", pres_waiting:"ждёт: {reason}", pres_idle:"свободна", pres_none:"сигнала ещё не было", pres_ago:"сигнал {ago}", ago_now:"только что", ago_m:"{n} мин назад", ago_h:"{n} ч назад", ago_d:"{n} дн назад",
+  night_mode:"Ночной режим: ждать очереди и не останавливаться с вопросами", night_help:"Для сессии, которая работает без присмотра: она ждёт время старта, другие задачи и видеокарту и идёт дальше, пока её линия не опустеет.",
+  digest_title:"Пока вас не было", digest_ended:"Завершено", digest_needs:"Нужно от вас", digest_ok:"Понятно", digest_accept:"принять отчёт {id}", digest_approve:"одобрить {id}", digest_decision:"{id} ждёт вашего решения по {on}", digest_never:"{id}: исправьте зависимость от {on}", digest_stale:"{id}: нет признаков жизни, аренда истекла", digest_report:"отчёт",
   s:{ready:"можно запускать",waiting:"ждёт",blocked:"занято",queued:"в очереди",draft:"черновик",proposed:"предложено",sent:"отправлено",running:"в работе",review:"на проверке",done:"выполнено",cancelled:"отменено"},
   with_:"Можно вместе с", not_with:"Нельзя вместе с", wait_:"Ждёт задачи", conf_:"Ждёт завершения", why:{lane:"та же сессия",quiet:"тишина и нагрузка несовместимы"}, rev:"версия", snapshot:"Это снимок только для чтения",
   ok_sent:"Отмечено как отправленное", ok_release:"Возвращено в очередь", ok_approve:"Одобрено", ok_reject:"Отклонено", ok_accept:"Отчёт принят", ok_cancel:"Задача отменена", ok_restore:"Задача восстановлена",
   ok_status:"Статус изменён", ok_requeued:"Возвращено в очередь", ok_note:"Заметка добавлена", ok_outcome:"Итог изменён", ok_saved:"Сохранено", ok_created:"Задача создана",
-  ERR:{exists:"Задача с ID {id} уже существует", bad_id:"ID: латинские буквы, цифры, «.», «_» или «-», до 32 символов", unknown_lane:"Нет такой сессии: {lane}", unknown_task:"Нет такой задачи в зависимостях: {id}", unknown_profile:"Нет такого профиля: {name}", bad_input:"Неверные данные в запросе: {field}", bad_lint:"Неизвестный код подсказки: {name}", bad_lang:"Язык: en, ru или kk",
+  ERR:{bad_time:"Не удаётся прочитать время «{value}»: используйте 23:00, 2026-10-07 23:00 или +3h", bad_duration:"Не удаётся прочитать срок «{value}»: используйте 90m, 8h или 1d", begin_time:"{id} ещё нельзя начинать", waiting:"{id} должна дождаться других задач", conflict:"{id} конфликтует с задачей, которая идёт сейчас", stuck:"{id} ждёт вашего решения", exists:"Задача с ID {id} уже существует", bad_id:"ID: латинские буквы, цифры, «.», «_» или «-», до 32 символов", unknown_lane:"Нет такой сессии: {lane}", unknown_task:"Нет такой задачи в зависимостях: {id}", unknown_profile:"Нет такого профиля: {name}", bad_input:"Неверные данные в запросе: {field}", bad_lint:"Неизвестный код подсказки: {name}", bad_lang:"Язык: en, ru или kk",
    unknown_resource:"Нет такого ресурса: {name}", cycle:"Получился бы цикл зависимостей", no_text:"У {id} ещё нет текста промпта: сначала сгенерируйте или напишите его", not_found:"Задачи {id} нет",
    wrong_state:"Задача {id} сейчас «{status}»: это действие невозможно", human_only:"Это может сделать только человек", empty_note:"Заметка пустая", bad_status:"Неизвестный статус", bad_outcome:"Неизвестный итог", no_git:"Эта папка не является git-репозиторием", bad_color:"Цвет в формате #feb83b", bad_agent:"Имя агента: буквы, цифры, пробел, . _ + - (до 24 знаков)"}},
  kk: {now:"Қазір не істеу керек", flow:"Жұмыс реті және қайсысын бірге іске қосуға болады", inbox_p:"Агенттердің ұсыныстары", inbox_r:"Тексеруге арналған есептер", archive:"Архив", activity:"Әрекеттер журналы",
@@ -233,11 +246,17 @@ var STR = {
   prompt:"Промпт", noprompt:"Промпт мәтіні әлі жоқ.", title:"Атауы", outline:"Қысқаша мазмұны (промпт нені орындауы керек)", needs_l:"Тәуелділік (ID, үтір арқылы)", uses_l:"Ресурстар (үтір арқылы)",
   quiet:"тыныштық керек", noisy:"жүктеме жасайды", id:"ID", text:"Промпт мәтіні", create:"Жасау", offline:"Тақта серверімен байланыс жоқ. Қайта көріп жатырмыз…",
   copy_path:"Есеп жолын көшіру", reopen:"Қайта ашу", sessions:"Сессиялар", go_ok:"Бірге іске қосуға болады: {list}", go_wait:"Күтіңіз, қайшылық: {list}", go_not:"Бірге іске қоспаңыз: {list}", lane_new:"Жаңа сессия", lane_name_ph:"Сессия атауы (мысалы: Codex, тесттер)", agent_which:"Онда қай агент жұмыс істейді?", lane_create:"Сессия жасау", lane_created:"«{name}» сессиясы жасалды", connect:"Қосу", connect_help_short:"Агент терезесін осы сессияға қалай қосуға болады", connect_title:"«{name}» сессиясын қосу", connect_help:"Сол агентті (Codex, Claude Code…) жоба қалтасында ашып, осы мәтінді бірінші хабарлама ретінде қойыңыз. Содан кейін ол тапсырмаларды тақтадан өзі алады.", copy_connect:"Қосу мәтінін көшіру", color_reset:"Түсті бастапқыға қайтару", agent_ph:"Агент (claude, codex…)", ag_claude:"Claude Code", ag_codex:"Codex", ag_opencode:"OpenCode", ag_gemini:"Gemini CLI", ag_cursor:"Cursor", ag_aider:"Aider", ag_local:"Жергілікті модель", why_paths:"сол файлдар", touches_l:"Өзгерте алатын файлдар мен қалталар (үтір арқылы)", files:"Файлдар", workdir:"Жұмыс көшірмесі", branch:"Тармақ", viol_chip:"файлдарды қараңыз", viol_protected:"қорғалған файлды өзгертті", viol_outside:"өз аймағынан тыс файлды өзгертті", viol_collision:"{id} жұмыс істеп жатқан файлға тиді", changed_n:"өзгерген файл: {n} ({branch} тармағы)", viol_warn:"Barid қабылдамас бұрын қарап шығу керек файл өзгерістерін тапты.", updated:"жаңартылды", theme:"Көрініс", mode_auto:"Авто", mode_light:"Ашық", mode_dark:"Қараңғы", palette:"Түстер", pal_forest:"Орман", pal_teal:"Көгілдір", pal_graphite:"Графит", pal_midnight:"Түн жарымы", out:"Нәтиже", out_complete:"толық орындалды", out_partial:"ішінара орындалды", out_failed:"орындалмады", out_none:"нәтиже көрсетілмеген", accept_asis:"Қалай болса солай қабылдау", partial_warn:"Сессия ерте тоқтады немесе бәрін аяқтамады. Тәуелді тапсырмалар сіздің шешіміңізді күтеді.", turn:"оның кезегі келді", empty_flow:"Тапсырма әзірге жоқ. Агентіңізден қосуды сұраңыз немесе «+ Жаңа тапсырма» түймесін басыңыз.",
+  go_begin:"{time} дейін басталмайды", go_person:"Сіздің шешіміңізді күтеді: {list}", sum_begin:"{id} {time} дейін басталмайды", sum_person:"{id} сіздің шешіміңізді күтеді ({list})",
+  rs_begin_time:"{time} дейін емес", rs_dependency:"{id} күтеді ({status})", rs_decision_accept:"{id} есебін қабылдауыңызды күтеді", rs_decision_write:"{id} жазуыңызды немесе мақұлдауыңызды күтеді", rs_never:"{id} болдырылмады: ол аяқталмайды, тәуелділікті өзгертіңіз", rs_conflict:"{id} жанында болмайды ({why})", reasons_l:"Неге күтеді",
+  after_l:"Кейін (кез келген нәтиже; ID үтір арқылы)", not_before_l:"Бұдан ерте емес (23:00, 2026-10-07 23:00, +3h)", timebox_l:"Уақыт шегі (90m, 8h, 1d)", deadline_l:"Мерзім", after_row:"Кейін (кез келген нәтиже)", begin_row:"Бұдан ерте емес",
+  pres_working:"{task} үстінде жұмыс істеп жатыр", pres_waiting:"күтіп тұр: {reason}", pres_idle:"бос", pres_none:"сигнал әлі жоқ", pres_ago:"сигнал {ago}", ago_now:"жаңа ғана", ago_m:"{n} мин бұрын", ago_h:"{n} сағ бұрын", ago_d:"{n} күн бұрын",
+  night_mode:"Түнгі режим: кезегін күту, сұрақ қойып тоқтамау", night_help:"Қараусыз жұмыс істейтін сессия үшін: ол бастау уақытын, басқа тапсырмаларды және бейнекартаны күтеді және жолы бос болғанша жалғастырады.",
+  digest_title:"Сіз жоқта", digest_ended:"Аяқталды", digest_needs:"Сізден керек", digest_ok:"Түсінікті", digest_accept:"{id} есебін қабылдау", digest_approve:"{id} мақұлдау", digest_decision:"{id} {on} бойынша шешіміңізді күтеді", digest_never:"{id}: {on} тәуелділігін түзетіңіз", digest_stale:"{id}: тірілік белгісі жоқ, жалға алу мерзімі өтті", digest_report:"есеп",
   s:{ready:"іске дайын",waiting:"күтуде",blocked:"бос емес",queued:"кезекте",draft:"жоба",proposed:"ұсынылған",sent:"жіберілген",running:"орындалуда",review:"тексеруде",done:"дайын",cancelled:"болдырылмаған"},
   with_:"Бірге орындалады", not_with:"Бірге орындалмайды", wait_:"Тәуелді", conf_:"Күтуде", why:{lane:"сол сессия",quiet:"тыныштық пен жүктеме сыймайды"}, rev:"нұсқа", snapshot:"Бұл тек оқуға арналған көшірме",
   ok_sent:"Жіберілді деп белгіленді", ok_release:"Кезекке қайтарылды", ok_approve:"Мақұлданды", ok_reject:"Қабылданбады", ok_accept:"Есеп қабылданды", ok_cancel:"Тапсырма болдырылмады", ok_restore:"Тапсырма қалпына келтірілді",
   ok_status:"Күйі өзгертілді", ok_requeued:"Кезекке қайтарылды", ok_note:"Жазба қосылды", ok_outcome:"Нәтиже өзгертілді", ok_saved:"Сақталды", ok_created:"Тапсырма жасалды",
-  ERR:{exists:"ID {id} бар тапсырма әлдеқашан бар", bad_id:"ID: әріптер, цифрлар, «.», «_» немесе «-», 32 таңбаға дейін", unknown_lane:"Белгісіз сессия: {lane}", unknown_task:"Тәуелділік тізіміндегі белгісіз тапсырма: {id}", unknown_profile:"Белгісіз профиль: {name}", bad_input:"Сұраудағы деректер дұрыс емес: {field}", bad_lint:"Белгісіз кеңес коды: {name}", bad_lang:"Тіл: en, ru немесе kk",
+  ERR:{bad_time:"«{value}» уақытын оқу мүмкін емес: 23:00, 2026-10-07 23:00 немесе +3h қолданыңыз", bad_duration:"«{value}» мерзімін оқу мүмкін емес: 90m, 8h немесе 1d қолданыңыз", begin_time:"{id} әлі басталмайды", waiting:"{id} басқа тапсырмаларды күтуі керек", conflict:"{id} қазір жүріп жатқан тапсырмамен қақтығысады", stuck:"{id} сіздің шешіміңізді күтеді", exists:"ID {id} бар тапсырма әлдеқашан бар", bad_id:"ID: әріптер, цифрлар, «.», «_» немесе «-», 32 таңбаға дейін", unknown_lane:"Белгісіз сессия: {lane}", unknown_task:"Тәуелділік тізіміндегі белгісіз тапсырма: {id}", unknown_profile:"Белгісіз профиль: {name}", bad_input:"Сұраудағы деректер дұрыс емес: {field}", bad_lint:"Белгісіз кеңес коды: {name}", bad_lang:"Тіл: en, ru немесе kk",
    unknown_resource:"Белгісіз ресурс: {name}", cycle:"Бұл тәуелділік циклін тудырар еді", no_text:"{id} тапсырмасында промпт мәтіні әлі жоқ: алдымен оны жасатыңыз немесе жазыңыз", not_found:"Мұндай тапсырма жоқ: {id}",
    wrong_state:"{id} тапсырмасы қазір «{status}» күйінде: бұл әрекет мүмкін емес", human_only:"Мұны тек сіз істей аласыз", empty_note:"Жазба бос", bad_status:"Белгісіз күй", bad_outcome:"Белгісіз нәтиже", no_git:"Бұл қалта git репозиторийі емес", bad_color:"Түс #feb83b сияқты болуы керек", bad_agent:"Агент атауы: әріптер, цифрлар, бос орын, . _ + - (24 таңбаға дейін)"}}
 };
@@ -319,6 +338,25 @@ function match(c) {
   return (c.id + " " + c.title + " " + (c.outline || "") + " " + (c.text || "")).toLowerCase().indexOf(q) >= 0;
 }
 function fmtTime(s) { if (!s) return ""; var d = new Date(s); return isNaN(d) ? s : d.toLocaleString(S.lang === "ru" ? "ru-RU" : S.lang === "kk" ? "kk-KZ" : "en-US", {month: "short", day: "numeric", hour: "2-digit", minute: "2-digit"}); }
+function fmtWhen(s) { return fmtTime(s); }
+function agoText(sec) {
+  if (sec == null) return ""; if (sec < 90) return t("ago_now"); if (sec < 5400) return fmt(t("ago_m"), {n: Math.round(sec / 60)});
+  if (sec < 172800) return fmt(t("ago_h"), {n: Math.round(sec / 3600)}); return fmt(t("ago_d"), {n: Math.round(sec / 86400)});
+}
+function reasonText(r) {
+  if (r.code === "begin_time") return fmt(t("rs_begin_time"), {time: fmtWhen(r.at)});
+  if (r.code === "dependency") return fmt(t("rs_dependency"), {id: r.id, status: st(r.status)});
+  if (r.code === "decision") return fmt(t(r.status ? "rs_decision_write" : "rs_decision_accept"), {id: r.id});
+  if (r.code === "never") return fmt(t("rs_never"), {id: r.id});
+  if (r.code === "conflict") return fmt(t("rs_conflict"), {id: r.id, why: whyText(r.why)});
+  return r.code;
+}
+function presenceLine(l) {
+  var sn = l.seen, ago = sn && sn.at ? Math.max(0, Math.round((Date.now() - new Date(sn.at).getTime()) / 1000)) : null;
+  if (!sn || !sn.state) return l.unattended ? h("div", {class: "sub pres none", text: "○ " + t("pres_none")}) : null;    // sessions that never report stay quiet
+  var what = sn.state === "working" ? fmt(t("pres_working"), {task: sn.task || ""}) : sn.state === "waiting" ? fmt(t("pres_waiting"), {reason: sn.reason || ""}) : t("pres_idle") + (sn.reason ? " · " + sn.reason : "");
+  return h("div", {class: "sub pres " + sn.state, title: (sn.by || "") + " · " + fmtTime(sn.at), text: (sn.state === "working" ? "● " : sn.state === "waiting" ? "◐ " : "○ ") + what + " · " + fmt(t("pres_ago"), {ago: agoText(ago)})});
+}
 function outLabel(o) { return o === "complete" ? t("out_complete") : o === "partial" ? t("out_partial") : o === "failed" ? t("out_failed") : t("out_none"); }
 function hasViol(c) { return !!(c.violations && c.violations.length); }
 function badOutcome(c) { return c.state === "review" && (c.outcome !== "complete" || hasViol(c)); }
@@ -331,6 +369,8 @@ function hintLine(f) {
   // f.hint comes from the server for every kind of next task, so every card is treated the same way
   var k = f && f.hint && f.hint.kind; if (!k || k === "none") return null;
   var wl = function (a) { return a.map(function (x) { return x.id + " (" + whyText(x.why) + ")"; }).join(", "); };
+  if (k === "begin") return h("div", {class: "sub go wait", text: "⏰ " + fmt(t("go_begin"), {time: fmtWhen(f.hint.at)})});
+  if (k === "person") return h("div", {class: "sub go wait", text: "👤 " + fmt(t("go_person"), {list: f.hint.ids.join(", ")})});
   if (k === "wait") return h("div", {class: "sub go wait", text: "⏳ " + fmt(t("go_wait"), {list: wl(f.hint.with)})});
   if (k === "not") return h("div", {class: "sub go wait", text: "⛔ " + fmt(t("go_not"), {list: wl(f.hint.with)})});
   if (k === "ok") return h("div", {class: "sub go ok", text: "✓ " + fmt(t("go_ok"), {list: f.hint.ids.join(", ")}) + (f.hint.unchecked && f.hint.unchecked.length ? " · " + fmt(t("go_unchecked"), {list: f.hint.unchecked.join(", ")}) : "")});
@@ -396,7 +436,7 @@ function render() {
   var lf = clear($("lanefilters"));
   B.lanes.forEach(function (l) { lf.appendChild(h("button", {class: "pill" + (S.laneOff[l.id] ? "" : " on"), style: S.laneOff[l.id] ? "" : "background:" + laneColor(l.id) + ";border-color:" + laneColor(l.id) + ";color:" + fgFor(laneColor(l.id)), title: agentLabel(l.agent), text: l.title || l.id, onclick: function () { S.laneOff[l.id] = !S.laneOff[l.id]; render(); }})); });
   lf.appendChild(h("button", {class: "pill add", title: t("lane_new"), text: "+", onclick: function () { openLaneAdd(); }}));
-  renderNow(); renderInbox(); renderFlow(); renderArchive(); renderActivity();
+  renderNow(); renderInbox(); renderFlow(); renderArchive(); renderActivity(); loadDigest();
   if (S.sel && byId(S.sel)) renderDrawer(); else if (!S.editing) closeDrawer(true);
 }
 
@@ -408,6 +448,7 @@ function renderNow() {
     var running = mine.filter(function (c) { return c.state === "running" || c.state === "sent"; });
     var fo = B.focus && B.focus[l.id], fc = fo && byId(fo.id);
     var card = h("div", {class: "card lane-card", style: "--lane:" + laneColor(l.id)}, h("div", {class: "lh"}, h("span", {class: "dot"}), l.title || l.id, l.agent ? h("span", {class: "tag", style: "margin-left:auto", text: agentLabel(l.agent)}) : h("span", {style: "margin-left:auto"}), h("button", {class: "btn sm", style: "margin-left:8px", title: t("connect_help_short"), text: "⇄ " + t("connect"), onclick: function () { openConnect(l.id); }})));
+    var pl = presenceLine(l); if (pl) card.appendChild(pl);
     running.forEach(function (c) {
       var cl = c.claim;
       card.appendChild(h("div", {style: "margin-bottom:8px"}, h("div", {class: "sub", text: t("running")}), h("div", {class: "big", text: c.id + " · " + c.title}),
@@ -433,7 +474,8 @@ function renderNow() {
         card.appendChild(h("div", {class: "row"}, h("button", {class: "btn pri", title: t("genhint"), text: t("gen"), onclick: function () { copyGen(fc.id); }}), h("button", {class: "btn sm", text: t("edit"), onclick: function () { openDrawer(fc.id, true); }})));
       } else {
         // blocked (conflict) or waiting (dependencies): say why, with the same line as everywhere
-        card.appendChild(h("div", {class: "sub", text: fo.role === "waiting" ? t("nothing_ready") + waitText(fc) : t("nothing_ready_now")}));
+        var why2 = (fc.reasons || []).filter(function (r) { return r.code !== "conflict"; }).map(reasonText).join("; ");
+        card.appendChild(h("div", {class: "sub", text: fo.role === "waiting" ? t("nothing_ready") + (why2 || waitText(fc)) : t("nothing_ready_now")}));
         card.appendChild(h("div", {class: "big", style: "margin-top:6px", text: fc.id + " · " + fc.title}));
         if (hl && fo.role !== "waiting") card.appendChild(hl);
         var ll3 = lintLine(fc); if (ll3) card.appendChild(ll3);
@@ -451,8 +493,37 @@ function renderNow() {
   (sm.wait || []).forEach(function (w) { line("warn", "⏳", fmt(t("sum_wait"), {id: w.id, list: w.with.map(function (x) { return x.id + " (" + why(x.why) + ")"; }).join(", ")})); });
   (sm.unchecked || []).forEach(function (u) { line("unk", "·", fmt(t("sum_unchecked"), {id: u.id})); });
   (sm.deps || []).forEach(function (d) { line("", "…", fmt(t("sum_deps"), {id: d.id, list: d.ids.join(", ")})); });
+  (sm.begin || []).forEach(function (d) { line("", "⏰", fmt(t("sum_begin"), {id: d.id, time: fmtWhen(d.at)})); });
+  (sm.person || []).forEach(function (d) { line("warn", "👤", fmt(t("sum_person"), {id: d.id, list: d.ids.join(", ")})); });
 }
 
+function renderDigest(g) {
+  var box = clear($("digest")); if (!g) return;
+  var stale = (g.running || []).filter(function (r) { return r.stale; });
+  // reports to accept and proposals to approve already have their own section; the card is for what happened and what is stuck
+  var stuck = g.needs_you.filter(function (n) { return n.kind === "decision" || n.kind === "never"; });
+  if (!g.ended.length && !stuck.length && !stale.length) return;
+  var card = h("div", {class: "card", style: "padding:12px 14px;margin-bottom:12px;border-left:4px solid var(--ac)"});
+  card.appendChild(h("div", {class: "lh", style: "display:flex;align-items:center;gap:8px;font-weight:700;margin-bottom:6px"}, h("span", {text: "☾ " + t("digest_title")}),
+    h("button", {class: "btn sm", style: "margin-left:auto", text: t("digest_ok"), onclick: function () { lsSet("barid.visit", new Date().toISOString()); S.digestAt = 0; loadDigest(); }})));
+  if (g.ended.length) {
+    card.appendChild(h("div", {class: "sub", text: t("digest_ended")}));
+    g.ended.forEach(function (e) {
+      card.appendChild(h("div", {class: "together " + (e.outcome === "complete" && !e.violations ? "good" : "warn"), style: "cursor:pointer", onclick: function () { openDrawer(e.id); }},
+        h("b", {text: e.id}), " · " + e.title + " · " + outLabel(e.outcome) + (e.report ? " · " + t("digest_report") + ": " + e.report : "")));
+    });
+  }
+  var need = stuck.concat(g.ended.length ? g.needs_you.filter(function (n) { return n.kind === "accept" || n.kind === "approve"; }) : []).map(function (n) { return n.kind === "accept" ? fmt(t("digest_accept"), {id: n.id}) : n.kind === "approve" ? fmt(t("digest_approve"), {id: n.id}) : n.kind === "never" ? fmt(t("digest_never"), {id: n.id, on: n.on}) : fmt(t("digest_decision"), {id: n.id, on: n.on}); });
+  stale.forEach(function (r) { need.push(fmt(t("digest_stale"), {id: r.id})); });
+  if (need.length) { card.appendChild(h("div", {class: "sub", style: "margin-top:6px", text: t("digest_needs")})); need.forEach(function (x) { card.appendChild(h("div", {class: "together warn", text: "👤 " + x})); }); }
+  box.appendChild(card);
+}
+function loadDigest() {
+  if (window.__RB_BOARD__) return;
+  if (Date.now() - (S.digestAt || 0) < 15000) return; S.digestAt = Date.now();
+  var since = lsGet("barid.visit") || "";
+  api("/api/digest" + (since ? "?since=" + encodeURIComponent(since) : "")).then(renderDigest).catch(function () {});
+}
 function renderInbox() {
   var B = S.board, wrap = clear($("inboxwrap")), props = B.items.filter(function (c) { return c.state === "proposed" && match(c); }), revs = B.items.filter(function (c) { return c.state === "review" && match(c); });
   if (!props.length && !revs.length) return;
@@ -544,6 +615,10 @@ function renderDrawer() {
   if (c.changed) row("✎", changedText(c));
   if (hasViol(c)) row("⚠", c.violations.slice(0, 8).map(violText).join(" · "));
   if (c.waiting_on.length) row(t("wait_"), waitText(c));
+  if ((c.after || []).length) row(t("after_row"), c.after.join(", "));
+  if (c.not_before) row(t("begin_row"), fmtWhen(c.not_before)); if (c.timebox) row(t("timebox_l").split(" (")[0], c.timebox + " min");
+  if (c.claim && c.claim.deadline) row(t("deadline_l"), fmtWhen(c.claim.deadline));
+  if ((c.reasons || []).length) row(t("reasons_l"), c.reasons.map(reasonText).join("; "));
   if (c.state === "review" || c.state === "done") row(t("out"), outLabel(c.outcome));
   if (c.conflicts.length) row(t("conf_"), c.conflicts.map(function (x) { return x.id + " (" + whyText(x.why) + ")"; }).join(", "));
   if ((c.cannot_run_with || []).length) row(t("not_with"), c.cannot_run_with.map(function (x) { return x.id + " (" + whyText(x.why) + ")"; }).join(", "));
@@ -597,6 +672,9 @@ function editForm(c, isNew) {
   f.needs = h("input", {type: "text", value: (c.needs || []).join(", ")});
   f.uses = h("input", {type: "text", value: (c.uses || []).join(", ")});
   f.touches = h("input", {type: "text", value: (c.touches || []).join(", ")});
+  f.after = h("input", {type: "text", value: (c.after || []).join(", ")});
+  f.not_before = h("input", {type: "text", value: c.not_before ? localInput(c.not_before) : "", placeholder: "23:00"});
+  f.timebox = h("input", {type: "text", value: c.timebox ? c.timebox + "m" : "", placeholder: "8h"});
   f.when = h("input", {type: "text", value: c.when || ""});
   f.outline = h("input", {type: "text", value: c.outline || ""});
   f.profile = h("select", null, h("option", {value: "", text: t("prof_none")}));
@@ -604,12 +682,13 @@ function editForm(c, isNew) {
   f.quiet = h("input", {type: "checkbox"}); f.quiet.checked = !!c.quiet;
   f.noisy = h("input", {type: "checkbox"}); f.noisy.checked = !!c.noisy;
   f.text = h("textarea"); f.text.value = c.text || "";
-  var g = h("div", {class: "formgrid"}, field(t("id"), f.id), field(t("lane"), f.lane), field(t("title"), f.title, true), field(t("needs_l"), f.needs), field(t("profile"), f.profile), field(t("uses_l"), f.uses), field(t("touches_l"), f.touches, true),
+  var g = h("div", {class: "formgrid"}, field(t("id"), f.id), field(t("lane"), f.lane), field(t("title"), f.title, true), field(t("needs_l"), f.needs), field(t("after_l"), f.after), field(t("not_before_l"), f.not_before), field(t("timebox_l"), f.timebox), field(t("profile"), f.profile), field(t("uses_l"), f.uses), field(t("touches_l"), f.touches, true),
     field(t("when"), f.when, true), field(t("outline"), f.outline, true),
     h("div", null, h("label", null, f.quiet, " " + t("quiet"))), h("div", null, h("label", null, f.noisy, " " + t("noisy"))), field(t("text"), f.text, true));
   g._f = f; return g;
 }
-function formArgs(f) { return {title: f.title.value, lane: f.lane.value, needs: f.needs.value, uses: f.uses.value, touches: f.touches.value, when: f.when.value, outline: f.outline.value, quiet: f.quiet.checked, noisy: f.noisy.checked, profile: f.profile.value, text: f.text.value}; }
+function localInput(iso) { var d = new Date(iso), z = function (n) { return (n < 10 ? "0" : "") + n; }; return isNaN(d) ? "" : d.getFullYear() + "-" + z(d.getMonth() + 1) + "-" + z(d.getDate()) + " " + z(d.getHours()) + ":" + z(d.getMinutes()); }
+function formArgs(f) { return {title: f.title.value, lane: f.lane.value, needs: f.needs.value, after: f.after.value, not_before: f.not_before.value, timebox: f.timebox.value, uses: f.uses.value, touches: f.touches.value, when: f.when.value, outline: f.outline.value, quiet: f.quiet.checked, noisy: f.noisy.checked, profile: f.profile.value, text: f.text.value}; }
 function renderEdit(c, db) {
   var g = editForm(c, false); db.appendChild(g);
   db.appendChild(h("div", {class: "row", style: "margin-top:14px"}, h("button", {class: "btn pri", text: t("save"), onclick: function () { S.editing = false; act("edit", c.id, formArgs(g._f), t("saved")); }}),
@@ -631,6 +710,13 @@ function connectView(box, laneId) {
   box.appendChild(h("p", {class: "sub", text: t("connect_help")}));
   var pre = h("pre", {class: "connectbox", text: "…"});
   var text = "";
+  var night = h("input", {type: "checkbox"}); night.checked = !!(laneObj(laneId) || {}).unattended;
+  night.addEventListener("change", function () {
+    api("/api/act", {method: "POST", headers: {"Content-Type": "application/json", "X-Barid-Edit": "1"}, body: JSON.stringify({action: "lane", id: laneId, args: {unattended: night.checked}})})
+      .then(function () { return load(); }).then(function () { loadText(); }).catch(function (e) { toast(errText(e), true); });
+  });
+  box.appendChild(h("label", {class: "sub", style: "display:block;margin:6px 0 8px"}, night, " " + t("night_mode")));
+  box.appendChild(h("p", {class: "sub", style: "margin:0 0 8px", text: t("night_help")}));
   function loadText() { api("/api/connect/" + encodeURIComponent(laneId)).then(function (j) { text = j.text; pre.textContent = text; }).catch(function (e) { pre.textContent = errText(e); }); }
   box.appendChild(pre);
   loadText();

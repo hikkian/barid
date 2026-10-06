@@ -221,7 +221,7 @@ class CoreTests(unittest.TestCase):
         d = rb.load(self.path)
         self.assertEqual(d["lang"], "kk")
         self.assertIn("Сен", rb.connect_text(d, "main", self.path))
-        footer = rb.FOOTER["kk"].format(id="T1", py="python3", rb="x", board="b")
+        footer = rb.FOOTER["kk"].format(id="T1", py="python3", rb="x", board="b", claim_note="x")
         self.assertIn("claim T1", footer)
         self.assertIn("finish T1", footer)
 
@@ -286,9 +286,9 @@ class CoreTests(unittest.TestCase):
                                 continue
                             self.assertIn("hint", f, label)
                             kind = f["hint"]["kind"]
-                            self.assertIn(kind, ("deps", "wait", "not", "ok", "unchecked", "undescribed", "none"), label)
+                            self.assertIn(kind, ("deps", "person", "begin", "wait", "not", "ok", "unchecked", "undescribed", "none"), label)
                             if st == "waiting":
-                                self.assertEqual(kind, "deps", label)
+                                self.assertEqual(kind, "person", label)    # it waits for a cancelled task: only the person can fix that
                                 continue
                             startable_other = other in ("running", "sent", "ready", "draft")
                             if mode == "gpu":

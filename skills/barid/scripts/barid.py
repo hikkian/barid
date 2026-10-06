@@ -23,16 +23,25 @@ import sys
 import textwrap
 import threading
 import time
+import urllib.parse
 import webbrowser
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
-__version__ = "0.5.1"
+__version__ = "0.6.0"
 SCHEMA = 1
 HERE = Path(__file__).resolve().parent
 STATUSES = ("draft", "proposed", "queued", "sent", "running", "review", "done", "cancelled")
 ACTIVE = ("sent", "running")
 OUTCOMES = ("complete", "partial", "failed")  # how a finished task ended; only "complete" unlocks dependents by itself
+FINISHED = ("review", "done", "cancelled")    # a task that is over (the person may still have to look at it)
+# Why a queued task cannot start yet, like the reason column of a batch scheduler. The first four end by themselves (time passes,
+# other tasks finish); the last two need the person.
+REASONS = ("begin_time", "dependency", "conflict", "decision", "never")
+SELF_RESOLVING = ("begin_time", "dependency", "conflict")
+NEXT_TASK, NEXT_NONE, NEXT_WAIT, NEXT_STUCK = "task", "none", "wait", "stuck"   # outcomes of `next`; exit codes 0, 2, 3, 4
+EXIT_NONE, EXIT_WAIT, EXIT_STUCK = 2, 3, 4
+PRESENCE_STATES = ("idle", "waiting", "working")
 COLOR_RE = re.compile(r"^#[0-9a-fA-F]{6}$")
 AGENT_RE = re.compile(r"^[A-Za-z0-9 ._+-]{0,24}$")
 ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,31}$")
@@ -68,6 +77,64 @@ def parse_ts(s):
         return dt.datetime.fromisoformat(s)
     except (TypeError, ValueError):
         return None
+
+
+def parse_when(text: str, now: dt.datetime | None = None) -> str:
+    """A start time typed by a person or an agent, as an ISO time with offset (UTC). Accepts: `23:00` (the next 23:00 in the
+    local time zone), `2026-10-07 23:00` or `2026-10-07T23:00` (local time), `+90m`, `+3h`, `+1d` (from now), or a full ISO time
+    with an offset. An empty text clears the time (returns "")."""
+    text = (text or "").strip()
+    if not text:
+        return ""
+    now = now or now_dt()
+    m = re.fullmatch(r"\+\s*(\d+)\s*([mhd])", text.lower())
+    if m:
+        n = int(m.group(1))
+        delta = {"m": dt.timedelta(minutes=n), "h": dt.timedelta(hours=n), "d": dt.timedelta(days=n)}[m.group(2)]
+        return (now + delta).isoformat()
+    m = re.fullmatch(r"(\d{1,2}):(\d{2})", text)
+    if m:
+        local_now = now.astimezone()
+        try:
+            at = local_now.replace(hour=int(m.group(1)), minute=int(m.group(2)), second=0, microsecond=0)
+        except ValueError:
+            raise RBError(f"not a time of day: {text!r}", "bad_time", value=text) from None
+        if at <= local_now:
+            at += dt.timedelta(days=1)
+        return at.astimezone(dt.timezone.utc).replace(microsecond=0).isoformat()
+    ts = None
+    try:
+        iso = text.replace(" ", "T")
+        ts = dt.datetime.fromisoformat(iso[:-1] + "+00:00" if iso[-1:] in ("Z", "z") else iso)    # older Pythons do not read a trailing Z
+    except ValueError:
+        pass
+    if ts is None:
+        raise RBError(f"cannot read the time {text!r}: use 23:00, 2026-10-07 23:00, +90m, +3h or +1d", "bad_time", value=text)
+    if ts.tzinfo is None:
+        ts = ts.astimezone()           # a time without an offset is local time
+    return ts.astimezone(dt.timezone.utc).replace(microsecond=0).isoformat()
+
+
+def local_time(iso: str) -> str:
+    """`2026-10-07 23:00` in the local time zone, for messages."""
+    ts = parse_ts(iso)
+    return ts.astimezone().strftime("%Y-%m-%d %H:%M") if ts else ""
+
+
+def parse_minutes(v, what: str = "timebox") -> int:
+    """A duration typed as 90, 90m, 8h or 1d; minutes as an integer (0 = none)."""
+    if v in (None, "", 0, "0"):
+        return 0
+    if isinstance(v, int) and not isinstance(v, bool):
+        n = v
+    else:
+        m = re.fullmatch(r"(\d+)\s*([mhd]?)", str(v).strip().lower())
+        if not m:
+            raise RBError(f"cannot read the {what} {v!r}: use minutes, or 90m, 8h, 1d", "bad_duration", value=str(v))
+        n = int(m.group(1)) * {"": 1, "m": 1, "h": 60, "d": 1440}[m.group(2)]
+    if not 0 <= n <= 14 * 1440:
+        raise RBError(f"the {what} must be between 1 minute and 14 days", "bad_duration", value=str(v))
+    return n
 
 
 class Actor:
@@ -584,13 +651,41 @@ def _satisfied(d: dict, items: dict, nid: str) -> bool:
             and not d.get("policy", {}).get("dependents_wait_for_accept", False))
 
 
+def deps_of(i: dict) -> list:
+    """Everything a task is ordered after: `needs` (after a successful end) and `after` (after any end)."""
+    return list(i.get("needs", [])) + [n for n in i.get("after", []) if n not in i.get("needs", [])]
+
+
 def _closure(items: dict, iid: str, seen=None) -> set:
     seen = seen if seen is not None else set()
-    for n in items.get(iid, {}).get("needs", []):
+    for n in deps_of(items.get(iid, {})):
         if n not in seen:
             seen.add(n)
             _closure(items, n, seen)
     return seen
+
+
+def wait_reasons(d: dict, items: dict, i: dict, waiting_on: list, begin_in: int, conflicts: list) -> list:
+    """Why a queued task cannot start now, one entry per cause: {code, id?, ...}. Codes (see REASONS): begin_time (an earliest start
+    time has not come), dependency (a task it waits for is not over yet), decision (the task it needs ended without success and
+    waits for the person to accept it), never (the task it needs was cancelled: it can never be satisfied, fix the dependency),
+    conflict (it cannot run next to a task that runs now)."""
+    out = []
+    if begin_in:
+        out.append({"code": "begin_time", "at": i.get("not_before", ""), "in": begin_in})
+    for n in waiting_on:
+        t = items.get(n)
+        if t is None or t["status"] == "cancelled":
+            out.append({"code": "never", "id": n, "status": (t or {}).get("status", "missing")})
+        elif t["status"] == "review" and n in i.get("needs", []):
+            out.append({"code": "decision", "id": n, "outcome": t.get("outcome", "")})
+        elif t["status"] in ("draft", "proposed"):
+            out.append({"code": "decision", "id": n, "status": t["status"]})     # nobody can run it before the person writes or approves it
+        else:
+            out.append({"code": "dependency", "id": n, "status": t["status"]})
+    for x in conflicts:
+        out.append({"code": "conflict", "id": x["id"], "why": x["why"]})
+    return out
 
 
 def compute(d: dict, now=None) -> list:
@@ -606,15 +701,23 @@ def compute(d: dict, now=None) -> list:
         c["described"] = is_described(d, i)
         c["lint"] = lint_task(d, i)
         c["waiting_on"] = [n for n in i.get("needs", []) if not _satisfied(d, items, n)]
+        c["waiting_on"] += [n for n in i.get("after", []) if n not in c["waiting_on"] and not (items.get(n) or {}).get("status") in FINISHED]
         c["waiting_info"] = {n: {"status": items[n]["status"], "outcome": items[n].get("outcome", "")} for n in c["waiting_on"] if n in items}
+        c["not_before"] = i.get("not_before", "")
+        begin = parse_ts(i.get("not_before")) if i.get("not_before") else None
+        c["begin_in"] = max(0, int((begin - now).total_seconds())) if begin and begin > now else 0
         c["conflicts"] = []
         for a in active:
             if a["id"] != i["id"]:
                 r = conflict_reason(d, i, a)
                 if r:
                     c["conflicts"].append({"id": a["id"], "why": r})
+        c["reasons"] = wait_reasons(d, items, i, c["waiting_on"], c["begin_in"], c["conflicts"]) if i["status"] == "queued" else []
         if i["status"] == "queued":
-            c["state"] = "waiting" if c["waiting_on"] else ("blocked" if c["conflicts"] else "ready")
+            if c["waiting_on"] or c["begin_in"]:
+                c["state"] = "waiting"
+            else:
+                c["state"] = "blocked" if c["conflicts"] else "ready"
         else:
             c["state"] = i["status"]
         cl = i.get("claim")
@@ -657,7 +760,7 @@ def plan_steps(d: dict, computed: list) -> list:
         guard += 1
         progressed = False
         for c in list(pending):
-            unfinished = [n for n in c.get("needs", []) if n in liveids]
+            unfinished = [n for n in deps_of(c) if n in liveids]
             if any(n not in placed for n in unfinished):
                 continue
             earliest = 1 + max([placed[n] for n in unfinished], default=0)
@@ -678,6 +781,7 @@ def plan_steps(d: dict, computed: list) -> list:
 
 
 def has_cycle(items: dict) -> bool:
+    """A cycle in needs and after together."""
     state = {}
 
     def visit(n):
@@ -686,7 +790,7 @@ def has_cycle(items: dict) -> bool:
         if state.get(n) == 2:
             return False
         state[n] = 1
-        for m in items[n].get("needs", []):
+        for m in deps_of(items[n]):
             if m in items and visit(m):
                 return True
         state[n] = 2
@@ -724,13 +828,16 @@ def split_list(v) -> list:
     return [x.strip() for x in v if x and x.strip()]
 
 
-def check_refs(d: dict, lane, needs, uses) -> None:
+def check_refs(d: dict, lane, needs, uses, after=None) -> None:
     if lane is not None and lane not in [l["id"] for l in d["lanes"]]:
         raise RBError(f"unknown lane {lane!r}; lanes: {', '.join(l['id'] for l in d['lanes'])} (add one with `barid lane add`)", "unknown_lane", lane=lane)
     ids = {i["id"] for i in d["items"]}
     for n in needs or []:
         if n not in ids:
             raise RBError(f"unknown task in needs: {n}", "unknown_task", id=n)
+    for n in after or []:
+        if n not in ids:
+            raise RBError(f"unknown task in after: {n}", "unknown_task", id=n)
     for r in uses or []:
         if r not in d.get("resources", {}):
             raise RBError(f"unknown resource {r!r}; define it with `barid resource add {r}`", "unknown_resource", name=r)
@@ -756,7 +863,10 @@ def op_add(d: dict, actor: Actor, f: dict) -> dict:
         raise RBError(f"task {iid} already exists", "exists", id=iid)
     lane = f.get("lane") or d["lanes"][0]["id"]
     needs, uses = split_list(f.get("needs")), split_list(f.get("uses"))
-    check_refs(d, lane, needs, uses)
+    after = [n for n in split_list(f.get("after")) if n not in needs]
+    check_refs(d, lane, needs, uses, after)
+    not_before = parse_when(f.get("not_before") or "")
+    timebox = parse_minutes(f.get("timebox"))
     profile = (f.get("profile") or "").strip()
     check_profile(d, profile)
     lint_ok = check_lint_ok(split_list(f.get("lint_ok")))
@@ -767,12 +877,16 @@ def op_add(d: dict, actor: Actor, f: dict) -> dict:
     if not direct_allowed(d, actor):
         status = "proposed"
     item = {
-        "id": iid, "lane": lane, "title": (f.get("title") or iid).strip(), "status": status, "needs": needs, "uses": uses,
+        "id": iid, "lane": lane, "title": (f.get("title") or iid).strip(), "status": status, "needs": needs, "after": after, "uses": uses,
+        "not_before": not_before, "timebox": timebox,
         "quiet": bool(f.get("quiet")), "noisy": bool(f.get("noisy")), "profile": profile, "lint_ok": lint_ok,
         "when": f.get("when") or "", "outline": f.get("outline") or "", "touches": split_list(f.get("touches")), "workdir": f.get("workdir") or "", "branch": f.get("branch") or "",
         "text": text, "report": "", "notes": [], "created": now_iso(), "updated": now_iso(), "created_by": actor.name, "claim": None,
     }
     d["items"].append(item)
+    if has_cycle({i["id"]: i for i in d["items"]}):
+        d["items"].remove(item)
+        raise RBError("that would create a dependency cycle", "cycle")
     log_event(d, actor, "add" if status != "proposed" else "propose", iid, item["title"])
     return item
 
@@ -790,16 +904,22 @@ def op_edit(d: dict, actor: Actor, iid: str, f: dict) -> dict:
     for k in ("title", "when", "outline"):
         if f.get(k) is not None:
             it[k] = f[k]
-    if f.get("needs") is not None:
-        needs = split_list(f["needs"])
-        if iid in needs:
+    if f.get("needs") is not None or f.get("after") is not None:
+        needs = split_list(f["needs"]) if f.get("needs") is not None else list(it.get("needs", []))
+        after = split_list(f["after"]) if f.get("after") is not None else list(it.get("after", []))
+        if iid in needs or iid in after:
             raise RBError("a task cannot need itself", "cycle")
-        check_refs(d, None, needs, None)
-        old = it["needs"]
-        it["needs"] = needs
+        after = [n for n in after if n not in needs]
+        check_refs(d, None, needs, None, after)
+        old = (it["needs"], it.get("after", []))
+        it["needs"], it["after"] = needs, after
         if has_cycle({i["id"]: i for i in d["items"]}):
-            it["needs"] = old
+            it["needs"], it["after"] = old
             raise RBError("that would create a dependency cycle", "cycle")
+    if f.get("not_before") is not None:
+        it["not_before"] = parse_when(f["not_before"])
+    if f.get("timebox") is not None:
+        it["timebox"] = parse_minutes(f["timebox"])
     if f.get("uses") is not None:
         uses = split_list(f["uses"])
         check_refs(d, None, None, uses)
@@ -917,7 +1037,35 @@ def op_sent(d: dict, actor: Actor, iid: str) -> dict:
     return it
 
 
-def op_claim(d: dict, actor: Actor, iid: str, force: bool = False) -> list:
+def refusal_for(iid: str, reasons: list) -> RBError | None:
+    """The refusal a claim gets for these wait reasons (None when there are none). Codes: stuck (needs the person), begin_time,
+    waiting (for other tasks), conflict: the last three end by themselves, so `claim --wait` waits for them."""
+    if not reasons:
+        return None
+    hard = [r for r in reasons if r["code"] not in SELF_RESOLVING]
+    if hard:
+        r = hard[0]
+        what = {"decision": "needs the person to accept or write it", "never": "was cancelled or does not exist (change the dependency)"}.get(r["code"], r["code"])
+        return RBError(f"{iid} cannot start: {r.get('id', '')} {what}", "stuck", id=iid, reasons=reasons)
+    r = reasons[0]
+    if r["code"] == "begin_time":
+        return RBError(f"{iid} may not start before {local_time(r['at'])}", "begin_time", id=iid, at=r["at"], reasons=reasons)
+    if r["code"] == "dependency":
+        ids = [x["id"] for x in reasons if x["code"] == "dependency"]
+        return RBError(f"{iid} must wait for: {', '.join(ids)}", "waiting", id=iid, ids=ids, reasons=reasons)
+    other = [x["id"] for x in reasons if x["code"] == "conflict"]
+    return RBError(f"refused: {other[0]} conflicts on '{r['why']}'; wait for it to finish, or ask the person", "conflict", id=iid, ids=other, reasons=reasons)
+
+
+def op_seen(d: dict, lane_id: str, by: str, state: str, task: str = "", reason: str = "") -> None:
+    """Record that the session of a lane is alive and what it is doing (idle, waiting, working). No event is logged."""
+    lane = next((l for l in d["lanes"] if l["id"] == lane_id), None)
+    if lane is None or state not in PRESENCE_STATES:
+        return
+    lane["seen"] = {"at": now_iso(), "by": by, "state": state, "task": task, "reason": reason[:200]}
+
+
+def op_claim(d: dict, actor: Actor, iid: str, force: bool = False, lease_minutes: int = 0) -> list:
     it = get_item(d, iid)
     if it["status"] not in ("queued", "sent") and not force:
         who = ""
@@ -926,26 +1074,32 @@ def op_claim(d: dict, actor: Actor, iid: str, force: bool = False) -> list:
             who = f" Held by {cl.get('by', '?')} since {cl.get('at', '?')[:16].replace('T', ' ')} UTC. If that was you before an interruption, do not start: tell the person to press 'Return to queue' in the panel (or run `release {iid}`), then claim again."
         raise RBError(f"{iid} is {it['status']} and cannot be claimed (only queued or sent tasks can).{who}", "wrong_state", id=iid, status=it["status"])
     comp = {c["id"]: c for c in compute(d)}[iid]
-    if comp["waiting_on"] and not force:
-        raise RBError(f"{iid} must wait for: {', '.join(comp['waiting_on'])}")
+    if not force:
+        # a task the person already sent to a session (status `sent`) only warns about conflicts, as before; time and dependencies still count
+        refusal = refusal_for(iid, [r for r in comp["reasons"] if not (it["status"] == "sent" and r["code"] == "conflict")])
+        if refusal:
+            raise refusal
     warnings = []
     for c in comp["conflicts"]:
         other = get_item(d, c["id"])
         msg = f"{c['id']} ({other['status']}) conflicts on '{c['why']}'"
         if it["status"] == "sent" or force:
             warnings.append(msg)
-        else:
-            raise RBError(f"refused: {msg}; wait for it to finish, or ask the person")
     for other in d["items"]:
         cl = other.get("claim") or {}
         if other["status"] == "running" and other["id"] != iid and other["lane"] != it["lane"] and cl.get("by") == actor.name:
             warnings.append(f"{actor.name} already holds {other['id']} in lane {other['lane']}: if this is another window, give each window its own name (--by) so that Barid can tell them apart")
             break
     hours = float(d.get("policy", {}).get("lease_hours", 12))
+    timebox = int(it.get("timebox") or 0)
+    lease = dt.timedelta(minutes=lease_minutes) if lease_minutes else dt.timedelta(hours=max(hours, (timebox + 60) / 60 if timebox else 0))
     it["status"] = "running"
     it.pop("outcome", None)
-    it["claim"] = {"by": actor.name, "at": now_iso(), "lease_until": (now_dt() + dt.timedelta(hours=hours)).isoformat()}
+    it["claim"] = {"by": actor.name, "at": now_iso(), "lease_until": (now_dt() + lease).isoformat(), "signal": now_iso()}
+    if timebox:
+        it["claim"]["deadline"] = (now_dt() + dt.timedelta(minutes=timebox)).isoformat()
     it["claim"].update(snapshot_for_claim(d, it))
+    op_seen(d, it["lane"], actor.name, "working", iid)
     it.pop("violations", None)
     it.pop("changed", None)
     it["updated"] = now_iso()
@@ -982,6 +1136,7 @@ def op_finish(d: dict, actor: Actor, iid: str, report: str = "", note: str = "",
     it["outcome"] = outcome
     it["report"] = report or it.get("report", "")
     it["claim"] = None
+    op_seen(d, it["lane"], actor.name, "idle", "", f"finished {iid}")
     it["updated"] = now_iso()
     if note:
         it["notes"].append({"t": now_iso(), "by": actor.name, "text": note})
@@ -1005,14 +1160,18 @@ def op_outcome(d: dict, actor: Actor, iid: str, outcome: str) -> dict:
     return it
 
 
-def op_heartbeat(d: dict, actor: Actor, iid: str) -> dict:
+def op_heartbeat(d: dict, actor: Actor, iid: str, lease_minutes: int = 0) -> dict:
+    """Extend the lease of a running task and mark a sign of life (no event is logged: a worker calls this every half minute)."""
     it = get_item(d, iid)
     if it["status"] != "running":
         raise RBError(f"{iid} is not running")
     _owner_check(it, actor, False, "extend")
     hours = float(d.get("policy", {}).get("lease_hours", 12))
-    it["claim"]["lease_until"] = (now_dt() + dt.timedelta(hours=hours)).isoformat()
-    log_event(d, actor, "heartbeat", iid)
+    timebox = int(it.get("timebox") or 0)
+    minutes = lease_minutes if lease_minutes else int(max(hours, (timebox + 60) / 60 if timebox else 0) * 60)
+    it["claim"]["lease_until"] = (now_dt() + dt.timedelta(minutes=minutes)).isoformat()
+    it["claim"]["signal"] = now_iso()
+    op_seen(d, it["lane"], actor.name, "working", iid)
     return it
 
 
@@ -1047,6 +1206,8 @@ def op_note(d: dict, actor: Actor, iid: str, text: str) -> dict:
         raise RBError("empty note", "empty_note")
     it["notes"].append({"t": now_iso(), "by": actor.name, "text": text[:2000]})
     it["updated"] = now_iso()
+    if it["status"] == "running" and it.get("claim"):
+        it["claim"]["signal"] = now_iso()
     log_event(d, actor, "note", iid)
     return it
 
@@ -1128,7 +1289,7 @@ def op_profile_rm(d: dict, actor: Actor, name: str) -> None:
     log_event(d, actor, "profile", name, "remove")
 
 
-def op_lane_edit(d: dict, actor: Actor, lane_id: str, title=None, color=None, agent=None) -> dict:
+def op_lane_edit(d: dict, actor: Actor, lane_id: str, title=None, color=None, agent=None, unattended=None) -> dict:
     """Name, colour and agent kind of a lane (a session). Colour '' or agent '' reset to the default."""
     if not direct_allowed(d, actor):
         raise RBError("only the person (or a trusted planner agent) can change lanes", "human_only")
@@ -1145,6 +1306,8 @@ def op_lane_edit(d: dict, actor: Actor, lane_id: str, title=None, color=None, ag
         lane["agent"] = agent
     if title is not None and title.strip():
         lane["title"] = title.strip()[:60]
+    if unattended is not None:
+        lane["unattended"] = bool(unattended)
     log_event(d, actor, "lane", lane_id, "edit")
     return lane
 
@@ -1152,7 +1315,7 @@ def op_lane_edit(d: dict, actor: Actor, lane_id: str, title=None, color=None, ag
 def op_purge(d: dict, actor: Actor, iid: str) -> None:
     require_human(actor, "purge a task for good")
     it = get_item(d, iid)
-    if any(iid in i.get("needs", []) for i in d["items"] if i["id"] != iid):
+    if any(iid in deps_of(i) for i in d["items"] if i["id"] != iid):
         raise RBError(f"other tasks still need {iid}")
     d["items"].remove(it)
     log_event(d, actor, "purge", iid)
@@ -1165,7 +1328,7 @@ FOOTER = {
         ---
         Barid tracking: this task ({id}) lives on a shared board. Use Python 3, nothing to install.
         1. Before you start:  {py} "{rb}" --board "{board}" claim {id} --by "<your agent name>"
-           If this is refused, STOP and tell the user why.
+           {claim_note}
         2. When you stop and your report is written:
            {py} "{rb}" --board "{board}" finish {id} --report "<path of your report>" --outcome <complete|partial|failed> --by "<your agent name>"
            Be honest about the outcome: complete = every acceptance check was met and nothing is left undone; partial = you stopped early
@@ -1179,7 +1342,7 @@ FOOTER = {
         ---
         Учёт в Barid: эта задача ({id}) лежит на общей доске. Нужен Python 3, ничего ставить не надо.
         1. Перед началом работы:  {py} "{rb}" --board "{board}" claim {id} --by "<имя твоего агента>"
-           Если команда отказала, ОСТАНОВИСЬ и сообщи пользователю причину.
+           {claim_note}
         2. Когда остановился и записал отчёт:
            {py} "{rb}" --board "{board}" finish {id} --report "<путь к твоему отчёту>" --outcome <complete|partial|failed> --by "<имя твоего агента>"
            Честно оцени итог: complete = все критерии приёмки выполнены и ничего не осталось; partial = остановился раньше (порог безопасности,
@@ -1192,7 +1355,7 @@ FOOTER = {
         ---
         Barid есебі: бұл тапсырма ({id}) ортақ тақтада тұр. Python 3 керек, ештеңе орнату қажет емес.
         1. Жұмысты бастамас бұрын:  {py} "{rb}" --board "{board}" claim {id} --by "<агентіңнің аты>"
-           Команда бас тартса, ТОҚТА да, себебін пайдаланушыға айт.
+           {claim_note}
         2. Тоқтап, есебіңді жазғаннан кейін:
            {py} "{rb}" --board "{board}" finish {id} --report "<есебіңнің жолы>" --outcome <complete|partial|failed> --by "<агентіңнің аты>"
            Нәтижеңді адал бағала: complete = барлық қабылдау тексерулері орындалды және ештеңе қалмады; partial = ерте тоқтадың
@@ -1299,10 +1462,53 @@ def scope_footer(d: dict, it: dict) -> str:
     return "\n".join([head, *lines, tail]) if lines else ""
 
 
-def footer_for(d: dict, it: dict, board: Path) -> str:
+FOOTER_WORKER = {
+    "en": textwrap.dedent("""\
+        ---
+        Barid tracking: this task ({id}) is already claimed for you by the worker "{name}"; do not claim it again. Use Python 3.
+        When you stop and your report is written:
+        {py} "{rb}" --board "{board}" finish {id} --report "<path of your report>" --outcome <complete|partial|failed> --by "{name}"
+        Be honest about the outcome: complete = every acceptance check was met and nothing is left undone; partial = you stopped early or some
+        parts were not done; failed = the main goal was not reached. Progress note (optional):  {py} "{rb}" --board "{board}" note {id} "<text>" --by "{name}"
+        You run unattended: nobody can answer questions. Decide by this task's own rules and write your decisions into the report.
+        Touch only task {id}: never edit, cancel or delete other tasks."""),
+    "ru": textwrap.dedent("""\
+        ---
+        Учёт в Barid: эта задача ({id}) уже взята для тебя исполнителем "{name}"; повторно её не бери. Нужен Python 3.
+        Когда остановился и записал отчёт:
+        {py} "{rb}" --board "{board}" finish {id} --report "<путь к твоему отчёту>" --outcome <complete|partial|failed> --by "{name}"
+        Честно оцени итог: complete = все критерии приёмки выполнены и ничего не осталось; partial = остановился раньше или часть не сделана;
+        failed = главная цель не достигнута. Заметка по ходу (необязательно):  {py} "{rb}" --board "{board}" note {id} "<текст>" --by "{name}"
+        Ты работаешь без присмотра: отвечать на вопросы некому. Решай по правилам самой задачи и записывай решения в отчёт.
+        Трогай только задачу {id}: чужие задачи не меняй, не отменяй и не удаляй."""),
+    "kk": textwrap.dedent("""\
+        ---
+        Barid есебі: бұл тапсырманы ({id}) сен үшін "{name}" орындаушысы бұрын алды; қайта алма. Python 3 керек.
+        Тоқтап, есебін жазғаннан кейін:
+        {py} "{rb}" --board "{board}" finish {id} --report "<есептің жолы>" --outcome <complete|partial|failed> --by "{name}"
+        Нәтижені адал бағала: complete = барлық қабылдау критерийлері орындалды; partial = ерте тоқтадың немесе бір бөлігі орындалмады;
+        failed = негізгі мақсатқа жетпедің. Жолда жазба (міндетті емес):  {py} "{rb}" --board "{board}" note {id} "<мәтін>" --by "{name}"
+        Сен қараусыз жұмыс істейсің: сұраққа жауап беретін ешкім жоқ. Тапсырманың өз ережелерімен шеш те, шешімдерді есепке жаз.
+        Тек {id} тапсырмасына тиіс: басқа тапсырмаларды өзгертпе, болдырма және жойма."""),
+}
+
+
+CLAIM_NOTE = {
+    "en": ("If this is refused, STOP and tell the user why (exit code 3 means it only has to wait: a start time, another task or a conflict).",
+           "If this is refused with exit code 3 it only has to wait (a start time, another task, a conflict): run it again with --wait 300 until it passes, up to 14 hours, and ask nobody. Any other refusal: STOP and tell the user why."),
+    "ru": ("Если команда отказала, ОСТАНОВИСЬ и сообщи пользователю причину (код 3 значит, что надо лишь подождать: время старта, другая задача или конфликт).",
+           "Если отказ с кодом 3, надо лишь подождать (время старта, другая задача, конфликт): повторяй команду с --wait 300, пока не пройдёт, до 14 часов, никого не спрашивая. Любой другой отказ: ОСТАНОВИСЬ и сообщи пользователю причину."),
+    "kk": ("Команда бас тартса, ТОҚТА да, себебін пайдаланушыға айт (3 коды тек күту керек екенін білдіреді: бастау уақыты, басқа тапсырма немесе қақтығыс).",
+           "3 кодымен бас тартса, тек күту керек (бастау уақыты, басқа тапсырма, қақтығыс): команданы --wait 300 арқылы өтетінше, 14 сағатқа дейін, ешкімнен сұрамай қайтала. Кез келген басқа бас тарту: ТОҚТА да, себебін пайдаланушыға айт."),
+}
+
+
+def footer_for(d: dict, it: dict, board: Path, worker: str = "") -> str:
     lang = d.get("lang", "en")
-    tpl = FOOTER.get(lang, FOOTER["en"])
-    base = tpl.format(id=it["id"], py=py_cmd(), rb=str(Path(__file__).resolve()), board=str(board))
+    tpl = (FOOTER_WORKER if worker else FOOTER).get(lang, (FOOTER_WORKER if worker else FOOTER)["en"])
+    lane = next((l for l in d["lanes"] if l["id"] == it.get("lane")), {})
+    note = CLAIM_NOTE.get(lang, CLAIM_NOTE["en"])[1 if lane.get("unattended") else 0]
+    base = tpl.format(id=it["id"], py=py_cmd(), rb=str(Path(__file__).resolve()), board=str(board), name=worker, claim_note=note)
     extra = scope_footer(d, it)
     return base + ("\n" + extra if extra else "")
 
@@ -1312,37 +1518,76 @@ CONNECT = {
         You are the session "{title}" (lane `{lane}`{agent}) of the project "{project}". Your prompts come from a shared Barid board. Python 3 is all you need.
         How to work:
         1. Ask the board for your next task:  {py} "{rb}" --board "{board}" next --lane {lane}
-           It prints a task prompt that ends with the commands to claim and finish that task. Do exactly what the prompt says.
-        2. If it says nothing is ready, tell the user and stop. Do not invent work.
-        3. When you have finished a task and written its report, run the command above again.
+           Exit code 0: it printed a task prompt that ends with the commands to claim and finish that task. Do exactly what the prompt says.
+           Exit code 2: nothing is queued for you. Exit code 3: nothing can start yet (a start time, another session's task, a conflict). Exit code 4: it waits for the person.
+           In the last three cases tell the user what the output says and stop. Do not invent work.
+        2. When you have finished a task and written its report, run the command above again.
         Rules: work only on tasks of lane {lane}; never use --human or --force and never edit board.json by hand; if a command is refused, stop and tell the user why."""),
     "ru": textwrap.dedent("""\
         Ты сессия "{title}" (линия `{lane}`{agent}) проекта "{project}". Твои промпты приходят с общей доски Barid. Нужен только Python 3.
         Как работать:
         1. Спроси у доски следующую задачу:  {py} "{rb}" --board "{board}" next --lane {lane}
-           Она напечатает промпт задачи, в конце которого команды, чтобы взять и закончить эту задачу. Делай ровно то, что написано в промпте.
-        2. Если там сказано, что ничего нет готового, сообщи об этом пользователю и остановись. Не придумывай работу.
-        3. Когда закончил задачу и записал отчёт, снова запусти команду выше.
+           Код 0: она напечатала промпт задачи, в конце которого команды, чтобы взять и закончить эту задачу. Делай ровно то, что написано в промпте.
+           Код 2: для тебя ничего нет в очереди. Код 3: пока ничего нельзя начать (время старта, задача другой сессии, конфликт). Код 4: доска ждёт решения человека.
+           В последних трёх случаях скажи пользователю, что написано в выводе, и остановись. Не придумывай работу.
+        2. Когда закончил задачу и записал отчёт, снова запусти команду выше.
         Правила: работай только с задачами линии {lane}; не используй --human и --force и не правь board.json руками; если команда отказала, остановись и сообщи пользователю причину."""),
     "kk": textwrap.dedent("""\
         Сен "{project}" жобасының "{title}" сессиясысың (id `{lane}`{agent}). Саған арналған промпттар ортақ Barid тақтасынан келеді. Тек Python 3 керек.
         Қалай жұмыс істеу керек:
         1. Тақтадан келесі тапсырмаңды сұра:  {py} "{rb}" --board "{board}" next --lane {lane}
-           Ол тапсырма промптын басып шығарады, оның соңында осы тапсырманы алу және аяқтау командалары бар. Промпттағыны дәл орында.
-        2. Егер ештеңе дайын емес десе, пайдаланушыға хабарла да, тоқта. Жұмыс ойлап таппа.
-        3. Тапсырманы аяқтап, есебін жазғаннан кейін, жоғарыдағы команданы қайта іске қос.
+           Код 0: ол тапсырма промптын басып шығарды, оның соңында осы тапсырманы алу және аяқтау командалары бар. Промпттағыны дәл орында.
+           Код 2: саған кезекте ештеңе жоқ. Код 3: әзірге ештеңені бастауға болмайды (бастау уақыты, басқа сессияның тапсырмасы, қақтығыс). Код 4: тақта адамның шешімін күтеді.
+           Соңғы үш жағдайда шығыста не жазылғанын пайдаланушыға айт та, тоқта. Жұмыс ойлап таппа.
+        2. Тапсырманы аяқтап, есебін жазғаннан кейін, жоғарыдағы команданы қайта іске қос.
         Ережелер: тек `{lane}` сессиясының тапсырмаларымен жұмыс істе; --human мен --force пайдаланба және board.json файлын қолмен өзгертпе; команда бас тартса, тоқта да, себебін пайдаланушыға айт."""),
 }
 
+# For a session that works through the night: it waits for its turn instead of stopping, and asks nothing.
+CONNECT_UNATTENDED = {
+    "en": textwrap.dedent("""\
+        You are the session "{title}" (lane `{lane}`{agent}) of the project "{project}". A shared Barid board feeds you; you work through your lane on your own, nobody is watching, and you do not stop until the lane is empty. Python 3 is all you need.
+        Loop:
+        1. Run:  {py} "{rb}" --board "{board}" next --lane {lane} --wait 300
+           - exit code 0: it printed a task prompt that ends with the commands to claim and finish that task. Do exactly what the prompt says, write the report, run `finish`, then go back to step 1.
+           - exit code 3: nothing can start yet, but it will without anyone's help (a start time, another session's task, the GPU). That is waiting, not an error: run the same command again. Repeat for as long as it takes (up to 14 hours) and ask the user nothing.
+           - exit code 2: your lane has nothing left. Say so in one sentence and stop.
+           - exit code 4: the board needs the person (a report to accept, a prompt to write). Say what the output says and stop.
+        2. A claim that is refused with exit code 3 is waiting too: repeat it with --wait 300. Any other refusal or error: stop and tell the user why.
+        Rules: never ask the user whether to continue, decide by the task's own rules and write the decision into the report; work only on tasks of lane {lane}; never use --human or --force and never edit board.json by hand."""),
+    "ru": textwrap.dedent("""\
+        Ты сессия "{title}" (линия `{lane}`{agent}) проекта "{project}". Тебя кормит общая доска Barid; ты сам проходишь свою линию, за тобой никто не следит, и ты не останавливаешься, пока линия не опустеет. Нужен только Python 3.
+        Цикл:
+        1. Запусти:  {py} "{rb}" --board "{board}" next --lane {lane} --wait 300
+           - код 0: напечатан промпт задачи, в конце которого команды, чтобы взять и закончить её. Делай ровно то, что в промпте, запиши отчёт, выполни `finish` и вернись к шагу 1.
+           - код 3: пока ничего нельзя начать, но это пройдёт само (время старта, задача другой сессии, видеокарта). Это ожидание, а не ошибка: запусти ту же команду снова. Повторяй сколько нужно (до 14 часов) и ничего не спрашивай у пользователя.
+           - код 2: в твоей линии больше ничего нет. Скажи это одним предложением и остановись.
+           - код 4: доске нужен человек (принять отчёт, написать промпт). Скажи, что написано в выводе, и остановись.
+        2. Отказ в claim с кодом 3 тоже ожидание: повтори его с --wait 300. Любой другой отказ или ошибка: остановись и скажи пользователю причину.
+        Правила: не спрашивай пользователя, продолжать ли: решай по правилам самой задачи и записывай решение в отчёт; работай только с задачами линии {lane}; не используй --human и --force и не правь board.json руками."""),
+    "kk": textwrap.dedent("""\
+        Сен "{project}" жобасының "{title}" сессиясысың (id `{lane}`{agent}). Сені ортақ Barid тақтасы қоректендіреді; сен өз жолыңды өзің жүресің, саған ешкім қарамайды, жол бос болғанша тоқтамайсың. Тек Python 3 керек.
+        Цикл:
+        1. Іске қос:  {py} "{rb}" --board "{board}" next --lane {lane} --wait 300
+           - код 0: тапсырма промпты басылды, оның соңында тапсырманы алу және аяқтау командалары бар. Промпттағыны дәл орында, есепті жаз, `finish` орында да, 1-қадамға оралу.
+           - код 3: әзірге ештеңені бастауға болмайды, бірақ бұл өздігінен өтеді (бастау уақыты, басқа сессияның тапсырмасы, бейнекарта). Бұл күту, қате емес: сол команданы қайта іске қос. Қажет болғанша қайтала (14 сағатқа дейін), пайдаланушыдан ештеңе сұрама.
+           - код 2: сенің жолыңда ештеңе қалмады. Мұны бір сөйлеммен айтып, тоқта.
+           - код 4: тақтаға адам керек (есепті қабылдау, промпт жазу). Шығыста не жазылғанын айтып, тоқта.
+        2. claim кодпен 3 бас тартса, бұл да күту: оны --wait 300 арқылы қайтала. Кез келген басқа бас тарту немесе қате: тоқта да, себебін пайдаланушыға айт.
+        Ережелер: жалғастыру керек пе деп пайдаланушыдан сұрама: тапсырманың өз ережелерімен шеш де, шешімді есепке жаз; тек `{lane}` сессиясының тапсырмаларымен жұмыс істе; --human мен --force пайдаланба және board.json файлын қолмен өзгертпе."""),
+}
 
-def connect_text(d: dict, lane_id: str, board: Path) -> str:
-    """The first message to paste into an agent session so that it takes its tasks from this lane."""
+
+def connect_text(d: dict, lane_id: str, board: Path, unattended=None) -> str:
+    """The first message to paste into an agent session so that it takes its tasks from this lane. For a lane marked unattended
+    (or with unattended=True) the session waits for its turn and works through the lane without stopping."""
     lane = next((l for l in d["lanes"] if l["id"] == lane_id), None)
     if lane is None:
         raise RBError(f"unknown lane {lane_id!r}", "unknown_lane", lane=lane_id)
     lang = d.get("lang", "en")
     agent = lane.get("agent", "")
-    text = CONNECT.get(lang, CONNECT["en"]).format(title=lane.get("title") or lane_id, lane=lane_id, agent=(", " + agent) if agent else "",
+    texts = CONNECT_UNATTENDED if (lane.get("unattended") if unattended is None else unattended) else CONNECT
+    text = texts.get(lang, texts["en"]).format(title=lane.get("title") or lane_id, lane=lane_id, agent=(", " + agent) if agent else "",
                                                    project=d.get("project", ""), py=py_cmd(), rb=str(Path(__file__).resolve()), board=str(board))
     hint = agent_hint(d, {"lane": lane_id})
     return text + ("\n" + hint if hint else "")
@@ -1372,7 +1617,7 @@ def handoff_text(d: dict, it: dict) -> str:
     byid = {i["id"]: i for i in d["items"]}
     lanes = {l["id"]: l for l in d["lanes"]}
     blocks = []
-    for nid in it.get("needs", []):
+    for nid in deps_of(it):
         n = byid.get(nid)
         if not n or n["status"] not in ("review", "done"):
             continue
@@ -1401,7 +1646,7 @@ def agent_hint(d: dict, it: dict) -> str:
     return ""
 
 
-def prompt_for(d: dict, it: dict, board: Path) -> str:
+def prompt_for(d: dict, it: dict, board: Path, worker: str = "") -> str:
     text = it.get("text", "").strip()
     if not text:
         return ""
@@ -1409,7 +1654,7 @@ def prompt_for(d: dict, it: dict, board: Path) -> str:
     if extra:
         text = text + "\n\n" + "\n\n".join(extra)
     if d.get("policy", {}).get("footer", True):
-        return text + "\n\n" + footer_for(d, it, board)
+        return text + "\n\n" + footer_for(d, it, board, worker)
     return text
 
 
@@ -1422,7 +1667,7 @@ def gen_request(d: dict, it: dict, board: Path) -> str:
     lang = d.get("lang", "en")
     byid = {i["id"]: i for i in d["items"]}
     reports = []
-    for n in it.get("needs", []):
+    for n in deps_of(it):
         r = byid.get(n, {}).get("report")
         if r:
             reports.append(f"- {n}: {r}")
@@ -1462,7 +1707,8 @@ def lane_focus(comp: list, lanes: list, steps=None) -> dict:
         if running:
             pick = ("running", running)
         else:
-            open_ = [c for c in mine if c["state"] in ("ready", "blocked", "waiting") or (c["status"] == "draft")]
+            # queued tasks come before drafts: a draft whose turn has come is only the answer when the session has nothing queued
+            open_ = [c for c in mine if c["state"] in ("ready", "blocked", "waiting")] or [c for c in mine if c["status"] == "draft"]
             if open_:
                 first = min(open_, key=lambda c: (order.get(c["id"], (10 ** 6, 0)), mine.index(c)))
                 if first["state"] == "ready":
@@ -1483,8 +1729,13 @@ def lane_focus(comp: list, lanes: list, steps=None) -> dict:
         if f["role"] == "running":
             continue
         other = lambda ids: [i for i in ids if i in near and near[i] != lid]
-        if c["waiting_on"]:
+        person = [r for r in c.get("reasons", []) if r["code"] in ("decision", "never")]
+        if person:
+            f["hint"] = {"kind": "person", "ids": [r["id"] for r in person], "codes": [r["code"] for r in person]}
+        elif c["waiting_on"]:
             f["hint"] = {"kind": "deps", "ids": list(c["waiting_on"])}
+        elif c.get("begin_in"):
+            f["hint"] = {"kind": "begin", "at": c.get("not_before", ""), "in": c["begin_in"]}
         elif c["conflicts"]:
             f["hint"] = {"kind": "wait", "with": [{"id": x["id"], "why": x["why"]} for x in c["conflicts"]]}
         elif [x for x in c["cannot_run_with"] if x["id"] in near and near[x["id"]] != lid]:
@@ -1510,7 +1761,7 @@ def lane_focus(comp: list, lanes: list, steps=None) -> dict:
 
 def focus_summary(focus: dict) -> dict:
     """One line of truth for the whole 'what to do now' section, from the same focus data as the cards."""
-    out = {"running": [], "can_start": [], "wait": [], "choose": [], "deps": [], "unchecked": []}
+    out = {"running": [], "can_start": [], "wait": [], "choose": [], "deps": [], "unchecked": [], "begin": [], "person": []}
     seen = set()
     for lid, f in focus.items():
         h = f.get("hint")
@@ -1518,6 +1769,10 @@ def focus_summary(focus: dict) -> dict:
             out["running"].append(f["id"])
         elif h["kind"] == "deps":
             out["deps"].append({"id": f["id"], "ids": h["ids"]})
+        elif h["kind"] == "begin":
+            out["begin"].append({"id": f["id"], "at": h["at"]})
+        elif h["kind"] == "person":
+            out["person"].append({"id": f["id"], "ids": h["ids"], "codes": h["codes"]})
         elif h["kind"] == "wait":
             out["wait"].append({"id": f["id"], "with": h["with"]})
         elif h["kind"] == "not":
@@ -1549,6 +1804,165 @@ def board_view(path: Path) -> dict:
         "proposed": [c["id"] for c in comp if c["state"] == "proposed"],
         "review": [c["id"] for c in comp if c["state"] == "review"],
     }
+
+
+def digest(d: dict, since: dt.datetime, now=None) -> dict:
+    """What happened since a moment, for the person coming back: sessions (alive? doing what?), tasks that ended (outcome, report),
+    what runs, what stalled, what needs the person, what is still waiting and why."""
+    now = now or now_dt()
+    comp = compute(d, now)
+    by_id = {c["id"]: c for c in comp}
+    ended = []
+    for e in d.get("events", []):
+        t = parse_ts(e.get("t"))
+        if e.get("action") == "finish" and t and t >= since and e.get("id") in by_id:
+            c = by_id[e["id"]]
+            ended.append({"id": c["id"], "title": c["title"], "lane": c["lane"], "at": e["t"], "outcome": c.get("outcome", ""), "status": c["status"],
+                          "report": c.get("report", ""), "violations": len(c.get("violations") or [])})
+    sessions = []
+    for lane in d["lanes"]:
+        seen = lane.get("seen") or {}
+        at = parse_ts(seen.get("at"))
+        sessions.append({"id": lane["id"], "title": lane.get("title") or lane["id"], "state": seen.get("state", ""), "task": seen.get("task", ""),
+                         "reason": seen.get("reason", ""), "by": seen.get("by", ""), "ago": int((now - at).total_seconds()) if at else None})
+    needs_you = []
+    for c in comp:
+        if c["status"] == "review":
+            needs_you.append({"id": c["id"], "title": c["title"], "kind": "accept", "outcome": c.get("outcome", "")})
+        elif c["status"] == "proposed":
+            needs_you.append({"id": c["id"], "title": c["title"], "kind": "approve"})
+    for c in comp:
+        if c["status"] == "queued":
+            for r in c["reasons"]:
+                if r["code"] in ("decision", "never"):
+                    needs_you.append({"id": c["id"], "title": c["title"], "kind": r["code"], "on": r["id"]})
+    return {
+        "since": since.isoformat(), "now": now.isoformat(), "sessions": sessions, "ended": ended,
+        "running": [{"id": c["id"], "title": c["title"], "lane": c["lane"], "by": (c.get("claim") or {}).get("by", ""), "since": (c.get("claim") or {}).get("at", ""),
+                     "deadline": (c.get("claim") or {}).get("deadline", ""), "stale": c["stale"]} for c in comp if c["status"] == "running"],
+        "needs_you": needs_you,
+        "waiting": [{"id": c["id"], "title": c["title"], "lane": c["lane"], "reasons": c["reasons"]} for c in comp if c["status"] == "queued" and c["reasons"]],
+        "next_ready": [c["id"] for c in comp if c["state"] == "ready"],
+    }
+
+
+def parse_since(text: str | None, now=None) -> dt.datetime:
+    """`12h`, `90m`, `2d` (ago) or a time (see parse_when). Default 12 hours."""
+    now = now or now_dt()
+    text = (text or "12h").strip()
+    m = re.fullmatch(r"(\d+)\s*([mhd])", text.lower())
+    if m:
+        n = int(m.group(1))
+        return now - {"m": dt.timedelta(minutes=n), "h": dt.timedelta(hours=n), "d": dt.timedelta(days=n)}[m.group(2)]
+    try:
+        iso = text.replace(" ", "T")
+        exact = dt.datetime.fromisoformat(iso[:-1] + "+00:00" if iso[-1:] in ("Z", "z") else iso)
+        if exact.tzinfo is not None:
+            return exact                 # a time with an offset keeps its fractions of a second (the panel sends the moment of "Got it")
+    except ValueError:
+        pass
+    return parse_ts(parse_when(text, now)) or now - dt.timedelta(hours=12)
+
+
+def digest_text(g: dict) -> str:
+    out = [f"Since {local_time(g['since'])}:"]
+    out.append("Sessions:")
+    for x in g["sessions"]:
+        ago = f", signal {fmt_in(x['ago'])} ago" if x["ago"] is not None else ", no signal yet"
+        out.append(f"  {x['id']:<10} {x['state'] or '-':<8} {x['task'] or ''} {x['reason'] or ''}{ago}".rstrip())
+    out.append("Ended:" if g["ended"] else "Ended: nothing")
+    for e in g["ended"]:
+        out.append(f"  {e['id']:<6} {e['outcome'] or 'no outcome':<9} {e['status']:<7} {e['title']}  report: {e['report'] or '-'}" + (f"  ({e['violations']} file warnings)" if e["violations"] else ""))
+    if g["running"]:
+        out.append("Running:")
+        for r in g["running"]:
+            out.append(f"  {r['id']:<6} {r['by']} since {local_time(r['since'])}" + (f", deadline {local_time(r['deadline'])}" if r["deadline"] else "") + ("  LEASE EXPIRED (session may be dead)" if r["stale"] else ""))
+    if g["needs_you"]:
+        out.append("Needs you:")
+        verb = {"accept": "accept the report", "approve": "approve the proposal", "decision": "decide: it waits for", "never": "fix the dependency on"}
+        for n in g["needs_you"]:
+            out.append(f"  {n['id']:<6} {verb[n['kind']]} {n.get('on', '')}".rstrip() + f"  ({n['title']})")
+    if g["waiting"]:
+        out.append("Waiting:")
+        for w in g["waiting"]:
+            out.append(f"  {w['id']:<6} " + "; ".join(fmt_reason(r) for r in w["reasons"]))
+    return "\n".join(out)
+
+
+def fmt_in(seconds: int) -> str:
+    if seconds >= 86400:
+        return f"{seconds // 86400}d {seconds % 86400 // 3600}h"
+    if seconds >= 3600:
+        return f"{seconds // 3600}h {seconds % 3600 // 60:02d}m"
+    return f"{max(1, seconds // 60)}m" if seconds >= 60 else f"{seconds}s"
+
+
+def fmt_reason(r: dict) -> str:
+    code = r["code"]
+    if code == "begin_time":
+        return f"not before {local_time(r['at'])} (in {fmt_in(r['in'])})"
+    if code == "dependency":
+        return f"waits for {r['id']} ({r['status']})"
+    if code == "conflict":
+        return f"cannot run next to {r['id']} ({r['why']})"
+    if code == "decision":
+        what = "accept its report" if r.get("outcome") is not None and "status" not in r else f"approve or write it ({r.get('status', '')})"
+        return f"needs you to {what}: {r['id']}"
+    if code == "never":
+        return f"waits for {r['id']}, which is {r['status']}: it can never finish, change the dependency"
+    return code
+
+
+def next_step(d: dict, lane: str | None = None, now=None) -> dict:
+    """What `next` should answer for a lane (or for every lane): the first ready task in plan order; otherwise why nothing is ready.
+
+    status: task (a task is ready: `id`), none (the lane has no queued task at all: it is done), wait (queued tasks exist and
+    every one of them is held by something that ends by itself: a start time, other tasks, a conflict), stuck (nothing will
+    change without the person: a report to accept, a draft to write, a dependency that was cancelled). `waiting` lists the queued
+    tasks with their reasons; `retry_in` is a sensible number of seconds to look again."""
+    comp = compute(d, now)
+    steps = plan_steps(d, comp)
+    order = {iid: (n, pos) for n, step in enumerate(steps) for pos, iid in enumerate(step)}
+    mine = [c for c in comp if c["status"] == "queued" and (not lane or c["lane"] == lane)]
+    mine.sort(key=lambda c: order.get(c["id"], (10 ** 6, 0)))
+    for c in mine:
+        if c["state"] == "ready":
+            return {"status": NEXT_TASK, "id": c["id"], "title": c["title"], "lane": c["lane"], "waiting": [], "retry_in": 0}
+    waiting = [{"id": c["id"], "title": c["title"], "lane": c["lane"], "reasons": c["reasons"]} for c in mine]
+    if not waiting:
+        return {"status": NEXT_NONE, "id": None, "waiting": [], "retry_in": 0}
+    soft = [w for w in waiting if w["reasons"] and all(r["code"] in SELF_RESOLVING for r in w["reasons"])]
+    begins = [r["in"] for w in soft for r in w["reasons"] if r["code"] == "begin_time"]
+    retry = min(begins) if begins and len(begins) == len(soft) else 60
+    return {"status": NEXT_WAIT if soft else NEXT_STUCK, "id": None, "waiting": waiting, "retry_in": max(5, min(retry, 300))}
+
+
+def describe_next(res: dict) -> str:
+    if res["status"] == NEXT_NONE:
+        return "nothing to do: this lane has no queued task. Stop here and report; do not invent work."
+    head = {NEXT_WAIT: "nothing can start yet, but it will without anyone's help: run this command again (add --wait 300 to let it wait for you)",
+            NEXT_STUCK: "nothing can start until the person decides something: stop and report what is needed"}[res["status"]]
+    lines = [head + ":"]
+    for w in res["waiting"][:6]:
+        lines.append(f"  {w['id']}: " + "; ".join(fmt_reason(r) for r in w["reasons"]))
+    return "\n".join(lines)
+
+
+def note_presence(board: Path, lane: str | None, by: str, state: str, task: str = "", reason: str = "", min_age: int = 60) -> None:
+    """Tell the board this lane's session is alive (and what it does). Written only when something changed or `min_age` seconds
+    passed, so a waiting loop does not rewrite the board every few seconds. Never raises: presence is a courtesy."""
+    if not lane:
+        return
+    try:
+        d = load(board)
+        cur = next((l.get("seen") or {} for l in d["lanes"] if l["id"] == lane), {})
+        at = parse_ts(cur.get("at"))
+        same = cur.get("state") == state and cur.get("task", "") == task and cur.get("reason", "") == reason[:200] and cur.get("by") == by
+        if same and at and (now_dt() - at).total_seconds() < min_age:
+            return
+        mutate(board, lambda dd: op_seen(dd, lane, by, state, task, reason))
+    except (RBError, OSError, ValueError):
+        pass
 
 
 def fmt_line(c: dict) -> str:
@@ -1616,6 +2030,9 @@ def make_handler(board: Path, tracker: dict):
                     return self._send(200, {"rev": load(board).get("rev", 0)})
                 if path == "/api/board":
                     return self._send(200, board_view(board))
+                if path == "/api/digest":
+                    since = parse_since(urllib.parse.parse_qs(self.path.partition("?")[2]).get("since", [None])[0])
+                    return self._send(200, digest(load(board), since))
                 m = re.match(r"^/api/connect/([A-Za-z0-9][A-Za-z0-9_.-]{0,31})$", path)
                 if m:
                     return self._send(200, {"text": connect_text(load(board), m.group(1), board)})
@@ -1656,9 +2073,10 @@ def make_handler(board: Path, tracker: dict):
     return Handler
 
 
-ARG_STR = ("title", "lane", "outline", "text", "when", "workdir", "branch", "profile", "status", "outcome", "color", "agent", "lang", "reason", "report")
-ARG_LIST = ("needs", "uses", "touches", "lint_ok")  # a comma-separated string or a list of strings
-ARG_BOOL = ("quiet", "noisy", "draft")
+ARG_STR = ("title", "lane", "outline", "text", "when", "workdir", "branch", "profile", "status", "outcome", "color", "agent", "lang", "reason", "report",
+           "not_before", "timebox")
+ARG_LIST = ("needs", "after", "uses", "touches", "lint_ok")  # a comma-separated string or a list of strings
+ARG_BOOL = ("quiet", "noisy", "draft", "unattended")
 
 
 def check_args(args) -> dict:
@@ -1693,7 +2111,8 @@ def apply_action(board: Path, req: dict):
             f["id"] = iid
             return op_add(d, h, f)["id"]
         if a == "edit":
-            f = {k: args.get(k) for k in ("title", "lane", "needs", "uses", "quiet", "noisy", "profile", "lint_ok", "when", "outline", "text", "touches", "workdir", "branch") if k in args}
+            f = {k: args.get(k) for k in ("title", "lane", "needs", "after", "uses", "quiet", "noisy", "profile", "lint_ok", "when", "outline", "text", "touches",
+                                          "workdir", "branch", "not_before", "timebox") if k in args}
             return op_edit(d, h, iid, f)["id"]
         if a == "status":
             return op_set_status(d, h, iid, str(args.get("status", "")))["status"]
@@ -1709,9 +2128,11 @@ def apply_action(board: Path, req: dict):
             return {"lang": op_board_lang(d, h, str(args.get("lang", "")))}
         if a == "laneadd":
             lane = op_lane_add(d, h, iid, args.get("title"), args.get("color"), args.get("agent"))
+            if args.get("unattended") is not None:
+                lane = op_lane_edit(d, h, iid, None, None, None, args.get("unattended"))
             return {"id": lane["id"]}
         if a == "lane":
-            lane = op_lane_edit(d, h, iid, args.get("title"), args.get("color"), args.get("agent"))
+            lane = op_lane_edit(d, h, iid, args.get("title"), args.get("color"), args.get("agent"), args.get("unattended"))
             return {"id": lane["id"]}
         if a == "restore":
             return op_restore(d, h, iid)["status"]
@@ -1861,7 +2282,8 @@ def cmd_where(args):
 
 def cmd_add(args):
     board = find_board(getattr(args, "board", None))
-    f = {"id": args.id, "lane": args.lane, "title": args.title, "needs": args.needs, "uses": args.uses, "quiet": args.quiet,
+    f = {"id": args.id, "lane": args.lane, "title": args.title, "needs": args.needs, "after": args.after, "not_before": args.not_before,
+         "timebox": args.timebox, "uses": args.uses, "quiet": args.quiet,
          "noisy": args.noisy, "when": args.when, "outline": args.outline, "text": read_text_arg(args), "draft": args.draft,
          "touches": args.touches, "workdir": args.workdir, "profile": args.profile, "lint_ok": ",".join(args.lint_ok or [])}
     item = mutate(board, lambda d: op_add(d, cli_actor(args), f))
@@ -1871,7 +2293,8 @@ def cmd_add(args):
 
 def cmd_edit(args):
     board = find_board(getattr(args, "board", None))
-    f = {"title": args.title, "lane": args.lane, "needs": args.needs, "uses": args.uses, "when": args.when, "outline": args.outline,
+    f = {"title": args.title, "lane": args.lane, "needs": args.needs, "after": args.after, "not_before": args.not_before, "timebox": args.timebox,
+         "uses": args.uses, "when": args.when, "outline": args.outline,
          "quiet": args.quiet, "noisy": args.noisy, "text": read_text_arg(args), "touches": args.touches, "workdir": args.workdir,
          "profile": args.profile}
     if args.lint_ok is not None:
@@ -1981,27 +2404,172 @@ def cmd_show(args):
 
 
 def cmd_next(args):
+    """Print the next ready task of a lane. Exit codes: 0 a task was printed; 2 the lane has nothing queued; 3 nothing can start
+    yet but will without anyone's help (run again, or use --wait); 4 nothing will change without the person."""
     board = find_board(getattr(args, "board", None))
-    d = load(board)
-    comp = compute(d)
-    for c in comp:
-        if c["state"] == "ready" and (not args.lane or c["lane"] == args.lane):
-            it = get_item(d, c["id"])
-            if getattr(args, "json", False):
-                print(json.dumps({"id": c["id"], "title": c["title"], "lane": c["lane"], "prompt": prompt_for(d, it, board)}, ensure_ascii=False, indent=1))
+    by = cli_actor(args).name
+    wait = max(0, int(getattr(args, "wait", 0) or 0))
+    started = time.monotonic()
+    last_note = -60.0
+    as_json = getattr(args, "json", False)
+    while True:
+        d = load(board)
+        res = next_step(d, args.lane)
+        if res["status"] == NEXT_TASK:
+            it = get_item(d, res["id"])
+            if as_json:
+                print(json.dumps({**res, "prompt": prompt_for(d, it, board)}, ensure_ascii=False, indent=1))
             else:
-                print(f"# {c['id']}: {c['title']}\n")
+                print(f"# {res['id']}: {res['title']}\n")
                 print(prompt_for(d, it, board))
             return
-    waiting = [c for c in comp if c["state"] in ("waiting", "blocked") and (not args.lane or c["lane"] == args.lane)]
-    msg = "no task is ready for you right now"
-    if waiting:
-        msg += ":\n" + "\n".join("  " + fmt_line(c) for c in waiting[:5])
-    if getattr(args, "json", False):
-        print(json.dumps({"id": None, "reason": msg}))
+        elapsed = time.monotonic() - started
+        if res["status"] == NEXT_WAIT:
+            note_presence(board, args.lane, by, "waiting", "", "; ".join(f"{w['id']}: {fmt_reason(w['reasons'][0])}" for w in res["waiting"][:2]))
+            if elapsed < wait:
+                if elapsed - last_note >= 60 and not as_json:
+                    print(f"[barid] still waiting after {int(elapsed)}s: " + "; ".join(f"{w['id']} {fmt_reason(w['reasons'][0])}" for w in res["waiting"][:2]), file=sys.stderr, flush=True)
+                    last_note = elapsed
+                time.sleep(min(5.0, max(0.1, wait - elapsed)))
+                continue
+        else:
+            note_presence(board, args.lane, by, "idle", "", "nothing queued" if res["status"] == NEXT_NONE else "needs the person")
+        if as_json:
+            print(json.dumps({**res, "reason": describe_next(res)}, ensure_ascii=False))
+        else:
+            print(describe_next(res))
+        sys.exit({NEXT_NONE: EXIT_NONE, NEXT_WAIT: EXIT_WAIT, NEXT_STUCK: EXIT_STUCK}[res["status"]])
+
+
+WORKER_LEASE_MINUTES = 3      # a worker renews the lease every 30 seconds: a dead worker shows as a stale task within minutes
+
+
+def _kill_group(proc: subprocess.Popen, grace: float = 20.0) -> None:
+    """Stop the agent process and everything it started (its own process group); never anything else."""
+    import signal
+    if proc.poll() is not None:
+        return
+    try:
+        os.killpg(proc.pid, signal.SIGTERM)
+    except (OSError, ProcessLookupError):
+        return
+    try:
+        proc.wait(timeout=grace)
+    except subprocess.TimeoutExpired:
+        try:
+            os.killpg(proc.pid, signal.SIGKILL)
+        except (OSError, ProcessLookupError):
+            pass
+        proc.wait(timeout=10)
+
+
+def run_worker_task(board: Path, lane: str, iid: str, name: str, command: str, cwd: str | None, stop: threading.Event) -> str:
+    """Claim a task, run the agent command on its prompt (stdin; also $BARID_PROMPT_FILE and {prompt_file} in the command), keep
+    the lease alive, enforce the timebox, and make sure the task ends in a report. Returns what happened: finished, stopped, claim-lost."""
+    actor = Actor("agent", name)
+    try:
+        mutate(board, lambda d: op_claim(d, actor, iid, False, WORKER_LEASE_MINUTES))
+    except RBError as e:
+        print(f"[barid worker] could not claim {iid}: {e}", flush=True)
+        return "claim-lost"
+    d = load(board)
+    it = get_item(d, iid)
+    prompt = prompt_for(d, it, board, worker=name)
+    runs = board.parent / "runs"
+    runs.mkdir(exist_ok=True)
+    stamp = dt.datetime.now().strftime("%Y%m%d-%H%M%S")
+    prompt_file, log_file = runs / f"{iid}-{stamp}.prompt.md", runs / f"{iid}-{stamp}.log"
+    prompt_file.write_text(prompt, "utf-8")
+    deadline = parse_ts((it.get("claim") or {}).get("deadline"))
+    env_ = dict(os.environ, BARID_AGENT=name, BARID_BOARD=str(board), BARID_TASK=iid, BARID_LANE=lane, BARID_PROMPT_FILE=str(prompt_file))
+    print(f"[barid worker] {iid}: started ({'deadline ' + local_time(deadline.isoformat()) if deadline else 'no timebox'}); log {log_file}", flush=True)
+    with open(log_file, "wb") as logf:
+        proc = subprocess.Popen(command.replace("{prompt_file}", str(prompt_file)), shell=True, stdin=subprocess.PIPE, stdout=logf, stderr=subprocess.STDOUT,
+                                cwd=cwd or None, env=env_, start_new_session=True)
+        try:
+            proc.stdin.write(prompt.encode("utf-8"))
+            proc.stdin.close()
+        except (BrokenPipeError, OSError):
+            pass                       # the command does not read stdin; it uses the prompt file
+        timed_out = stopped = False
+        last_beat = 0.0
+        while proc.poll() is None:
+            if stop.is_set():
+                stopped = True
+                _kill_group(proc)
+                break
+            if deadline and now_dt() > deadline:
+                timed_out = True
+                _kill_group(proc)
+                break
+            if time.monotonic() - last_beat >= 30:
+                last_beat = time.monotonic()
+                try:
+                    mutate(board, lambda dd: op_heartbeat(dd, actor, iid, WORKER_LEASE_MINUTES))
+                except RBError:
+                    pass               # e.g. the person released the task meanwhile; the check below handles it
+            time.sleep(1.0)
+    code = proc.returncode
+    d = load(board)
+    it = get_item(d, iid)
+    if it["status"] == "running" and (it.get("claim") or {}).get("by") == name:
+        why = ("the timebox ran out" if timed_out else "the worker was stopped" if stopped else
+               f"the agent ended with exit code {code} without reporting")
+        outcome = "partial" if (code == 0 and not timed_out and not stopped) else "failed"
+        mutate(board, lambda dd: op_finish(dd, actor, iid, str(log_file), f"Closed by the worker: {why}. Log: {log_file}", False, outcome))
+        print(f"[barid worker] {iid}: {why}; closed as {outcome}", flush=True)
     else:
-        print(msg)
-    sys.exit(2)
+        print(f"[barid worker] {iid}: reported by the agent ({it['status']}, {it.get('outcome') or 'no outcome'})", flush=True)
+    return "stopped" if stopped else "finished"
+
+
+def cmd_worker(args):
+    """Run a lane without an agent session that has to stay polite: a loop outside the model. For every task of the lane it starts
+    the command you give (a fresh agent each time, the prompt on stdin), keeps the lease alive, stops it at the timebox, closes a
+    task whose agent died without a report, and then asks for the next one. It waits for start times, other tasks and conflicts by
+    itself. Ends when the lane is empty (exit 0), needs the person (exit 4), or after --max-wait without a task (exit 3)."""
+    import signal
+    board = find_board(getattr(args, "board", None))
+    d0 = load(board)
+    if not any(l["id"] == args.lane for l in d0["lanes"]):
+        raise RBError(f"unknown lane {args.lane!r}", "unknown_lane", lane=args.lane)
+    name = getattr(args, "by", None) or env("AGENT") or f"worker-{args.lane}"
+    stop = threading.Event()
+    for sig in (signal.SIGINT, signal.SIGTERM):
+        signal.signal(sig, lambda *_: stop.set())
+    done = 0
+    idle_since = time.monotonic()
+    print(f"[barid worker] {name} serves lane {args.lane}; command: {args.cmd}", flush=True)
+    while not stop.is_set():
+        res = next_step(load(board), args.lane)
+        if res["status"] == NEXT_TASK:
+            idle_since = time.monotonic()
+            result = run_worker_task(board, args.lane, res["id"], name, args.cmd, args.cwd, stop)
+            done += result == "finished"
+            if args.once or (args.max_tasks and done >= args.max_tasks):
+                break
+            continue
+        if res["status"] == NEXT_NONE:
+            note_presence(board, args.lane, name, "idle", "", "lane is done", 0)
+            print(f"[barid worker] lane {args.lane} is empty: {done} task(s) run", flush=True)
+            sys.exit(0)
+        if res["status"] == NEXT_STUCK:
+            note_presence(board, args.lane, name, "idle", "", "needs the person", 0)
+            print(describe_next(res), flush=True)
+            sys.exit(EXIT_STUCK)
+        note_presence(board, args.lane, name, "waiting", "", "; ".join(f"{w['id']}: {fmt_reason(w['reasons'][0])}" for w in res["waiting"][:2]))
+        if time.monotonic() - idle_since > args.max_wait:
+            print(f"[barid worker] nothing could start for {int(args.max_wait)}s: giving up", flush=True)
+            sys.exit(EXIT_WAIT)
+        stop.wait(min(args.poll, res["retry_in"]))
+    sys.exit(0)
+
+
+def cmd_digest(args):
+    board = find_board(getattr(args, "board", None))
+    d = load(board)
+    g = digest(d, parse_since(args.since))
+    out(args, g, digest_text(g))
 
 
 def cmd_lang(args):
@@ -2016,7 +2584,7 @@ def cmd_lang(args):
 
 def cmd_connect(args):
     board = find_board(getattr(args, "board", None))
-    print(connect_text(load(board), args.lane, board))
+    print(connect_text(load(board), args.lane, board, getattr(args, "unattended", None)))
 
 
 def cmd_gen(args):
@@ -2026,9 +2594,31 @@ def cmd_gen(args):
 
 
 def cmd_claim(args):
+    """Take a task. Refused with exit code 3 when it must wait (a start time, other tasks, a conflict), 4 when the person must
+    decide something first. With --wait SECONDS the command waits for a task that only has to wait."""
     board = find_board(getattr(args, "board", None))
-    warnings = mutate(board, lambda d: op_claim(d, cli_actor(args), args.id, args.force))
-    out(args, {"id": args.id, "warnings": warnings}, f"{args.id} claimed by {cli_actor(args).name}" + ("".join(f"\nwarning: {w}" for w in warnings)))
+    actor = cli_actor(args)
+    wait = max(0, int(getattr(args, "wait", 0) or 0))
+    started = time.monotonic()
+    last_note = -60.0
+    while True:
+        try:
+            warnings = mutate(board, lambda d: op_claim(d, actor, args.id, args.force))
+            break
+        except RBError as e:
+            if e.code not in ("begin_time", "waiting", "conflict") or time.monotonic() - started >= wait:
+                raise
+            try:
+                lane = get_item(load(board), args.id)["lane"]
+            except RBError:
+                lane = None
+            note_presence(board, lane, actor.name, "waiting", args.id, str(e))
+            elapsed = time.monotonic() - started
+            if elapsed - last_note >= 60:
+                print(f"[barid] still waiting after {int(elapsed)}s: {e}", file=sys.stderr, flush=True)
+                last_note = elapsed
+            time.sleep(min(5.0, max(0.1, wait - elapsed)))
+    out(args, {"id": args.id, "warnings": warnings}, f"{args.id} claimed by {actor.name}" + ("".join(f"\nwarning: {w}" for w in warnings)))
 
 
 def cmd_finish(args):
@@ -2171,7 +2761,8 @@ def cmd_lane(args):
         if editing and not exists:
             raise RBError(f"unknown lane {lane_id!r}", "unknown_lane", lane=lane_id)
         if editing:
-            op_lane_edit(d, actor, lane_id, None if not args.title else args.title, getattr(args, "color", None), getattr(args, "agent", None))
+            op_lane_edit(d, actor, lane_id, None if not args.title else args.title, getattr(args, "color", None), getattr(args, "agent", None),
+                         getattr(args, "unattended", None))
         else:
             op_lane_add(d, actor, lane_id, args.title, getattr(args, "color", None), getattr(args, "agent", None))
     mutate(board, fn)
@@ -2323,6 +2914,9 @@ def build_parser() -> argparse.ArgumentParser:
     s.add_argument("--lint-ok", action="append", metavar="CODE", help="silence one suggestion of `barid lint` for this task (repeatable)")
     s.add_argument("--touches", help="comma list of files, folders or globs this task may change; tasks with overlapping scopes never run together")
     s.add_argument("--workdir", help="the only checkout this task may work in (see `worktree`)")
+    s.add_argument("--after", help="comma list of task ids to run after, whatever their outcome (`--needs` waits for a successful or accepted one)")
+    s.add_argument("--not-before", dest="not_before", help="earliest start: 23:00 (next time it is 23:00), '2026-10-07 23:00', +90m, +3h, +1d; empty clears it")
+    s.add_argument("--timebox", help="how long the task may run: 90 (minutes), 90m, 8h, 1d; a worker stops it after that")
     s.add_argument("--when")
     s.add_argument("--outline", help="short goal; used to generate the full prompt later")
     s.add_argument("--text", help="prompt text, or - for stdin")
@@ -2331,7 +2925,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     s = add("edit", cmd_edit, "change a task")
     s.add_argument("id")
-    for k in ("title", "lane", "needs", "uses", "when", "outline", "text", "text-file", "touches", "workdir"):
+    for k in ("title", "lane", "needs", "after", "uses", "when", "outline", "text", "text-file", "touches", "workdir", "not-before", "timebox"):
         s.add_argument("--" + k)
     s.add_argument("--quiet", action=argparse.BooleanOptionalAction, default=None)
     s.add_argument("--noisy", action=argparse.BooleanOptionalAction, default=None)
@@ -2360,18 +2954,31 @@ def build_parser() -> argparse.ArgumentParser:
     s = add("show", cmd_show, "show one task (--text prints the prompt with its tracking footer)")
     s.add_argument("id")
     s.add_argument("--text", action="store_true")
-    s = add("next", cmd_next, "print the next task that is ready for a lane (exit code 2 if none)")
+    s = add("next", cmd_next, "print the next task that is ready for a lane (exit code 2: nothing queued, 3: wait and ask again, 4: waits for the person)")
     s.add_argument("--lane")
+    s.add_argument("--wait", type=int, default=0, metavar="SECONDS", help="when the next task only has to wait (a start time, other tasks, a conflict), wait up to this long for it instead of answering at once")
+    s = add("worker", cmd_worker, "run a lane unattended: for each task start your agent command (fresh context, prompt on stdin), keep the lease, enforce the timebox, then take the next")
+    s.add_argument("--lane", required=True)
+    s.add_argument("--cmd", required=True, help="the agent command, e.g. 'codex exec -' or 'claude -p'; it reads the prompt on stdin, or from $BARID_PROMPT_FILE / {prompt_file}")
+    s.add_argument("--cwd", help="folder to run the command in")
+    s.add_argument("--poll", type=int, default=20, metavar="SECONDS", help="how often to look for work while tasks wait (default 20)")
+    s.add_argument("--max-wait", type=int, default=14 * 3600, metavar="SECONDS", help="give up when nothing could start for this long (default 14 hours)")
+    s.add_argument("--max-tasks", type=int, default=0, metavar="N", help="stop after N tasks (default: until the lane is empty)")
+    s.add_argument("--once", action="store_true", help="run one task and exit")
+    s = add("digest", cmd_digest, "what happened while you were away: sessions, finished tasks and their reports, what needs you, what waits and why")
+    s.add_argument("--since", default=None, metavar="WHEN", help="12h (default), 90m, 2d, or a time such as '2026-10-07 08:00'")
     s = add("lang", cmd_lang, "show or set the language of the texts written for agents (en, ru, kk); the panel language is separate")
     s.add_argument("value", nargs="?", choices=["en", "ru", "kk", "kz"])
     s = add("connect", cmd_connect, "print the message that connects an agent session to a lane (paste it as the session's first message)")
     s.add_argument("lane")
+    s.add_argument("--unattended", action=argparse.BooleanOptionalAction, default=None, help="the night version (wait for the turn, never stop to ask); default: what the lane is set to")
     s = add("gen", cmd_gen, "print the request that makes an agent write this task's prompt")
     s.add_argument("id")
 
-    s = add("claim", cmd_claim, "agent: take a task and start working (refused on conflicts)")
+    s = add("claim", cmd_claim, "agent: take a task and start working (refused on conflicts; exit code 3: it must wait, 4: it waits for the person)")
     s.add_argument("id")
     s.add_argument("--force", action="store_true")
+    s.add_argument("--wait", type=int, default=0, metavar="SECONDS", help="when the task only has to wait (a start time, other tasks, a conflict), wait up to this long and then take it")
     s = add("finish", cmd_finish, "agent: report that the task is done")
     s.add_argument("id")
     s.add_argument("--report", help="path of the report file")
@@ -2431,6 +3038,7 @@ def build_parser() -> argparse.ArgumentParser:
     s.add_argument("--title")
     s.add_argument("--color", help="e.g. #feb83b; empty resets to the palette default")
     s.add_argument("--agent", help="which agent runs there: claude, codex, opencode, gemini, cursor, aider, local, or any name (max 24 characters)")
+    s.add_argument("--unattended", action=argparse.BooleanOptionalAction, default=None, help="a session that works through the night: its connection text tells it to wait for its turn and never stop to ask")
     s = add("resource", cmd_resource, "define a resource tasks can use: `resource add NAME --label L`, or `resource list`")
     s.add_argument("words", nargs="+", metavar="[add] NAME")
     s.add_argument("--label")
@@ -2473,7 +3081,7 @@ def main(argv=None) -> int:
         args.fn(args)
     except RBError as e:
         print(f"rb: {e}", file=sys.stderr)
-        return 1
+        return {"begin_time": EXIT_WAIT, "waiting": EXIT_WAIT, "conflict": EXIT_WAIT, "stuck": EXIT_STUCK}.get(e.code, 1)
     except BrokenPipeError:
         return 0
     return 0

@@ -64,8 +64,8 @@ Read the dependency reports it lists before writing; the prompt should build on 
 
 ## Running a task (worker)
 
-1. `barid next --lane <your lane>` prints the next ready task and its prompt (exit code 2 and the reason if nothing is ready). When the person pasted a prompt to you, it already contains your task id and the exact commands: use those.
-2. `barid claim T1 --by "<you>"`. If it is refused (a conflicting task is running, or the task must wait), **stop and tell the person why**. Do not work around it and never use `--force`.
+1. `barid next --lane <your lane>` prints the next ready task and its prompt. Exit code `0`: a task was printed. `2`: nothing is queued for the lane. `3`: nothing can start yet but will without anyone's help (a start time, a task of another session, a conflict): ask again later, or use `next --wait 300`. `4`: it waits for the person. When the person pasted a prompt to you, it already contains your task id and the exact commands: use those.
+2. `barid claim T1 --by "<you>"`. If it is refused (a conflicting task is running, or the task must wait), **stop and tell the person why**, unless you were told to work through the night: then a refusal with exit code 3 is waiting, repeat it with `--wait 300`. Do not work around it and never use `--force`.
 3. Do the work. For long tasks run `barid heartbeat T1 --by "<you>"` now and then; an expired lease shows up as stale in the panel.
 4. Write your report file, then `barid finish T1 --report <path> --outcome <complete|partial|failed> --by "<you>"`. Be honest about the outcome: `complete` only when every acceptance check was met and nothing is left; `partial` when you stopped early (a safety limit, the deadline, an error) or skipped parts; `failed` when the main goal was not reached. Only `complete` starts dependent tasks by itself, the person decides about the rest. The task goes to *review*; the person accepts it.
 5. If something blocks you, `barid note T1 "<what>" --by "<you>"`. If you think of a follow-up task, `barid add <ID> --lane <lane> --title ... --text-file ... --by "<you>"`; it arrives as a proposal.
@@ -75,6 +75,7 @@ Touch only your own task. Never edit, cancel or delete other tasks. If the promp
 ## Planner loop
 
 - `barid list` shows every task with its state: ready, waiting (for which tasks), blocked (by which running task and why), proposed, review.
+- **Chains that run without anyone watching** (a night): `--after T1` (run after T1 whatever its outcome; `--needs` waits for a success), `--not-before 23:00` (earliest start), `--timebox 8h`; `barid lane edit <lane> --unattended` and `barid connect <lane>` give the session a text that makes it wait for its turn and never stop to ask; `barid worker --lane <lane> --cmd '<agent command>'` runs the lane in a loop outside the model; `barid digest --since 12h` tells the person what happened. See `docs/UNATTENDED.md`.
 - Read the report of a task in *review* before building on it. The person accepts reports; you do not.
 - When a report changes the plan, edit the tasks that follow (`barid edit`) or cancel them (`barid cancel T5 --reason "..."`). Cancelled tasks stay in the archive.
 - `barid log` shows who did what.
