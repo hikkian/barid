@@ -419,7 +419,7 @@ class Worker(Base):
         self.assertEqual(code, rb.EXIT_STUCK, out)
 
     def test_it_never_signals_anything_but_its_own_process_group(self):
-        src = RB_PATH.read_text()
+        src = RB_PATH.read_text("utf-8")
         self.assertNotIn("pkill", src)
         self.assertIn("os.killpg(proc.pid", src)
 

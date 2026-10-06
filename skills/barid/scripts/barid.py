@@ -2445,9 +2445,17 @@ WORKER_LEASE_MINUTES = 3      # a worker renews the lease every 30 seconds: a de
 
 
 def _kill_group(proc: subprocess.Popen, grace: float = 20.0) -> None:
-    """Stop the agent process and everything it started (its own process group); never anything else."""
+    """Stop the agent process and everything it started (its own process group on POSIX, its own process tree on Windows); never
+    anything else."""
     import signal
     if proc.poll() is not None:
+        return
+    if os.name == "nt":
+        subprocess.run(["taskkill", "/PID", str(proc.pid), "/T", "/F"], capture_output=True, timeout=30)
+        try:
+            proc.wait(timeout=grace)
+        except subprocess.TimeoutExpired:
+            pass
         return
     try:
         os.killpg(proc.pid, signal.SIGTERM)
@@ -2484,8 +2492,9 @@ def run_worker_task(board: Path, lane: str, iid: str, name: str, command: str, c
     env_ = dict(os.environ, BARID_AGENT=name, BARID_BOARD=str(board), BARID_TASK=iid, BARID_LANE=lane, BARID_PROMPT_FILE=str(prompt_file))
     print(f"[barid worker] {iid}: started ({'deadline ' + local_time(deadline.isoformat()) if deadline else 'no timebox'}); log {log_file}", flush=True)
     with open(log_file, "wb") as logf:
+        own_group = {"creationflags": subprocess.CREATE_NEW_PROCESS_GROUP} if os.name == "nt" else {"start_new_session": True}
         proc = subprocess.Popen(command.replace("{prompt_file}", str(prompt_file)), shell=True, stdin=subprocess.PIPE, stdout=logf, stderr=subprocess.STDOUT,
-                                cwd=cwd or None, env=env_, start_new_session=True)
+                                cwd=cwd or None, env=env_, **own_group)
         try:
             proc.stdin.write(prompt.encode("utf-8"))
             proc.stdin.close()
