@@ -199,27 +199,37 @@ def find_board(explicit=None) -> Path:
     raise RBError("no board found here: run `barid init` in your project folder, or pass --board PATH / set BARID_BOARD")
 
 
+def real(path: Path) -> Path:
+    """The file a board path really is (a symlinked board.json is written through, and its lock is the target's lock)."""
+    return Path(os.path.realpath(path))
+
+
+LOCK_WAIT_SECONDS = float(os.environ.get("BARID_LOCK_WAIT", "60"))
+
+
 @contextlib.contextmanager
 def locked(path: Path):
-    """Cross-process lock around read-modify-write of the board file."""
+    """Cross-process lock around read-modify-write of the board file. Waits at most LOCK_WAIT_SECONDS (BARID_LOCK_WAIT): a process that
+    is stopped or hung while it holds the lock must give a clear refusal to the others, not make every command hang for ever."""
+    path = real(path)
     lock_path = path.with_name(path.name + ".lock")
     path.parent.mkdir(parents=True, exist_ok=True)
     fh = open(lock_path, "a+")
     try:
-        if os.name == "nt":
-            import msvcrt
-            deadline = time.time() + 15
-            while True:
-                try:
+        deadline = time.monotonic() + LOCK_WAIT_SECONDS
+        while True:
+            try:
+                if os.name == "nt":
+                    import msvcrt
                     msvcrt.locking(fh.fileno(), msvcrt.LK_NBLCK, 1)
-                    break
-                except OSError:
-                    if time.time() > deadline:
-                        raise RBError("board is locked by another process")
-                    time.sleep(0.05)
-        else:
-            import fcntl
-            fcntl.flock(fh, fcntl.LOCK_EX)
+                else:
+                    import fcntl
+                    fcntl.flock(fh, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                break
+            except OSError:
+                if time.monotonic() > deadline:
+                    raise RBError(f"the board is locked by another process (waited {int(LOCK_WAIT_SECONDS)} s): {lock_path}", "locked") from None
+                time.sleep(0.02)
         yield
     finally:
         try:
@@ -245,34 +255,107 @@ def _retry_io(fn, attempts: int = 40, delay: float = 0.05):
             time.sleep(delay)
 
 
+def _damaged(path: Path, why: str) -> RBError:
+    bak = path.with_name(path.name + ".bak")
+    hint = f" The previous version is kept as {bak}: copy it over the board file to go back one step." if bak.exists() else ""
+    return RBError(f"the board file is damaged ({path}): {why}.{hint}", "damaged")
+
+
 def load(path: Path) -> dict:
+    path = real(path)
     try:
         d = json.loads(_retry_io(lambda: path.read_text("utf-8")))
     except FileNotFoundError:
         raise RBError(f"board file not found: {path}")
-    except json.JSONDecodeError as e:
-        raise RBError(f"board file is not valid JSON ({path}): {e}")
+    except (json.JSONDecodeError, UnicodeDecodeError) as e:
+        raise _damaged(path, f"it is not valid JSON ({e})") from None
+    if not isinstance(d, dict):
+        raise _damaged(path, "it is not a board")
     if d.get("schema") != SCHEMA:
         raise RBError(f"unsupported board schema {d.get('schema')!r} (this barid understands {SCHEMA})")
+    if not isinstance(d.get("items"), list) or not isinstance(d.get("lanes"), list):
+        raise _damaged(path, "it has no list of tasks or of sessions")
+    for i in d["items"]:
+        if not (isinstance(i, dict) and isinstance(i.get("id"), str) and i.get("status") in STATUSES and isinstance(i.get("lane"), str)):
+            raise _damaged(path, f"a task is broken: {str(i)[:80]}")
+    d.setdefault("events", [])
+    d.setdefault("resources", {})
+    d.setdefault("policy", {})
     if d.get("lang") == "kz":  # people write kz; the language code is kk
         d["lang"] = "kk"
     d["_root"] = str(path.resolve().parent.parent)  # the project folder (real path); lives in memory only
     return d
 
 
+def _keep_previous(path: Path) -> None:
+    """Keep the version being replaced as `<board>.bak` with a hard link: no data is copied (no extra writes), and the file the link
+    points to is never changed afterwards because every save writes a new file. Best effort: a file system without links goes without."""
+    bak = path.with_name(path.name + ".bak")
+    tmp = path.with_name(f"{path.name}.bak{os.getpid()}")
+    try:
+        if path.exists():
+            tmp.unlink(missing_ok=True)
+            os.link(path, tmp)
+            os.replace(tmp, bak)
+    except OSError:
+        with contextlib.suppress(OSError):
+            tmp.unlink(missing_ok=True)
+
+
+def _sync_dir(folder: Path) -> None:
+    if os.name == "nt":
+        return
+    try:
+        fd = os.open(folder, os.O_RDONLY)
+        try:
+            os.fsync(fd)
+        finally:
+            os.close(fd)
+    except OSError:
+        pass
+
+
+def _remove_old_temp_files(path: Path, older_than: float = 3600.0) -> None:
+    """Temp files of a save that was cut off (a crash, a full disk) are not needed by anyone: remove the ones that are an hour old."""
+    now = time.time()
+    for f in path.parent.glob(path.name + ".tmp*"):
+        try:
+            if now - f.stat().st_mtime > older_than:
+                f.unlink()
+        except OSError:
+            pass
+
+
 def save(path: Path, d: dict) -> None:
+    """Write the board so that a crash or a power cut leaves either the old or the new one: the new file is written and flushed to the
+    disk before it replaces the old one, and the folder entry is flushed after."""
+    path = real(path)
     d["updated"] = now_iso()
     tmp = path.with_name(f"{path.name}.tmp{os.getpid()}")
     clean = {k: v for k, v in d.items() if not k.startswith("_")}
-    tmp.write_text(json.dumps(clean, ensure_ascii=False, indent=1) + "\n", "utf-8")
+    data = (json.dumps(clean, ensure_ascii=False, indent=1) + "\n").encode("utf-8")
     try:
+        with open(tmp, "wb") as f:
+            f.write(data)
+            f.flush()
+            os.fsync(f.fileno())
+        _keep_previous(path)
         _retry_io(lambda: os.replace(tmp, path))
+        _sync_dir(path.parent)
     except PermissionError:
-        raise RBError(f"could not write {path}: it is held by another program")
+        with contextlib.suppress(OSError):
+            tmp.unlink(missing_ok=True)
+        raise RBError(f"could not write {path}: it is held by another program or the folder is read-only", "write_failed") from None
+    except OSError as e:
+        with contextlib.suppress(OSError):
+            tmp.unlink(missing_ok=True)
+        raise RBError(f"could not write {path}: {e.strerror or e} (the board was not changed)", "write_failed") from None
+    _remove_old_temp_files(path)
 
 
 def mutate(path: Path, fn):
     """Run fn(board) under the lock; save only if it did not raise."""
+    path = real(path)
     with locked(path):
         d = load(path)
         out = fn(d)
@@ -1174,7 +1257,7 @@ def op_seen(d: dict, lane_id: str, by: str, state: str, task: str = "", reason: 
     lane["seen"] = {"at": now_iso(), "by": by, "state": state, "task": task, "reason": reason[:200]}
 
 
-def op_claim(d: dict, actor: Actor, iid: str, force: bool = False, lease_minutes: int = 0) -> list:
+def op_claim(d: dict, actor: Actor, iid: str, force: bool = False, lease_minutes: int = 0, snapshot: dict | None = None) -> list:
     it = get_item(d, iid)
     if it["status"] not in ("queued", "sent") and not force:
         who = ""
@@ -1207,13 +1290,36 @@ def op_claim(d: dict, actor: Actor, iid: str, force: bool = False, lease_minutes
     it["claim"] = {"by": actor.name, "at": now_iso(), "lease_until": (now_dt() + lease).isoformat(), "signal": now_iso()}
     if timebox:
         it["claim"]["deadline"] = (now_dt() + dt.timedelta(minutes=timebox)).isoformat()
-    it["claim"].update(snapshot_for_claim(d, it))
+    it["claim"].update(snapshot if snapshot is not None else snapshot_for_claim(d, it))
     op_seen(d, it["lane"], actor.name, "working", iid)
     it.pop("violations", None)
     it.pop("changed", None)
     it["updated"] = now_iso()
     log_event(d, actor, "claim", iid, "; ".join(warnings))
     return warnings
+
+
+def claim_task(board: Path, actor: Actor, iid: str, force: bool = False, lease_minutes: int = 0) -> list:
+    """op_claim, with the slow part (git, hashing the protected files) done before the lock is taken: a task that is claimed must
+    not make every other command wait for git. A refusal is found first, on a copy, without the lock."""
+    import copy
+    d = load(board)
+    op_claim(copy.deepcopy(d), actor, iid, force, lease_minutes, snapshot={})
+    snap = snapshot_for_claim(d, get_item(d, iid))
+    return mutate(board, lambda dd: op_claim(dd, actor, iid, force, lease_minutes, snapshot=snap))
+
+
+def finish_task(board: Path, actor: Actor, iid: str, report: str = "", note: str = "", force: bool = False, outcome: str = "") -> dict:
+    """op_finish, with the file check against the claim-time snapshot (git, hashing) done before the lock is taken."""
+    prepared = None
+    try:
+        d = load(board)
+        it = get_item(d, iid)
+        if it["status"] == "running" and it.get("claim"):
+            prepared = (it["claim"].get("at"), verify_at_finish(d, it))
+    except (RBError, OSError):
+        pass
+    return mutate(board, lambda dd: op_finish(dd, actor, iid, report, note, force, outcome, prepared))
 
 
 def _owner_check(it: dict, actor: Actor, force: bool, verb: str) -> None:
@@ -1223,7 +1329,7 @@ def _owner_check(it: dict, actor: Actor, force: bool, verb: str) -> None:
     raise RBError(f"{it['id']} is held by {claim.get('by')!r}, you ({actor.name!r}) cannot {verb} it")
 
 
-def op_finish(d: dict, actor: Actor, iid: str, report: str = "", note: str = "", force: bool = False, outcome: str = "") -> dict:
+def op_finish(d: dict, actor: Actor, iid: str, report: str = "", note: str = "", force: bool = False, outcome: str = "", prepared: tuple | None = None) -> dict:
     it = get_item(d, iid)
     if it["status"] != "running" and not force:
         raise RBError(f"{iid} is {it['status']}: claim it first", "wrong_state", id=iid, status=it["status"])
@@ -1232,7 +1338,10 @@ def op_finish(d: dict, actor: Actor, iid: str, report: str = "", note: str = "",
         raise RBError("a report path is required (use --report PATH, or --no-report if there is none)")
     if outcome and outcome not in OUTCOMES:
         raise RBError(f"outcome must be one of: {', '.join(OUTCOMES)}", "bad_outcome")
-    violations, changed = verify_at_finish(d, it)
+    if prepared and prepared[0] == (it.get("claim") or {}).get("at"):
+        violations, changed = prepared[1]      # worked out before the lock was taken (git and file hashing can be slow)
+    else:
+        violations, changed = verify_at_finish(d, it)
     it["violations"] = violations
     if changed is not None:
         it["changed"] = changed
@@ -2648,7 +2757,7 @@ def _close_if_ours(board: Path, actor: Actor, iid: str, report: str, note: str, 
     try:
         if not _still_mine(board, iid, actor.name):
             return False
-        mutate(board, lambda dd: op_finish(dd, actor, iid, report, note, not report, outcome))
+        finish_task(board, actor, iid, report, note, not report, outcome)
         return True
     except (RBError, OSError, ValueError):
         return False
@@ -2660,7 +2769,7 @@ def run_worker_task(board: Path, lane: str, iid: str, name: str, command: str, c
     claim-lost, taken-away (the person cancelled it or returned it to the queue while it ran), error (it could not be run)."""
     actor = Actor("agent", name)
     try:
-        mutate(board, lambda d: op_claim(d, actor, iid, False, WORKER_LEASE_MINUTES))
+        claim_task(board, actor, iid, False, WORKER_LEASE_MINUTES)
     except RBError as e:
         print(f"[barid worker] could not claim {iid}: {e}", flush=True)
         return "claim-lost"
@@ -2719,7 +2828,7 @@ def run_worker_task(board: Path, lane: str, iid: str, name: str, command: str, c
             why = ("the timebox ran out" if timed_out else "the worker was stopped" if stopped else
                    f"the agent ended with exit code {code} without reporting")
             outcome = "partial" if (code == 0 and not timed_out and not stopped) else "failed"
-            mutate(board, lambda dd: op_finish(dd, actor, iid, str(log_file), f"Closed by the worker: {why}. Log: {log_file}", False, outcome))
+            finish_task(board, actor, iid, str(log_file), f"Closed by the worker: {why}. Log: {log_file}", False, outcome)
             print(f"[barid worker] {iid}: {why}; closed as {outcome}", flush=True)
         else:
             print(f"[barid worker] {iid}: reported by the agent ({it['status']}, {it.get('outcome') or 'no outcome'})", flush=True)
@@ -2842,7 +2951,7 @@ def cmd_claim(args):
     last_note = -60.0
     while True:
         try:
-            warnings = mutate(board, lambda d: op_claim(d, actor, args.id, args.force))
+            warnings = claim_task(board, actor, args.id, args.force)
             break
         except RBError as e:
             if e.code not in ("begin_time", "waiting", "conflict") or time.monotonic() - started >= wait:
@@ -2862,7 +2971,7 @@ def cmd_claim(args):
 
 def cmd_finish(args):
     board = find_board(getattr(args, "board", None))
-    it = mutate(board, lambda d: op_finish(d, cli_actor(args), args.id, "" if args.no_report else (args.report or ""), args.note or "", args.force or args.no_report, getattr(args, "outcome", "") or ""))
+    it = finish_task(board, cli_actor(args), args.id, "" if args.no_report else (args.report or ""), args.note or "", args.force or args.no_report, getattr(args, "outcome", "") or "")
     out(args, it, f"{args.id} finished: waiting for the person to review the report")
 
 
@@ -3324,6 +3433,9 @@ def main(argv=None) -> int:
         return {"begin_time": EXIT_WAIT, "waiting": EXIT_WAIT, "conflict": EXIT_WAIT, "stuck": EXIT_STUCK}.get(e.code, 1)
     except BrokenPipeError:
         return 0
+    except OSError as e:
+        print(f"rb: {e.strerror or e}" + (f": {e.filename}" if getattr(e, "filename", None) else ""), file=sys.stderr)
+        return 1
     return 0
 
 

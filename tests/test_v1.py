@@ -1,10 +1,14 @@
 """Barid 1.0: waits that can never end are reported as such, a sent task keeps its ordering, boards stay quick."""
 import datetime as dt
 import os
+import json
 import random
 import shutil
+import stat
 import subprocess
 import sys
+import tempfile
+import textwrap
 import time
 import unittest
 from pathlib import Path
@@ -346,6 +350,125 @@ class WorkerSafety(Base):
         code, out = self.finish_worker(p, 60)
         self.assertEqual(code, 0, out)
         self.assertIn("do the thing", out_file.read_text())
+
+
+class Durability(Base):
+    def cli_env(self, **extra):
+        return {**os.environ, "BARID_BOARD": str(self.path), **extra}
+
+    def run_cli(self, *args, env=None, timeout=60):
+        p = subprocess.run([sys.executable, str(RB_PATH), *args], capture_output=True, text=True, timeout=timeout, env=env or self.cli_env())
+        return p.returncode, p.stdout, p.stderr
+
+    @unittest.skipUnless(os.name == "posix", "uses flock")
+    def test_a_stuck_lock_holder_gives_a_clear_refusal_instead_of_a_hang(self):
+        self.add("A")
+        holder = subprocess.Popen([sys.executable, "-c", textwrap.dedent(f"""
+            import fcntl, time
+            fh = open({str(self.path) + '.lock'!r}, "a+"); fcntl.flock(fh, fcntl.LOCK_EX); print("held", flush=True); time.sleep(20)""")],
+            stdout=subprocess.PIPE, text=True)
+        self.addCleanup(holder.kill)
+        holder.stdout.readline()
+        started = time.monotonic()
+        code, _, err = self.run_cli("--by", "x", "note", "A", "hello", env=self.cli_env(BARID_LOCK_WAIT="2"))
+        self.assertEqual(code, 1)
+        self.assertIn("locked by another process", err)
+        self.assertLess(time.monotonic() - started, 15)
+
+    @unittest.skipUnless(os.name == "posix" and shutil.which("git"), "needs a POSIX shell and git")
+    def test_a_slow_git_during_claim_does_not_hold_up_other_commands(self):
+        self.add("A")
+        self.add("B", lane="second")
+        shim = Path(self._tmp.name) / "shim"
+        shim.mkdir()
+        (shim / "git").write_text(f"#!/bin/sh\nsleep 3\nexec {shutil.which('git')} \"$@\"\n")
+        (shim / "git").chmod(0o755)
+        env = self.cli_env(PATH=f"{shim}{os.pathsep}{os.environ['PATH']}")
+        claim = subprocess.Popen([sys.executable, str(RB_PATH), "--by", "w", "claim", "A"], env=env, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        time.sleep(1.0)                           # the claim is now waiting for git, outside the lock
+        started = time.monotonic()
+        code, _, err = self.run_cli("--by", "x", "note", "B", "while git is slow")
+        took = time.monotonic() - started
+        self.assertEqual(code, 0, err)
+        self.assertLess(took, 2.0, f"a note waited {took:.1f}s for a claim that was only waiting for git")
+        claim.communicate(timeout=60)
+        self.assertEqual(self.comp("A")["status"], "running")
+
+    def test_a_symlinked_board_is_written_through(self):
+        real_dir = Path(self._tmp.name) / "elsewhere"
+        real_dir.mkdir()
+        target = real_dir / "board.json"
+        shutil.move(str(self.path), str(target))
+        try:
+            self.path.symlink_to(target)
+        except (OSError, NotImplementedError):
+            self.skipTest("cannot make symlinks here")
+        self.add("A")
+        self.assertTrue(self.path.is_symlink())
+        self.assertIn("A", [i["id"] for i in json.loads(target.read_text("utf-8"))["items"]])
+        self.assertTrue((real_dir / "board.json.lock").exists())
+
+    def test_the_previous_version_is_kept_and_saves_are_flushed_to_disk(self):
+        self.add("A")
+        before = rb.load(self.path)["rev"]
+        calls = []
+        real_fsync = os.fsync
+        os.fsync = lambda fd: (calls.append(fd), real_fsync(fd))[1]
+        self.addCleanup(setattr, os, "fsync", real_fsync)
+        self.add("B")
+        self.assertGreaterEqual(len(calls), 1)
+        bak = Path(str(self.path) + ".bak")
+        self.assertTrue(bak.exists())
+        self.assertEqual(json.loads(bak.read_text("utf-8"))["rev"], rb.load(self.path)["rev"] - 1)
+        self.assertEqual(before + 1, rb.load(self.path)["rev"])
+
+    def test_old_temp_files_of_a_cut_off_save_are_removed_but_a_fresh_one_is_left(self):
+        old, fresh = Path(str(self.path) + ".tmp4242"), Path(str(self.path) + ".tmp4343")
+        old.write_text("x")
+        fresh.write_text("x")
+        os.utime(old, (time.time() - 7200, time.time() - 7200))
+        self.add("A")
+        self.assertFalse(old.exists())
+        self.assertTrue(fresh.exists())
+
+    @unittest.skipIf(os.name == "nt" or (hasattr(os, "geteuid") and os.geteuid() == 0), "needs a user who cannot write to a read-only folder")
+    def test_a_read_only_folder_gives_a_message_not_a_traceback(self):
+        self.add("A")
+        folder = self.path.parent
+        folder.chmod(stat.S_IRUSR | stat.S_IXUSR)
+        self.addCleanup(folder.chmod, 0o755)
+        code, _, err = self.run_cli("--by", "x", "note", "A", "hello")
+        self.assertEqual(code, 1)
+        self.assertNotIn("Traceback", err)
+
+    def test_damaged_board_files_are_refused_with_a_message(self):
+        self.add("A")
+        for text in ("[]", '{"schema": 1}', '{"schema": 1, "items": [{"id": "A"}], "lanes": []}', "", "{not json", '{"schema": 1, "items": 5, "lanes": []}'):
+            self.path.write_text(text, "utf-8")
+            code, out, err = self.run_cli("list")
+            self.assertEqual(code, 1, (text, err))
+            self.assertNotIn("Traceback", err, text)
+            self.assertIn("damaged", err, text)
+
+    def test_the_message_about_a_damaged_board_points_at_the_previous_version(self):
+        self.add("A")
+        self.add("B")
+        self.path.write_text("", "utf-8")
+        self.assertIn(".bak", self.run_cli("list")[2])
+
+    def test_many_processes_writing_at_once_lose_nothing(self):
+        self.add("A")
+        procs = [subprocess.Popen([sys.executable, "-c", textwrap.dedent(f"""
+            import subprocess, sys
+            for k in range(15):
+                r = subprocess.run([sys.executable, {str(RB_PATH)!r}, "--by", "p{n}", "note", "A", "n{n}-" + str(k)], capture_output=True, text=True)
+                assert r.returncode == 0, r.stderr""")], env=self.cli_env(), stderr=subprocess.PIPE, text=True) for n in range(6)]
+        for p in procs:
+            _, err = p.communicate(timeout=180)
+            self.assertEqual(p.returncode, 0, err)
+        notes = self.comp("A")["notes"]
+        self.assertEqual(len(notes), 90)
+        self.assertEqual(len({n["text"] for n in notes}), 90)
 
 
 def board_with_in(folder):
