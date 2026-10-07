@@ -1,5 +1,28 @@
 # Changelog
 
+## 1.0.0-rc.1 (2026-10-07)
+
+**The 1.0 release candidate.** What stays the same inside 1.x is written down in [docs/COMPATIBILITY.md](docs/COMPATIBILITY.md) (also in Russian and Kazakh) and checked by `tests/test_contract.py`. 1.0.0 is tagged after a real unattended night on this version.
+
+Found by a red-team review of 0.6.0 (twelve processes writing for a minute, a killed writer, clock changes, a stuck lock holder, a worker driven by hostile commands), each with a test that fails on 0.6.0:
+
+- **A wait that cannot end is no longer called a wait.** A task below a cancelled one, or below a holder whose lease ran out, got exit `3` ("it will start by itself") and `--wait` could sit for 14 hours; now it is `4` at once, with `via` naming the task it waits for. A task marked `sent` kept no order (it could be claimed before the task it needs, and two tasks could wait for each other); now `claim` refuses it, and a sent task that waits does not hold back the task it waits for.
+- **`worker`:** stops the agent when its task is cancelled or returned; no longer blocks on a prompt that does not fit the pipe (it ignored SIGTERM until the agent ended); closes the task as failed when the agent cannot start, instead of leaving it `running`; gives up on a task that keeps coming back (`--max-attempts`) instead of starting it every second for ever; stops what the agent left running in the background; quotes the prompt path (a board in a folder with a space); counts the timebox on the monotonic clock; renews the lease once a minute instead of twice (half the board writes); refuses a `--cwd` that is not a folder before claiming anything.
+- **Names with non-ASCII letters or spaces** (Russian, Kazakh) were read from git in quoted octal form, matched no scope and made a finished task look as if it had left its scope, so its dependents stalled. Read with `-z` now.
+- **The digest** lost a finished task after about 500 events (the event log is capped); "Ended" is built from the tasks themselves now.
+- **A time of day** (`23:00`) was an hour off on the evening before a clock change; absurd times (`+99999999d`) and a time without an offset in a hand-edited board raised tracebacks.
+- **The board file:** a lock that is held by a stopped process gave every other command an endless wait; now they refuse clearly after `BARID_LOCK_WAIT` seconds (60). `claim` and `finish` ran git and hashed files inside the lock (a note waited 5 s behind a slow git); now they do it before. A symlinked `board.json` was replaced by a regular file and its two paths had separate locks. Saves are flushed to the disk, the version before the last change is kept as `board.json.bak` (a hard link: no extra data written), old temp files are removed, and a damaged file, a full disk or a read-only folder give a message instead of a traceback.
+- **Speed:** `compute()` found the marks and the normalised scopes of a task again for every pair of tasks; with file scopes a board of 500 tasks took 4 s, now about 0.25 s. The cost of each command is kept in check by a budget test.
+- **Fix in the release itself:** `.claude-plugin/plugin.json` was an empty file in 0.6.0 (the plugin could not be read); a test now checks that the manifests are valid and carry the version of the program.
+
+New, small and meant for the morning:
+
+- `barid overview` (and `--brief` for a status bar) shows every session on one line: what it does, what it would start next, what waits for you.
+- `barid accept-clean` and one button in the panel (after a second click) accept the reports that ended `complete` with no file warnings and no disturbed measurement; anything else stays for you to read.
+- An optional bell in the panel: a browser notification when more things wait for you, only while the tab is in the background, never a sound.
+
+Tests: 189 plus the contract tests (frozen commands, exit codes, reason codes, board and `--json` fields, text and time budgets, manifests, documents in three languages), and a board written by 0.6.0 among the old-release fixtures.
+
 ## 0.6.0 (2026-10-06)
 
 **Nights and unattended runs.** The full description, with the reasons behind each choice, is in [docs/UNATTENDED.md](docs/UNATTENDED.md).

@@ -157,6 +157,9 @@ For work that runs while nobody watches (an overnight benchmark chain, a long qu
 - **A connection text for the night.** `barid lane edit LANE --unattended` (or the "Night mode" box in the Connect window) makes `barid connect LANE` print a text that tells the session to loop: ask for the next task, wait on exit code 3, never ask whether to continue, stop only when its lane is empty or you are needed.
 - **A loop outside the model.** `barid worker --lane night --cmd 'codex exec -'` runs the lane without a chat session that has to stay patient: for every task it starts your agent command with a fresh context and the prompt on stdin, keeps the lease alive, stops it at the timebox (its own process group only), closes a task whose agent died without a report, then takes the next. It ends when the lane is empty (exit 0), needs you (4), or nothing could start for `--max-wait` (3).
 - **A morning summary.** `barid digest --since 12h` (and the card "While you were away" in the panel) lists what ended with which outcome and where the report is, what runs, what stalled and what needs you.
+- **A wait that cannot end is not called a wait.** If a task waits for one that waits for a cancelled one, or for a holder whose lease ran out (its session is most likely gone), `next` says `4` (needs you) at once, not `3` for hours. A task you marked as sent still keeps its order: `claim` refuses it before what it needs.
+- **A worker that survives trouble.** `barid worker` stops its agent when you cancel or return the task, never blocks on a big prompt, stops what the agent left running in the background, closes the task as failed when the agent cannot even start, and gives up on a task that keeps coming back (`--max-attempts`).
+- **A short morning.** `barid overview` shows every session on one line, `barid accept-clean` (and one button in the panel, after a second click) accepts the reports that ended complete with no file warnings and leaves the rest for you to read, and a bell in the panel can remind you, only while the tab is in the background, when more things wait for you.
 
 More in [docs/UNATTENDED.md](docs/UNATTENDED.md).
 
@@ -189,6 +192,9 @@ barid next --lane night --wait 300           # wait up to 5 minutes for a task t
 barid add T5 --lane night --after T4 --not-before 23:00 --timebox 8h --text-file p.md   # after T4 whatever its outcome, not before 23:00
 barid worker --lane night --cmd 'codex exec -'   # run a lane unattended: a fresh agent per task, lease kept, timebox enforced
 barid digest --since 12h                     # what happened while you were away
+barid overview                               # every session on one line (--brief for a status bar)
+barid accept-clean                           # person: accept every report that ended complete with no file warnings
+barid worker --lane night --cmd '...' --max-attempts 3   # a task that keeps coming back is closed as failed after 3 starts
 barid finish T1 --report reports/t1.md --by worker-a
 barid gen T2                                 # request that makes an agent write T2's prompt
 barid move T3 1                              # priority: earlier in the list = earlier slot in the plan
@@ -224,7 +230,7 @@ Keep secrets out of prompts and notes: the board is plain JSON in your project f
 
 I built Barid for myself, to stop losing track of my own agent windows. If it is useful to you, please use it; ideas and bug reports are welcome, but it is a one-person project and I cannot promise fast answers.
 
-Version 0.4, used every day by its author to run two agent sessions. Linux is the tested home; macOS and Windows are covered by CI but have had little real-world use, and nothing here has been tried on AMD or Intel GPUs (Barid itself does not care about the GPU: it only tracks who holds a shared resource). Bug reports with the output of `barid doctor` are very welcome.
+Version 1.0. Used every day by its author to run two agent sessions, including long unattended nights. What is promised to stay the same is in [docs/COMPATIBILITY.md](docs/COMPATIBILITY.md): the board format, the exit codes and the command names will not break inside 1.x, and boards of every earlier release open. Linux is the tested home; macOS and Windows are covered by CI but have had little real-world use, and nothing here has been tried on AMD or Intel GPUs (Barid itself does not care about the GPU: it only tracks who holds a shared resource). Bug reports with the output of `barid doctor` are very welcome.
 
 ## Requirements and platforms
 

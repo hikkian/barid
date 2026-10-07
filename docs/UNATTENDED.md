@@ -71,13 +71,19 @@ barid worker --lane night --cmd 'claude -p' --max-wait 36000 --max-tasks 5
 
 For each ready task of the lane the worker:
 
-1. claims it (as `worker-<lane>`, or `--by`), with a 3-minute lease;
+1. claims it (as `worker-<lane>`, or `--by`), with a 3-minute lease (the slow part of the claim, git and hashing the protected files, is done before the board lock is taken);
 2. writes the prompt (with a footer that says the task is already claimed and gives the `finish` command) to `.barid/runs/<id>-<time>.prompt.md`, starts your command in its own process group with the prompt on **stdin**, and with `BARID_PROMPT_FILE`, `BARID_TASK`, `BARID_LANE`, `BARID_AGENT`, `BARID_BOARD` in the environment (`{prompt_file}` inside the command is replaced by the file name);
-3. renews the lease every 30 seconds and stops the process group at the task's deadline (SIGTERM, then SIGKILL after 20 s; never anything outside its own group);
+3. renews the lease once a minute and stops the process group at the task's deadline (SIGTERM, then SIGKILL after 20 s; never anything outside its own group). The deadline is counted on the monotonic clock, so a suspended computer or a clock that was set does not kill a healthy agent. It also stops the agent when you cancel the task or return it to the queue while it runs, and it stops what the agent left running in the background when the command ends;
 4. when the command ends and the agent did not call `finish`, closes the task itself: `partial` if the exit code was 0, `failed` otherwise (or after a timeout), with a note and the log path;
 5. asks for the next task. It waits for start times, other tasks and conflicts, and ends when the lane is empty (exit 0), when it needs you (exit 4) or when nothing could start for `--max-wait` seconds (exit 3).
 
+Safety nets: a `--cwd` that is not a folder is refused before anything is claimed; a command that cannot even start closes its task as `failed` (never leaves it `running`) and three such failures in a row stop the worker (exit 1); a task that comes back to the queue again and again without a report (an agent that calls `release`) is started at most `--max-attempts` times (default 3, with a pause that grows), then closed as `failed` so that you see it in the morning; the prompt is written to the agent from a thread, so a big prompt that the agent does not read cannot block the worker.
+
 A fresh agent for every task is deliberate: long sessions accumulate stale context, and "one task, one context, state in the board" is the pattern the unattended-agent community converged on.
+
+## A wait that can never end
+
+A task that waits for a task that waits for a cancelled one, or for a holder whose lease ran out (its session is most likely gone), cannot start by itself. `next` and `claim` answer `4` (needs the person) for all of them at once, with the reason code at the bottom of the chain and `via` naming the task it waits for. A task you marked as `sent` keeps its order too: `claim` refuses it before what it needs, and a sent task that itself waits does not hold back the task it waits for. Returning the dead holder to the queue (the panel's button, or `release`) frees the lane.
 
 ## `barid digest`
 
