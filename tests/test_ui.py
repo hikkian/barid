@@ -208,6 +208,25 @@ class PanelInBrowser(unittest.TestCase):
         self.assertEqual(self.b.exec("return window.__notes.length;"), 1)
         self.assertNoJsErrors()
 
+    def test_the_away_card_lists_only_what_the_person_has_not_seen(self):
+        for iid in ("C1", "C2", "C3"):
+            barid(self.board, "add", iid, "--lane", "a", "--title", "Quiet " + iid, "--text", "x", "--profile", "light")
+        barid(self.board, "claim", "C1", "--by", "w1", "--force")
+        barid(self.board, "finish", "C1", "--report", "r1.md", "--outcome", "complete", "--by", "w1")      # finished before the panel was opened
+        self.open()
+        digest = "document.getElementById('digest').textContent"
+        self.b.wait(digest + ".indexOf('C1') >= 0", what="a report that finished while the person was away")
+        barid(self.board, "claim", "C2", "--by", "w1", "--force")
+        barid(self.board, "finish", "C2", "--report", "r2.md", "--outcome", "complete", "--by", "w1")      # finished while the panel is open
+        self.b.wait("document.getElementById('inboxwrap').textContent.indexOf('C2') >= 0", what="C2 in the inbox")
+        import time
+        time.sleep(18)                                                                                      # longer than the card's refresh interval
+        self.assertEqual(self.b.exec("return " + digest + ".indexOf('C2') >= 0;"), False, "a task that finished in front of the person is not news")
+        self.assertEqual(self.b.exec("return " + digest + ".indexOf('C1') >= 0;"), True)
+        barid(self.board, "--human", "accept", "C1")                                                      # accepted: seen
+        self.b.wait("document.getElementById('digest').textContent.indexOf('C1') < 0", timeout=30, what="the accepted report to leave the card")
+        self.assertNoJsErrors()
+
     def test_every_card_of_the_order_stays_under_its_own_session_in_a_narrow_window(self):
         barid(self.board, "lane", "add", "c", "--title", "Third agent")
         for iid, lane in (("C1", "c"), ("C2", "c"), ("B2", "b"), ("A2", "a")):

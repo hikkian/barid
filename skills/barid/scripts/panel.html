@@ -460,7 +460,7 @@ function checkNotify(B) {
 function render() {
   var B = S.board; if (!B) return;
   if (!STR[S.lang]) { var nl = (navigator.language || "en").slice(0, 2); S.lang = STR[B.lang] && B.lang !== "en" ? B.lang : (B.lang === "kz" ? "kk" : (nl === "kz" ? "kk" : STR[nl] ? nl : "en")); }
-  setStatic(); checkNotify(B);
+  setStatic(); checkNotify(B); noteFinished(B);
   $("proj").textContent = B.project + " · " + t("rev") + " " + B.rev;
   document.title = "Barid · " + B.project;
   // lane filter chips
@@ -528,11 +528,23 @@ function renderNow() {
   (sm.person || []).forEach(function (d) { line("warn", "👤", fmt(t("sum_person"), {id: d.id, list: d.ids.join(", ")})); });
 }
 
+// What the person has already seen is not news: a report they accepted, or a task that finished while this tab was open and in front.
+function seenIds() { try { return JSON.parse(lsGet("barid.seen") || "[]"); } catch (e) { return []; } }
+function markSeen(ids) { var s = seenIds(), changed = false; ids.forEach(function (i) { if (s.indexOf(i) < 0) { s.push(i); changed = true; } }); if (changed) lsSet("barid.seen", JSON.stringify(s.slice(-300))); }
+function noteFinished(B) {
+  var now = {}, fresh = [];
+  B.items.forEach(function (c) { now[c.id] = c.status; });
+  if (S.prevStatus && document.visibilityState === "visible") B.items.forEach(function (c) { var was = S.prevStatus[c.id]; if (was && was !== c.status && (c.status === "review" || c.status === "done")) fresh.push(c.id); });
+  S.prevStatus = now;
+  if (fresh.length) { markSeen(fresh); S.digestAt = 0; }
+}
 function renderDigest(g) {
   var box = clear($("digest")); if (!g) return;
   var stale = (g.running || []).filter(function (r) { return r.stale; });
   // reports to accept and proposals to approve already have their own section; the card is for what happened and what is stuck
   var stuck = g.needs_you.filter(function (n) { return n.kind === "decision" || n.kind === "never"; });
+  var seen = seenIds();
+  g = Object.assign({}, g, {ended: g.ended.filter(function (e) { var c = byId(e.id); return seen.indexOf(e.id) < 0 && !(c && c.status === "done"); })});
   if (!g.ended.length && !stuck.length && !stale.length) return;
   var card = h("div", {class: "card", style: "padding:12px 14px;margin-bottom:12px;border-left:4px solid var(--ac)"});
   card.appendChild(h("div", {class: "lh", style: "display:flex;align-items:center;gap:8px;font-weight:700;margin-bottom:6px"}, h("span", {text: "☾ " + t("digest_title")}),
@@ -544,7 +556,7 @@ function renderDigest(g) {
         h("b", {text: e.id}), " · " + e.title + " · " + outLabel(e.outcome) + (e.report ? " · " + t("digest_report") + ": " + e.report : "")));
     });
   }
-  var need = stuck.concat(g.ended.length ? g.needs_you.filter(function (n) { return n.kind === "accept" || n.kind === "approve"; }) : []).map(function (n) { return n.kind === "accept" ? fmt(t("digest_accept"), {id: n.id}) : n.kind === "approve" ? fmt(t("digest_approve"), {id: n.id}) : n.kind === "never" ? fmt(t("digest_never"), {id: n.id, on: n.on}) : fmt(t("digest_decision"), {id: n.id, on: n.on}); });
+  var need = stuck.concat(g.ended.length ? g.needs_you.filter(function (n) { return (n.kind === "accept" || n.kind === "approve") && seen.indexOf(n.id) < 0; }) : []).map(function (n) { return n.kind === "accept" ? fmt(t("digest_accept"), {id: n.id}) : n.kind === "approve" ? fmt(t("digest_approve"), {id: n.id}) : n.kind === "never" ? fmt(t("digest_never"), {id: n.id, on: n.on}) : fmt(t("digest_decision"), {id: n.id, on: n.on}); });
   stale.forEach(function (r) { need.push(fmt(t("digest_stale"), {id: r.id})); });
   if (need.length) { card.appendChild(h("div", {class: "sub", style: "margin-top:6px", text: t("digest_needs")})); need.forEach(function (x) { card.appendChild(h("div", {class: "together warn", text: "👤 " + x})); }); }
   box.appendChild(card);

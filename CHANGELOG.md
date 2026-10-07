@@ -19,6 +19,8 @@ Panel: the order of work ("Order, and what can run together") is a grid with one
 
 A documentation check of 134 claims against the code (done by an AI agent, spot-checked by hand; 13 mismatches, 4 stale) led to: `barid policy` (show the board policy, or set `dependents_wait_for_accept`, `lease_hours`, `footer`, `handoff`, `git_check` as the person: the README promised a "policy switch" that no command could set); `--json` now works for `where`, `doctor`, `lane list`, `resource list`, `profile list` and `protect list` (the documents said every command accepted it); a task that waits only for its start time no longer prints `(after )`; and corrected wording about the event log (it keeps the last 500 entries), the worker lease (renewed once a minute), person-only commands in the examples (`--human`), trusted planners, the footer languages, `GET /api/digest` and `BARID_ACTOR`.
 
+The "While you were away" card no longer lists what you have already seen: a report you accepted, or a task that finished while the panel was open in front of you. It lists what ended while you were really away (a browser test checks it).
+
 New, small and meant for the morning:
 
 - `barid overview` (and `--brief` for a status bar) shows every session on one line: what it does, what it would start next, what waits for you.
