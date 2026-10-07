@@ -1,6 +1,9 @@
 """Barid 1.0: waits that can never end are reported as such, a sent task keeps its ordering, boards stay quick."""
 import datetime as dt
+import os
 import random
+import shutil
+import subprocess
 import time
 import unittest
 
@@ -157,6 +160,83 @@ class BoardsStayQuick(Base):
         rb.compute(d)
         took = time.perf_counter() - start
         self.assertLess(took, 0.6, f"compute took {took:.2f}s on 500 tasks")
+
+
+@unittest.skipUnless(hasattr(time, "tzset"), "needs time.tzset (not on Windows)")
+class TimesOfDay(unittest.TestCase):
+    def setUp(self):
+        self._tz = os.environ.get("TZ")
+        os.environ["TZ"] = "Europe/Berlin"
+        time.tzset()
+        self.addCleanup(self.restore)
+
+    def restore(self):
+        if self._tz is None:
+            os.environ.pop("TZ", None)
+        else:
+            os.environ["TZ"] = self._tz
+        time.tzset()
+
+    def local(self, iso):
+        return dt.datetime.fromisoformat(iso).astimezone().strftime("%Y-%m-%d %H:%M")
+
+    def test_a_time_of_day_is_that_time_on_the_clock_across_a_clock_change(self):
+        utc = dt.timezone.utc
+        # Saturday 23:30 CEST; the clocks go back during the night, so 23:00 on Sunday is CET (one hour later in UTC than a fixed offset says)
+        self.assertEqual(self.local(rb.parse_when("23:00", dt.datetime(2026, 10, 24, 21, 30, tzinfo=utc))), "2026-10-25 23:00")
+        # Saturday 23:30 CET; the clocks go forward during the night
+        self.assertEqual(self.local(rb.parse_when("23:00", dt.datetime(2026, 3, 28, 22, 30, tzinfo=utc))), "2026-03-29 23:00")
+        self.assertEqual(self.local(rb.parse_when("02:30", dt.datetime(2026, 10, 24, 21, 30, tzinfo=utc))), "2026-10-25 02:30")
+
+    def test_absurd_times_are_refused_with_a_message_not_a_traceback(self):
+        for text in ("+99999999d", "+" + "9" * 5000 + "m", "+9999999999999h"):
+            with self.assertRaises(rb.RBError, msg=text):
+                rb.parse_when(text)
+
+    def test_a_time_without_an_offset_in_a_hand_edited_board_does_not_break_it(self):
+        d = rb.new_board("t", [("a", "A")])
+        now = rb.now_iso()
+        d["items"].append({"id": "T", "title": "T", "text": "x", "status": "queued", "lane": "a", "needs": [], "after": [], "uses": [], "notes": [],
+                           "profile": "", "not_before": "2099-10-07T23:00:00", "created": now, "updated": now})
+        self.assertEqual(rb.compute(d)[0]["state"], "waiting")
+
+
+class Digest(Base):
+    def test_a_task_that_ended_is_still_listed_after_a_flood_of_events(self):
+        self.add("J1")
+        self.run_("J1")
+        self.finish("J1")
+        self.add("J2", lane="second")
+        self.run_("J2")
+        for k in range(600):
+            rb.mutate(self.path, lambda d, k=k: rb.op_note(d, AGENT, "J2", f"progress {k}"))
+        g = rb.digest(rb.load(self.path), rb.now_dt() - dt.timedelta(hours=1))
+        self.assertEqual([e["id"] for e in g["ended"]], ["J1"])
+        self.assertEqual([r["id"] for r in g["running"]], ["J2"])
+
+
+@unittest.skipUnless(shutil.which("git"), "needs git")
+class FileNames(Base):
+    def git(self, *a):
+        subprocess.run(["git", "-c", "user.name=t", "-c", "user.email=t@t", *a], cwd=self.repo, check=True, capture_output=True)
+
+    def test_names_with_non_ascii_letters_and_spaces_stay_in_scope(self):
+        self.repo = os.path.join(self._tmp.name, "repo")
+        os.makedirs(os.path.join(self.repo, "src"))
+        self.git("init", "-q")
+        self.git("commit", "-q", "--allow-empty", "-m", "init")
+        self.add("T1", workdir=self.repo, touches=["src"])
+        self.run_("T1")
+        for name in ("caf\u00e9.txt", "with space.txt", "\u043f\u043b\u044e\u0441.txt", "\u0430\u0431\u0434\u0438\u043a\u0435\u0440\u043e\u0432\u0430 \u04d9.txt"):
+            with open(os.path.join(self.repo, "src", name), "w", encoding="utf-8") as f:
+                f.write("x")
+        with open(os.path.join(self.repo, "outside \u043d\u0435.txt"), "w", encoding="utf-8") as f:
+            f.write("x")
+        self.finish("T1")
+        it = self.comp("T1")
+        self.assertEqual(sorted(v["path"] for v in it["violations"]), ["outside \u043d\u0435.txt"])      # only the file that really is outside
+        self.assertEqual(it["changed"]["count"], 5)
+        self.assertIn("caf\u00e9.txt", " ".join(it["changed"]["files"]))
 
 
 if __name__ == "__main__":

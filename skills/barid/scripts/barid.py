@@ -79,9 +79,15 @@ def now_iso() -> str:
 
 
 def parse_ts(s):
+    """A stored time as an aware datetime (None if it cannot be read). One without an offset (a hand-edited board) is local time: left
+    naive it would make every comparison with `now` raise and the whole board unusable."""
     try:
-        return dt.datetime.fromisoformat(s)
+        ts = dt.datetime.fromisoformat(s)
     except (TypeError, ValueError):
+        return None
+    try:
+        return ts if ts.tzinfo is not None else ts.astimezone()
+    except (OverflowError, OSError, ValueError):
         return None
 
 
@@ -93,21 +99,26 @@ def parse_when(text: str, now: dt.datetime | None = None) -> str:
     if not text:
         return ""
     now = now or now_dt()
-    m = re.fullmatch(r"\+\s*(\d+)\s*([mhd])", text.lower())
+    m = re.fullmatch(r"\+\s*(\d{1,6})\s*([mhd])", text.lower())
     if m:
         n = int(m.group(1))
-        delta = {"m": dt.timedelta(minutes=n), "h": dt.timedelta(hours=n), "d": dt.timedelta(days=n)}[m.group(2)]
-        return (now + delta).isoformat()
+        try:
+            delta = {"m": dt.timedelta(minutes=n), "h": dt.timedelta(hours=n), "d": dt.timedelta(days=n)}[m.group(2)]
+            return (now + delta).isoformat()
+        except OverflowError:
+            raise RBError(f"that is too far away: {text!r}", "bad_time", value=text) from None
     m = re.fullmatch(r"(\d{1,2}):(\d{2})", text)
     if m:
+        # The wall-clock time is built without an offset and only then given the zone of that day: with the offset of `now` a day
+        # that has a clock change in between would land an hour off.
         local_now = now.astimezone()
         try:
-            at = local_now.replace(hour=int(m.group(1)), minute=int(m.group(2)), second=0, microsecond=0)
+            at = local_now.replace(tzinfo=None, hour=int(m.group(1)), minute=int(m.group(2)), second=0, microsecond=0)
         except ValueError:
             raise RBError(f"not a time of day: {text!r}", "bad_time", value=text) from None
-        if at <= local_now:
+        if at.astimezone() <= local_now:
             at += dt.timedelta(days=1)
-        return at.astimezone(dt.timezone.utc).replace(microsecond=0).isoformat()
+        return at.astimezone().astimezone(dt.timezone.utc).replace(microsecond=0).isoformat()
     ts = None
     try:
         iso = text.replace(" ", "T")
@@ -400,12 +411,14 @@ def expand_protected(d: dict) -> list:
     return out
 
 
-def _git(args, cwd, timeout: int = 30):
+def _git(args, cwd, timeout: int = 30, raw: bool = False):
     try:
-        r = subprocess.run(["git", *args], cwd=str(cwd), capture_output=True, encoding="utf-8", errors="replace", timeout=timeout)
+        r = subprocess.run(["git", "-c", "core.quotepath=off", *args], cwd=str(cwd), capture_output=True, encoding="utf-8", errors="replace", timeout=timeout)
     except (OSError, subprocess.TimeoutExpired):
         return None
-    return r.stdout.strip() if r.returncode == 0 else None
+    if r.returncode != 0:
+        return None
+    return r.stdout if raw else r.stdout.strip()
 
 
 def git_state(workdir):
@@ -421,8 +434,10 @@ def git_changed(state: dict) -> list:
     """Files that differ from the commit the task started at, plus new untracked files (absolute paths)."""
     repo, base = state["repo"], state.get("head")
     files = set()
-    for args in ((["diff", "--name-only", base] if base else ["diff", "--name-only"]), ["ls-files", "--others", "--exclude-standard"]):
-        files |= {ln for ln in (_git(args, repo) or "").splitlines() if ln}
+    # -z: names come NUL separated and unquoted, so a name with non-ASCII letters or spaces is the real name (without it git writes
+    # "src/caf\\303\\251.txt" in quotes, which matches no scope and made a finished task look as if it had left its scope)
+    for args in ((["diff", "--name-only", "-z", base] if base else ["diff", "--name-only", "-z"]), ["ls-files", "--others", "--exclude-standard", "-z"]):
+        files |= {f for f in (_git(args, repo, raw=True) or "").split("\0") if f}
     return sorted((Path(repo) / f).as_posix() for f in files)
 
 
@@ -1906,13 +1921,19 @@ def digest(d: dict, since: dt.datetime, now=None) -> dict:
     now = now or now_dt()
     comp = compute(d, now)
     by_id = {c["id"]: c for c in comp}
-    ended = []
-    for e in d.get("events", []):
+    ended = {}
+    for c in comp:      # the task knows when it ended; the event log keeps only the last 500 events, which a chatty night easily fills
+        t = parse_ts((c.get("ran") or {}).get("to"))
+        if t and t >= since and c["status"] in ("review", "done"):
+            ended[c["id"]] = {"id": c["id"], "title": c["title"], "lane": c["lane"], "at": c["ran"]["to"], "outcome": c.get("outcome", ""), "status": c["status"],
+                              "report": c.get("report", ""), "violations": len(c.get("violations") or [])}
+    for e in d.get("events", []):       # boards from before `ran` was kept
         t = parse_ts(e.get("t"))
-        if e.get("action") == "finish" and t and t >= since and e.get("id") in by_id:
+        if e.get("action") == "finish" and t and t >= since and e.get("id") in by_id and e["id"] not in ended:
             c = by_id[e["id"]]
-            ended.append({"id": c["id"], "title": c["title"], "lane": c["lane"], "at": e["t"], "outcome": c.get("outcome", ""), "status": c["status"],
-                          "report": c.get("report", ""), "violations": len(c.get("violations") or [])})
+            ended[c["id"]] = {"id": c["id"], "title": c["title"], "lane": c["lane"], "at": e["t"], "outcome": c.get("outcome", ""), "status": c["status"],
+                              "report": c.get("report", ""), "violations": len(c.get("violations") or [])}
+    ended = sorted(ended.values(), key=lambda x: x["at"])
     sessions = []
     for lane in d["lanes"]:
         seen = lane.get("seen") or {}
