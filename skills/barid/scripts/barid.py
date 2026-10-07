@@ -39,6 +39,12 @@ FINISHED = ("review", "done", "cancelled")    # a task that is over (the person 
 # other tasks finish); the last two need the person.
 REASONS = ("begin_time", "dependency", "conflict", "decision", "never")
 SELF_RESOLVING = ("begin_time", "dependency", "conflict")
+
+
+def is_hard(r: dict) -> bool:
+    """A reason that does not end by itself: it needs the person (an unaccepted report, a draft, a cancelled task, or a holder whose
+    lease ran out, so its session is most likely gone). `next` then says `stuck` instead of asking the session to wait."""
+    return r["code"] not in SELF_RESOLVING or bool(r.get("stale"))
 NEXT_TASK, NEXT_NONE, NEXT_WAIT, NEXT_STUCK = "task", "none", "wait", "stuck"   # outcomes of `next`; exit codes 0, 2, 3, 4
 EXIT_NONE, EXIT_WAIT, EXIT_STUCK = 2, 3, 4
 PRESENCE_STATES = ("idle", "waiting", "working")
@@ -509,34 +515,59 @@ def is_described(d: dict, it: dict) -> bool:
     return bool(e["uses"] or e["quiet"] or e["noisy"] or it.get("touches") or it.get("profile"))
 
 
-def conflicts_between(d: dict, a: dict, b: dict) -> list:
-    """Every reason why two tasks must not run at the same time. One pure function: symmetric, and a task never conflicts with itself."""
+class PairCache:
+    """What `conflicts_between` needs about one task, found once per task (not once per pair of tasks): its effective marks, the folder
+    its relative scopes live in and its normalised scopes (real paths: every one of them is a few system calls)."""
+
+    def __init__(self, d: dict):
+        self.d, self._eff, self._root, self._scopes = d, {}, {}, {}
+
+    def eff(self, it):
+        if it["id"] not in self._eff:
+            self._eff[it["id"]] = effective(self.d, it)
+        return self._eff[it["id"]]
+
+    def root(self, it):
+        if it["id"] not in self._root:
+            self._root[it["id"]] = task_root(self.d, it)
+        return self._root[it["id"]]
+
+    def scopes(self, it):
+        if it["id"] not in self._scopes:
+            self._scopes[it["id"]] = [norm_scope(self.d, x, self.root(it)) for x in it.get("touches", [])]
+        return self._scopes[it["id"]]
+
+
+def conflicts_between(d: dict, a: dict, b: dict, cache: "PairCache | None" = None) -> list:
+    """Every reason why two tasks must not run at the same time. One pure function: symmetric, and a task never conflicts with itself.
+    `cache` only saves work when many pairs are looked at (compute); the answer is the same without it."""
     if a["id"] == b["id"]:
         return []
+    cache = cache or PairCache(d)
     out = []
     if a["lane"] == b["lane"]:
         out.append({"rule": "lane", "why": "lane"})
     res = d.get("resources", {})
-    ea, eb = effective(d, a), effective(d, b)
+    ea, eb = cache.eff(a), cache.eff(b)
     for r in ea["uses"]:
         if r in eb["uses"] and res.get(r, {}).get("exclusive", True):
             out.append({"rule": "resource", "why": r})
     if (ea["quiet"] and eb["noisy"]) or (ea["noisy"] and eb["quiet"]):
         out.append({"rule": "quiet", "why": "quiet"})
     # different checkouts (git worktrees) cannot overwrite each other's files; their changes meet at merge time
-    if a.get("touches") and b.get("touches") and _case(str(task_root(d, a))) == _case(str(task_root(d, b))):
+    if a.get("touches") and b.get("touches") and _case(str(cache.root(a))) == _case(str(cache.root(b))):
         done = False
-        for x in own_scopes(d, a):
-            for y in own_scopes(d, b):
+        for x in cache.scopes(a):
+            for y in cache.scopes(b):
                 if not done and scopes_overlap(x, y):
-                    out.append({"rule": "paths", "why": "paths:" + show_scope(d, x if len(x) >= len(y) else y, task_root(d, a))})
+                    out.append({"rule": "paths", "why": "paths:" + show_scope(d, x if len(x) >= len(y) else y, cache.root(a))})
                     done = True
     return out
 
 
-def conflict_reason(d: dict, a: dict, b: dict):
+def conflict_reason(d: dict, a: dict, b: dict, cache: "PairCache | None" = None):
     """Why two tasks must not run at the same time (the first reason, None if they can)."""
-    c = conflicts_between(d, a, b)
+    c = conflicts_between(d, a, b, cache)
     return c[0]["why"] if c else None
 
 
@@ -684,20 +715,33 @@ def wait_reasons(d: dict, items: dict, i: dict, waiting_on: list, begin_in: int,
         else:
             out.append({"code": "dependency", "id": n, "status": t["status"]})
     for x in conflicts:
-        out.append({"code": "conflict", "id": x["id"], "why": x["why"]})
+        out.append({"code": "conflict", "id": x["id"], "why": x["why"], **({"stale": True} if x.get("stale") else {})})
     return out
 
 
 def compute(d: dict, now=None) -> list:
-    """Return the tasks with computed fields: state, waiting_on, conflicts, can_run_with, stale."""
+    """Return the tasks with computed fields: state, waiting_on, conflicts, can_run_with, stale, reasons.
+
+    Done in passes so that nothing is worked out twice for a pair of tasks (a board of 500 tasks must stay quick): what each task
+    declares and the tasks it is ordered after are found once; then conflicts with the tasks that can really run; then the reasons,
+    where a wait that can never end (a cancelled task somewhere up the chain, a holder whose lease ran out) is marked as such for
+    every task below it, not only for the first one."""
     now = now or now_dt()
     items = {i["id"]: i for i in d["items"]}
-    active = [i for i in d["items"] if i["status"] in ACTIVE]
-    out = []
+    cache = PairCache(d)
+    eff = {i["id"]: cache.eff(i) for i in d["items"]}
+    closure = {}
+
+    def clo(iid):
+        if iid not in closure:
+            closure[iid] = _closure(items, iid)
+        return closure[iid]
+
+    out, by_id = [], {}
     for i in d["items"]:
         c = dict(i)
         c.setdefault("profile", "")
-        c["effective"] = effective(d, i)
+        c["effective"] = eff[i["id"]]
         c["described"] = is_described(d, i)
         c["lint"] = lint_task(d, i)
         c["waiting_on"] = [n for n in i.get("needs", []) if not _satisfied(d, items, n)]
@@ -707,12 +751,23 @@ def compute(d: dict, now=None) -> list:
         begin = parse_ts(i.get("not_before")) if i.get("not_before") else None
         c["begin_in"] = max(0, int((begin - now).total_seconds())) if begin and begin > now else 0
         c["conflicts"] = []
-        for a in active:
-            if a["id"] != i["id"]:
-                r = conflict_reason(d, i, a)
+        cl = i.get("claim")
+        ts = parse_ts(cl.get("lease_until")) if cl else None
+        c["stale"] = bool(i["status"] == "running" and ts and ts < now)
+        out.append(c)
+        by_id[i["id"]] = c
+    # tasks that really hold something: one that runs, or one the person sent that has nothing left to wait for. A sent task that
+    # still waits for another task must not block that other task (it would wait for it for ever).
+    holders = [c for c in out if c["status"] == "running" or (c["status"] == "sent" and not c["waiting_on"] and not c["begin_in"])]
+    for c in out:
+        i = items[c["id"]]
+        for a in holders:
+            if a["id"] != c["id"]:
+                r = conflict_reason(d, i, a, cache)
                 if r:
-                    c["conflicts"].append({"id": a["id"], "why": r})
-        c["reasons"] = wait_reasons(d, items, i, c["waiting_on"], c["begin_in"], c["conflicts"]) if i["status"] == "queued" else []
+                    c["conflicts"].append({"id": a["id"], "why": r, **({"stale": True} if a["stale"] else {})})
+        waits = i["status"] in ("queued", "sent")
+        c["reasons"] = wait_reasons(d, items, i, c["waiting_on"], c["begin_in"], c["conflicts"]) if waits else []
         if i["status"] == "queued":
             if c["waiting_on"] or c["begin_in"]:
                 c["state"] = "waiting"
@@ -720,24 +775,60 @@ def compute(d: dict, now=None) -> list:
                 c["state"] = "blocked" if c["conflicts"] else "ready"
         else:
             c["state"] = i["status"]
-        cl = i.get("claim")
-        ts = parse_ts(cl.get("lease_until")) if cl else None
-        c["stale"] = bool(i["status"] == "running" and ts and ts < now)
         c["can_run_with"], c["cannot_run_with"] = [], []
-        out.append(c)
+    _mark_unreachable(by_id)
     # everything that could be started now or already runs; a draft whose turn has come (nothing it needs is open) counts too
     live = [c for c in out if c["state"] in ("ready", "blocked", "sent", "running") or (c["status"] == "draft" and not c["waiting_on"])]
     for a in live:
         for b in live:
             if a["id"] == b["id"]:
                 continue
-            related = a["id"] in _closure(items, b["id"]) or b["id"] in _closure(items, a["id"])
-            r = conflict_reason(d, a, b)
+            related = a["id"] in clo(b["id"]) or b["id"] in clo(a["id"])
+            r = conflict_reason(d, a, b, cache)
             if r:
                 a["cannot_run_with"].append({"id": b["id"], "why": r})
             elif not related:
                 a["can_run_with"].append(b["id"])
     return out
+
+
+def _mark_unreachable(by_id: dict) -> None:
+    """A task that waits for a task that can never start waits for ever too. Rewrite such `dependency` reasons into the reason at the
+    bottom of the chain (with `via`, the task it waits for), and a wait for a holder whose lease ran out into a decision for the person."""
+    memo = {}
+
+    def hard_of(iid, trail):
+        if iid in memo:
+            return memo[iid]
+        c = by_id.get(iid)
+        found = None
+        if c is not None and iid not in trail:
+            trail.add(iid)
+            found = next((r for r in c["reasons"] if is_hard(r) and r["code"] != "dependency"), None)
+            if found is None:
+                for r in c["reasons"]:
+                    if r["code"] == "dependency":
+                        found = _unreachable(by_id, r, hard_of, trail)
+                        if found:
+                            break
+        memo[iid] = found
+        return found
+
+    for c in by_id.values():
+        c["reasons"] = [(_unreachable(by_id, r, hard_of, set()) or r) if r["code"] == "dependency" else r for r in c["reasons"]]
+
+
+def _unreachable(by_id: dict, r: dict, hard_of, trail: set):
+    t = by_id.get(r["id"])
+    if t is None:
+        return None
+    if t["stale"]:
+        return {"code": "decision", "id": t["id"], "status": "running", "stale": True}
+    if t["status"] in ("queued", "sent"):
+        h = hard_of(t["id"], trail)
+        if h:
+            return {**h, "via": t["id"]}
+    return None
 
 
 def plan_steps(d: dict, computed: list) -> list:
@@ -1042,11 +1133,14 @@ def refusal_for(iid: str, reasons: list) -> RBError | None:
     waiting (for other tasks), conflict: the last three end by themselves, so `claim --wait` waits for them."""
     if not reasons:
         return None
-    hard = [r for r in reasons if r["code"] not in SELF_RESOLVING]
+    hard = [r for r in reasons if is_hard(r)]
     if hard:
         r = hard[0]
         what = {"decision": "needs the person to accept or write it", "never": "was cancelled or does not exist (change the dependency)"}.get(r["code"], r["code"])
-        return RBError(f"{iid} cannot start: {r.get('id', '')} {what}", "stuck", id=iid, reasons=reasons)
+        if r.get("stale"):
+            what = "has a lease that ran out: its session is most likely gone, the person should return it to the queue"
+        via = f" (it waits for {r['via']})" if r.get("via") else ""
+        return RBError(f"{iid} cannot start: {r.get('id', '')} {what}{via}", "stuck", id=iid, reasons=reasons)
     r = reasons[0]
     if r["code"] == "begin_time":
         return RBError(f"{iid} may not start before {local_time(r['at'])}", "begin_time", id=iid, at=r["at"], reasons=reasons)
@@ -1903,13 +1997,18 @@ def fmt_reason(r: dict) -> str:
         return f"not before {local_time(r['at'])} (in {fmt_in(r['in'])})"
     if code == "dependency":
         return f"waits for {r['id']} ({r['status']})"
+    via = f" (through {r['via']})" if r.get("via") else ""
     if code == "conflict":
+        if r.get("stale"):
+            return f"cannot run next to {r['id']} ({r['why']}), whose lease ran out: the person should return it to the queue"
         return f"cannot run next to {r['id']} ({r['why']})"
     if code == "decision":
+        if r.get("stale"):
+            return f"needs you: {r['id']} holds it but its lease ran out (return it to the queue){via}"
         what = "accept its report" if r.get("outcome") is not None and "status" not in r else f"approve or write it ({r.get('status', '')})"
-        return f"needs you to {what}: {r['id']}"
+        return f"needs you to {what}: {r['id']}{via}"
     if code == "never":
-        return f"waits for {r['id']}, which is {r['status']}: it can never finish, change the dependency"
+        return f"waits for {r['id']}, which is {r['status']}: it can never finish, change the dependency{via}"
     return code
 
 
@@ -1931,7 +2030,7 @@ def next_step(d: dict, lane: str | None = None, now=None) -> dict:
     waiting = [{"id": c["id"], "title": c["title"], "lane": c["lane"], "reasons": c["reasons"]} for c in mine]
     if not waiting:
         return {"status": NEXT_NONE, "id": None, "waiting": [], "retry_in": 0}
-    soft = [w for w in waiting if w["reasons"] and all(r["code"] in SELF_RESOLVING for r in w["reasons"])]
+    soft = [w for w in waiting if w["reasons"] and not any(is_hard(r) for r in w["reasons"])]
     begins = [r["in"] for w in soft for r in w["reasons"] if r["code"] == "begin_time"]
     retry = min(begins) if begins and len(begins) == len(soft) else 60
     return {"status": NEXT_WAIT if soft else NEXT_STUCK, "id": None, "waiting": waiting, "retry_in": max(5, min(retry, 300))}
