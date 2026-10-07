@@ -4,10 +4,12 @@ import os
 import random
 import shutil
 import subprocess
+import sys
 import time
 import unittest
+from pathlib import Path
 
-from test_rb import HUMAN, rb
+from test_rb import HUMAN, RB_PATH, rb
 from test_unattended import AGENT, Base, cli
 
 
@@ -237,6 +239,124 @@ class FileNames(Base):
         self.assertEqual(sorted(v["path"] for v in it["violations"]), ["outside \u043d\u0435.txt"])      # only the file that really is outside
         self.assertEqual(it["changed"]["count"], 5)
         self.assertIn("caf\u00e9.txt", " ".join(it["changed"]["files"]))
+
+
+def alive(pid):
+    try:
+        os.kill(pid, 0)
+    except OSError:
+        return False
+    try:
+        return Path(f"/proc/{pid}/stat").read_text().rsplit(")", 1)[1].split()[0] != "Z" if os.path.exists(f"/proc/{pid}/stat") else True
+    except OSError:
+        return False
+
+
+@unittest.skipUnless(os.name == "posix", "the worker tests use a POSIX shell")
+class WorkerSafety(Base):
+    def start_worker(self, cmd, *extra, env=None, board=None):
+        e = {**os.environ, "BARID_BOARD": str(board or self.path), "BARID_WORKER_BACKOFF": "0", **(env or {})}
+        return subprocess.Popen([sys.executable, str(RB_PATH), "worker", "--lane", "main", "--cmd", cmd, "--poll", "1", *extra],
+                                stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, env=e)
+
+    def finish_worker(self, p, timeout=60):
+        out, _ = p.communicate(timeout=timeout)
+        return p.returncode, out
+
+    def wait_for(self, cond, seconds=30):
+        end = time.monotonic() + seconds
+        while time.monotonic() < end:
+            if cond():
+                return True
+            time.sleep(0.2)
+        return False
+
+    def test_a_task_that_is_cancelled_while_it_runs_stops_its_agent(self):
+        self.add("A")
+        pidfile = Path(self._tmp.name) / "agent.pid"
+        p = self.start_worker(f"echo $$ > {pidfile}; exec sleep 300")
+        self.assertTrue(self.wait_for(lambda: pidfile.exists() and self.comp("A")["status"] == "running"))
+        pid = int(pidfile.read_text())
+        rb.mutate(self.path, lambda d: rb.op_cancel(d, HUMAN, "A", "not needed"))
+        code, out = self.finish_worker(p)
+        self.assertEqual(code, 0, out)
+        self.assertFalse(alive(pid), "the agent kept running after its task was cancelled")
+        self.assertEqual(self.comp("A")["status"], "cancelled")
+        self.assertIn("took the task away", out)
+
+    def test_an_agent_that_keeps_returning_the_task_is_given_up_on(self):
+        self.add("A")
+        release = f"{sys.executable} {RB_PATH} release $BARID_TASK"
+        p = self.start_worker(release, "--max-attempts", "2")
+        code, out = self.finish_worker(p)
+        self.assertEqual(code, 0, out)
+        a = self.comp("A")
+        self.assertEqual((a["status"], a["outcome"]), ("review", "failed"))
+        self.assertEqual(out.count("A: started"), 2)
+        self.assertIn("came back to the queue", a["notes"][-1]["text"])
+
+    def test_a_folder_that_does_not_exist_is_refused_before_anything_is_claimed(self):
+        self.add("A")
+        p = self.start_worker("true", "--cwd", os.path.join(self._tmp.name, "nowhere"))
+        code, out = self.finish_worker(p)
+        self.assertEqual(code, 1, out)
+        self.assertIn("not a folder", out)
+        self.assertEqual(self.comp("A")["status"], "queued")
+
+    def test_a_command_that_cannot_start_does_not_leave_the_task_running(self):
+        self.add("A")
+        result = rb.run_worker_task(self.path, "main", "A", "w", "true", os.path.join(self._tmp.name, "gone"), __import__("threading").Event())
+        self.assertEqual(result, "error")
+        a = self.comp("A")
+        self.assertEqual((a["status"], a["outcome"]), ("review", "failed"))
+        self.assertIn("could not run the agent", a["notes"][-1]["text"])
+
+    def test_a_big_prompt_does_not_keep_the_worker_from_stopping(self):
+        """The agent never reads its prompt and the prompt does not fit the pipe: the worker used to block in the write and ignore SIGTERM."""
+        import signal
+        self.add("A", text="x" * 300_000)
+        pidfile = Path(self._tmp.name) / "big.pid"
+        p = self.start_worker(f"echo $$ > {pidfile}; exec sleep 120")
+        self.assertTrue(self.wait_for(lambda: pidfile.exists() and self.comp("A")["status"] == "running"))
+        time.sleep(1.5)
+        started = time.monotonic()
+        p.send_signal(signal.SIGTERM)
+        code, out = self.finish_worker(p, 60)
+        self.assertLess(time.monotonic() - started, 30, out)
+        self.assertFalse(alive(int(pidfile.read_text())))
+        self.assertEqual(self.comp("A")["outcome"], "failed")
+
+    def test_what_the_agent_left_running_does_not_outlive_the_task(self):
+        self.add("A")
+        pidfile = Path(self._tmp.name) / "bg.pid"
+        stubborn = "import signal,time; signal.signal(signal.SIGTERM, signal.SIG_IGN); time.sleep(300)"
+        p = self.start_worker(f"{sys.executable} -c '{stubborn}' & echo $! > {pidfile}")
+        code, out = self.finish_worker(p, 60)
+        self.assertEqual(code, 0, out)
+        pid = int(pidfile.read_text())
+        self.assertTrue(self.wait_for(lambda: not alive(pid), 15), "a background process of the agent survived the task")
+
+    def test_a_board_in_a_folder_with_a_space_still_gets_its_prompt_file(self):
+        board_dir = Path(self._tmp.name) / "my project"
+        board_dir.mkdir()
+        path = board_with_in(board_dir)
+        add_to(path, "A")
+        out_file = Path(self._tmp.name) / "seen.txt"
+        p = self.start_worker(f"cat {{prompt_file}} > {out_file}", board=path)
+        code, out = self.finish_worker(p, 60)
+        self.assertEqual(code, 0, out)
+        self.assertIn("do the thing", out_file.read_text())
+
+
+def board_with_in(folder):
+    path = Path(folder) / ".barid" / "board.json"
+    path.parent.mkdir(parents=True)
+    rb.save(path, rb.new_board("t", [("main", "Main")]))
+    return path
+
+
+def add_to(path, iid):
+    rb.mutate(path, lambda d: rb.op_add(d, HUMAN, {"id": iid, "text": "do the thing", "lane": "main"}))
 
 
 if __name__ == "__main__":

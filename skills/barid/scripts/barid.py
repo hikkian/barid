@@ -2561,95 +2561,190 @@ def cmd_next(args):
         sys.exit({NEXT_NONE: EXIT_NONE, NEXT_WAIT: EXIT_WAIT, NEXT_STUCK: EXIT_STUCK}[res["status"]])
 
 
-WORKER_LEASE_MINUTES = 3      # a worker renews the lease every 30 seconds: a dead worker shows as a stale task within minutes
+WORKER_LEASE_MINUTES = 3      # a worker renews the lease once a minute (a third of it): a dead worker shows as a stale task within minutes
+WORKER_BEAT_SECONDS = 60
+
+
+def _group_alive(pgid: int) -> bool:
+    try:
+        os.killpg(pgid, 0)
+        return True
+    except PermissionError:
+        return True
+    except OSError:
+        return False
 
 
 def _kill_group(proc: subprocess.Popen, grace: float = 20.0) -> None:
     """Stop the agent process and everything it started (its own process group on POSIX, its own process tree on Windows); never
-    anything else."""
+    anything else. Also used after a normal exit: what the agent left running in the background (`cmd &`) must not outlive the task.
+    The group gets SIGTERM, and SIGKILL when it is still there after `grace` seconds, whether or not its leader is already gone."""
     import signal
-    if proc.poll() is not None:
-        return
     if os.name == "nt":
-        subprocess.run(["taskkill", "/PID", str(proc.pid), "/T", "/F"], capture_output=True, timeout=30)
-        try:
-            proc.wait(timeout=grace)
-        except subprocess.TimeoutExpired:
-            pass
+        if proc.poll() is None:
+            subprocess.run(["taskkill", "/PID", str(proc.pid), "/T", "/F"], capture_output=True, timeout=30)
+            try:
+                proc.wait(timeout=grace)
+            except subprocess.TimeoutExpired:
+                pass
         return
+    pgid = proc.pid                       # started with start_new_session: the group id is the pid of its leader
     try:
-        os.killpg(proc.pid, signal.SIGTERM)
-    except (OSError, ProcessLookupError):
+        os.killpg(pgid, signal.SIGTERM)
+    except OSError:
+        proc.poll()
         return
-    try:
-        proc.wait(timeout=grace)
-    except subprocess.TimeoutExpired:
+    end = time.monotonic() + grace
+    while time.monotonic() < end and (proc.poll() is None or _group_alive(pgid)):
+        time.sleep(0.2)
+    if proc.poll() is None or _group_alive(pgid):
         try:
-            os.killpg(proc.pid, signal.SIGKILL)
-        except (OSError, ProcessLookupError):
+            os.killpg(pgid, signal.SIGKILL)
+        except OSError:
             pass
+    try:
         proc.wait(timeout=10)
+    except subprocess.TimeoutExpired:
+        pass
+
+
+def _quote_path(path: str) -> str:
+    import shlex
+    return subprocess.list2cmdline([path]) if os.name == "nt" else shlex.quote(path)
+
+
+def _feed(proc: subprocess.Popen, data: bytes) -> None:
+    """Write the prompt to the agent's stdin from a thread: an agent that does not read it (a big prompt fills the pipe) must not block the worker."""
+    try:
+        proc.stdin.write(data)
+    except (BrokenPipeError, OSError, ValueError):
+        pass                              # the command does not read stdin; it uses the prompt file
+    finally:
+        try:
+            proc.stdin.close()
+        except (OSError, ValueError):
+            pass
+
+
+def _board_stamp(board: Path):
+    try:
+        st = board.stat()
+        return (st.st_mtime_ns, st.st_size)
+    except OSError:
+        return None
+
+
+def _still_mine(board: Path, iid: str, name: str) -> bool:
+    """Is the task still running under this worker (the person may have cancelled it or returned it to the queue meanwhile)?"""
+    try:
+        it = get_item(load(board), iid)
+    except (RBError, OSError, ValueError):
+        return True                       # cannot tell: do not kill a working agent for that
+    return it["status"] == "running" and (it.get("claim") or {}).get("by") == name
+
+
+def _close_if_ours(board: Path, actor: Actor, iid: str, report: str, note: str, outcome: str) -> bool:
+    """Close the task with a report if it is still held by this worker. Best effort: this runs when something already went wrong."""
+    try:
+        if not _still_mine(board, iid, actor.name):
+            return False
+        mutate(board, lambda dd: op_finish(dd, actor, iid, report, note, not report, outcome))
+        return True
+    except (RBError, OSError, ValueError):
+        return False
 
 
 def run_worker_task(board: Path, lane: str, iid: str, name: str, command: str, cwd: str | None, stop: threading.Event) -> str:
     """Claim a task, run the agent command on its prompt (stdin; also $BARID_PROMPT_FILE and {prompt_file} in the command), keep
-    the lease alive, enforce the timebox, and make sure the task ends in a report. Returns what happened: finished, stopped, claim-lost."""
+    the lease alive, enforce the timebox, and make sure the task ends in a report. Returns what happened: finished, stopped,
+    claim-lost, taken-away (the person cancelled it or returned it to the queue while it ran), error (it could not be run)."""
     actor = Actor("agent", name)
     try:
         mutate(board, lambda d: op_claim(d, actor, iid, False, WORKER_LEASE_MINUTES))
     except RBError as e:
         print(f"[barid worker] could not claim {iid}: {e}", flush=True)
         return "claim-lost"
-    d = load(board)
-    it = get_item(d, iid)
-    prompt = prompt_for(d, it, board, worker=name)
-    runs = board.parent / "runs"
-    runs.mkdir(exist_ok=True)
-    stamp = dt.datetime.now().strftime("%Y%m%d-%H%M%S")
-    prompt_file, log_file = runs / f"{iid}-{stamp}.prompt.md", runs / f"{iid}-{stamp}.log"
-    prompt_file.write_text(prompt, "utf-8")
-    deadline = parse_ts((it.get("claim") or {}).get("deadline"))
-    env_ = dict(os.environ, BARID_AGENT=name, BARID_BOARD=str(board), BARID_TASK=iid, BARID_LANE=lane, BARID_PROMPT_FILE=str(prompt_file))
-    print(f"[barid worker] {iid}: started ({'deadline ' + local_time(deadline.isoformat()) if deadline else 'no timebox'}); log {log_file}", flush=True)
-    with open(log_file, "wb") as logf:
-        own_group = {"creationflags": subprocess.CREATE_NEW_PROCESS_GROUP} if os.name == "nt" else {"start_new_session": True}
-        proc = subprocess.Popen(command.replace("{prompt_file}", str(prompt_file)), shell=True, stdin=subprocess.PIPE, stdout=logf, stderr=subprocess.STDOUT,
-                                cwd=cwd or None, env=env_, **own_group)
-        try:
-            proc.stdin.write(prompt.encode("utf-8"))
-            proc.stdin.close()
-        except (BrokenPipeError, OSError):
-            pass                       # the command does not read stdin; it uses the prompt file
-        timed_out = stopped = False
-        last_beat = 0.0
-        while proc.poll() is None:
-            if stop.is_set():
-                stopped = True
-                _kill_group(proc)
-                break
-            if deadline and now_dt() > deadline:
-                timed_out = True
-                _kill_group(proc)
-                break
-            if time.monotonic() - last_beat >= 30:
-                last_beat = time.monotonic()
-                try:
-                    mutate(board, lambda dd: op_heartbeat(dd, actor, iid, WORKER_LEASE_MINUTES))
-                except RBError:
-                    pass               # e.g. the person released the task meanwhile; the check below handles it
-            time.sleep(1.0)
-    code = proc.returncode
-    d = load(board)
-    it = get_item(d, iid)
-    if it["status"] == "running" and (it.get("claim") or {}).get("by") == name:
-        why = ("the timebox ran out" if timed_out else "the worker was stopped" if stopped else
-               f"the agent ended with exit code {code} without reporting")
-        outcome = "partial" if (code == 0 and not timed_out and not stopped) else "failed"
-        mutate(board, lambda dd: op_finish(dd, actor, iid, str(log_file), f"Closed by the worker: {why}. Log: {log_file}", False, outcome))
-        print(f"[barid worker] {iid}: {why}; closed as {outcome}", flush=True)
-    else:
-        print(f"[barid worker] {iid}: reported by the agent ({it['status']}, {it.get('outcome') or 'no outcome'})", flush=True)
-    return "stopped" if stopped else "finished"
+    log_file = None
+    try:
+        d = load(board)
+        it = get_item(d, iid)
+        prompt = prompt_for(d, it, board, worker=name)
+        runs = board.parent / "runs"
+        runs.mkdir(exist_ok=True)
+        stamp = dt.datetime.now().strftime("%Y%m%d-%H%M%S")
+        prompt_file, log_file = runs / f"{iid}-{stamp}.prompt.md", runs / f"{iid}-{stamp}.log"
+        prompt_file.write_text(prompt, "utf-8")
+        deadline = parse_ts((it.get("claim") or {}).get("deadline"))
+        # the timebox is counted on the monotonic clock: a suspended computer or a clock that was set must not kill a healthy agent
+        left = (deadline - now_dt()).total_seconds() if deadline else None
+        deadline_mono = time.monotonic() + left if left is not None else None
+        env_ = dict(os.environ, BARID_AGENT=name, BARID_BOARD=str(board), BARID_TASK=iid, BARID_LANE=lane, BARID_PROMPT_FILE=str(prompt_file))
+        print(f"[barid worker] {iid}: started ({'deadline ' + local_time(deadline.isoformat()) if deadline else 'no timebox'}); log {log_file}", flush=True)
+        with open(log_file, "wb") as logf:
+            own_group = {"creationflags": subprocess.CREATE_NEW_PROCESS_GROUP} if os.name == "nt" else {"start_new_session": True}
+            proc = subprocess.Popen(command.replace("{prompt_file}", _quote_path(str(prompt_file))), shell=True, stdin=subprocess.PIPE, stdout=logf,
+                                    stderr=subprocess.STDOUT, cwd=cwd or None, env=env_, **own_group)
+            threading.Thread(target=_feed, args=(proc, prompt.encode("utf-8")), daemon=True).start()
+            timed_out = stopped = taken = False
+            last_beat, stamp_seen = 0.0, _board_stamp(board)
+            try:
+                while proc.poll() is None:
+                    if stop.is_set():
+                        stopped = True
+                        break
+                    if deadline_mono is not None and time.monotonic() > deadline_mono:
+                        timed_out = True
+                        break
+                    if time.monotonic() - last_beat >= WORKER_BEAT_SECONDS:
+                        last_beat = time.monotonic()
+                        try:
+                            mutate(board, lambda dd: op_heartbeat(dd, actor, iid, WORKER_LEASE_MINUTES))
+                        except (RBError, OSError):
+                            pass          # e.g. the person released the task meanwhile (seen below), or the disk is full for a moment
+                    now_stamp = _board_stamp(board)
+                    if now_stamp != stamp_seen:
+                        stamp_seen = now_stamp
+                        if not _still_mine(board, iid, name):
+                            taken = True
+                            break
+                    time.sleep(1.0)
+            finally:
+                _kill_group(proc, 20.0 if (stopped or timed_out or taken) else 5.0)
+        code = proc.returncode
+        if taken:
+            print(f"[barid worker] {iid}: the person took the task away while it ran; the agent was stopped", flush=True)
+            return "taken-away"
+        it = get_item(load(board), iid)
+        if it["status"] == "running" and (it.get("claim") or {}).get("by") == name:
+            why = ("the timebox ran out" if timed_out else "the worker was stopped" if stopped else
+                   f"the agent ended with exit code {code} without reporting")
+            outcome = "partial" if (code == 0 and not timed_out and not stopped) else "failed"
+            mutate(board, lambda dd: op_finish(dd, actor, iid, str(log_file), f"Closed by the worker: {why}. Log: {log_file}", False, outcome))
+            print(f"[barid worker] {iid}: {why}; closed as {outcome}", flush=True)
+        else:
+            print(f"[barid worker] {iid}: reported by the agent ({it['status']}, {it.get('outcome') or 'no outcome'})", flush=True)
+        return "stopped" if stopped else "finished"
+    except Exception as e:                # the agent could not be started (a folder that is gone, a full disk): never leave the task `running`
+        report = str(log_file) if log_file is not None and log_file.exists() else ""
+        closed = _close_if_ours(board, actor, iid, report, f"Closed by the worker: it could not run the agent ({type(e).__name__}: {e})", "failed")
+        print(f"[barid worker] {iid}: could not run the agent: {type(e).__name__}: {e}" + ("; closed as failed" if closed else ""), flush=True)
+        return "error"
+
+
+def give_up_on(board: Path, name: str, iid: str, tries: int) -> None:
+    """A task that came back to the queue again and again without a report (an agent that releases it, a command that returns it)
+    is closed as failed instead of being started for ever; the person sees it in the inbox."""
+    actor = Actor("agent", name)
+    note = f"Closed by the worker: it was started {tries} times and came back to the queue every time without a report."
+
+    def both(d):
+        op_claim(d, actor, iid, False, WORKER_LEASE_MINUTES)
+        op_finish(d, actor, iid, "", note, True, "failed")
+    try:
+        mutate(board, both)
+        print(f"[barid worker] {iid}: {note}", flush=True)
+    except (RBError, OSError) as e:
+        print(f"[barid worker] {iid}: could not close it: {e}", flush=True)
 
 
 def cmd_worker(args):
@@ -2663,17 +2758,32 @@ def cmd_worker(args):
     if not any(l["id"] == args.lane for l in d0["lanes"]):
         raise RBError(f"unknown lane {args.lane!r}", "unknown_lane", lane=args.lane)
     name = getattr(args, "by", None) or env("AGENT") or f"worker-{args.lane}"
+    if args.cwd and not os.path.isdir(os.path.expanduser(args.cwd)):
+        raise RBError(f"--cwd {args.cwd!r} is not a folder", "bad_cwd")      # found now, not after a task was claimed
+    args.cwd = os.path.expanduser(args.cwd) if args.cwd else None
     stop = threading.Event()
     for sig in (signal.SIGINT, signal.SIGTERM):
         signal.signal(sig, lambda *_: stop.set())
     done = 0
     idle_since = time.monotonic()
+    tries, errors = {}, 0
     print(f"[barid worker] {name} serves lane {args.lane}; command: {args.cmd}", flush=True)
     while not stop.is_set():
         res = next_step(load(board), args.lane)
         if res["status"] == NEXT_TASK:
             idle_since = time.monotonic()
-            result = run_worker_task(board, args.lane, res["id"], name, args.cmd, args.cwd, stop)
+            iid = res["id"]
+            tries[iid] = tries.get(iid, 0) + 1
+            if tries[iid] > max(1, args.max_attempts):
+                give_up_on(board, name, iid, tries[iid] - 1)
+                continue
+            if tries[iid] > 1 and stop.wait(min(60, float(os.environ.get("BARID_WORKER_BACKOFF", "5")) * tries[iid])):      # a task that came back: not again at once
+                break
+            result = run_worker_task(board, args.lane, iid, name, args.cmd, args.cwd, stop)
+            errors = errors + 1 if result == "error" else 0
+            if errors >= 3:
+                print("[barid worker] three tasks in a row could not be run: stopping (fix the command or the folder)", flush=True)
+                sys.exit(1)
             done += result == "finished"
             if args.once or (args.max_tasks and done >= args.max_tasks):
                 break
@@ -3094,6 +3204,7 @@ def build_parser() -> argparse.ArgumentParser:
     s.add_argument("--max-wait", type=int, default=14 * 3600, metavar="SECONDS", help="give up when nothing could start for this long (default 14 hours)")
     s.add_argument("--max-tasks", type=int, default=0, metavar="N", help="stop after N tasks (default: until the lane is empty)")
     s.add_argument("--once", action="store_true", help="run one task and exit")
+    s.add_argument("--max-attempts", type=int, default=3, metavar="N", help="a task that comes back to the queue without a report is started at most N times, then closed as failed (default 3)")
     s = add("digest", cmd_digest, "what happened while you were away: sessions, finished tasks and their reports, what needs you, what waits and why")
     s.add_argument("--since", default=None, metavar="WHEN", help="12h (default), 90m, 2d, or a time such as '2026-10-07 08:00'")
     s = add("lang", cmd_lang, "show or set the language of the texts written for agents (en, ru, kk); the panel language is separate")

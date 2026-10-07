@@ -421,7 +421,9 @@ class Worker(Base):
     def test_it_never_signals_anything_but_its_own_process_group(self):
         src = RB_PATH.read_text("utf-8")
         self.assertNotIn("pkill", src)
-        self.assertIn("os.killpg(proc.pid", src)
+        self.assertIn("pgid = proc.pid", src)                       # the group id is the pid of the agent's own session leader
+        import re
+        self.assertEqual(set(re.findall(r"os\.killpg\((\w+)", src)), {"pgid"})   # and every signal goes to that id, nothing else
 
 
 class Digest(Base):
