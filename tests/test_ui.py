@@ -208,6 +208,26 @@ class PanelInBrowser(unittest.TestCase):
         self.assertEqual(self.b.exec("return window.__notes.length;"), 1)
         self.assertNoJsErrors()
 
+    def test_every_card_of_the_order_stays_under_its_own_session_in_a_narrow_window(self):
+        barid(self.board, "lane", "add", "c", "--title", "Third agent")
+        for iid, lane in (("C1", "c"), ("C2", "c"), ("B2", "b"), ("A2", "a")):
+            barid(self.board, "add", iid, "--lane", lane, "--title", "A rather long title of " + iid, "--text", "x", "--profile", "light")
+        self.b.cmd("WebDriver:SetWindowRect", {"width": 900, "height": 1000})
+        self.addCleanup(lambda: self.b.cmd("WebDriver:SetWindowRect", {"width": 1280, "height": 900}))
+        self.open()
+        self.b.wait("document.querySelectorAll('#flow .lanehead').length === 3", what="a header for every session")
+        result = self.b.exec("""var heads = {};
+            [].forEach.call(document.querySelectorAll('#flow .lanehead'), function (e) { heads[e.dataset.lane] = Math.round(e.getBoundingClientRect().left); });
+            var wrong = [], cards = document.querySelectorAll('#flow .step .item');
+            [].forEach.call(cards, function (e) { if (Math.abs(Math.round(e.getBoundingClientRect().left) - heads[e.dataset.lane]) > 1) wrong.push(e.querySelector('.id').textContent); });
+            return JSON.stringify({heads: Object.keys(heads).length, cards: cards.length, wrong: wrong, pageOverflow: document.documentElement.scrollWidth - window.innerWidth});""")
+        data = json.loads(result)
+        self.assertEqual(data["heads"], 3)
+        self.assertGreaterEqual(data["cards"], 6)
+        self.assertEqual(data["wrong"], [], "cards that are not under the header of their session")
+        self.assertLessEqual(data["pageOverflow"], 0)
+        self.assertNoJsErrors()
+
     def test_a_measurement_that_ran_next_to_load_is_flagged_in_the_report(self):
         barid(self.board, "add", "L1", "--lane", "b", "--title", "Load", "--text", "x", "--profile", "dev")
         barid(self.board, "claim", "T1", "--by", "w1", "--force")

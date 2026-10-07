@@ -15,6 +15,8 @@ Found by a red-team review of 0.6.0 (twelve processes writing for a minute, a ki
 - **Speed:** `compute()` found the marks and the normalised scopes of a task again for every pair of tasks; with file scopes a board of 500 tasks took 4 s, now about 0.25 s. The cost of each command is kept in check by a budget test.
 - **Fix in the release itself:** `.claude-plugin/plugin.json` was an empty file in 0.6.0 (the plugin could not be read); a test now checks that the manifests are valid and carry the version of the program.
 
+Panel: the order of work ("Order, and what can run together") is a grid with one column per session and a coloured header over each column, so a card always stays under its own session however narrow the window is (before, cards wrapped like text and the third session dropped below the others); titles wrap instead of being cut; on a phone the cards stack. A browser test checks the alignment.
+
 New, small and meant for the morning:
 
 - `barid overview` (and `--brief` for a status bar) shows every session on one line: what it does, what it would start next, what waits for you.

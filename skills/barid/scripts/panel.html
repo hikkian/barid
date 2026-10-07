@@ -76,11 +76,19 @@ h2 small{font-weight:500;letter-spacing:0;text-transform:none}
 .tag{font-size:11px;border-radius:6px;padding:0 6px;background:var(--panel2);border:1px solid var(--line);color:var(--mute)}
 .tag.gpu,.tag.res{color:var(--warn);border-color:color-mix(in srgb,var(--warn) 50%,var(--line))}
 /* flow */
-.step{display:grid;grid-template-columns:110px 1fr;gap:12px;margin-bottom:12px}
-@media (max-width:760px){.step{grid-template-columns:1fr}}
+#flow{overflow-x:auto;--cols:1}
+.step{display:grid;grid-template-columns:110px minmax(0,1fr);gap:12px;margin-bottom:12px;min-width:calc(122px + var(--cols) * 200px)}
 .step .sh{padding-top:10px}
 .step .sh b{font-size:15px}
-.step .items{display:flex;flex-wrap:wrap;gap:10px;align-items:stretch}
+/* one column per session: a step has at most one task of a session, so every card stays under the name of its session, however narrow the window is */
+.step .items{display:grid;grid-template-columns:repeat(var(--cols),minmax(190px,1fr));grid-auto-flow:row dense;gap:10px;align-items:stretch}
+.step .item{min-width:0;max-width:none}
+.step .item .t{flex-wrap:wrap}
+.step .item .title{order:3;flex:1 1 100%;white-space:normal;overflow:visible;overflow-wrap:anywhere}
+.step .item .t>:last-child{margin-left:auto}
+.flowhead{margin-bottom:6px}
+.lanehead{display:flex;align-items:center;gap:6px;font-size:12px;font-weight:700;color:var(--mute);border-bottom:2px solid var(--lane,var(--ac));padding-bottom:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+@media (max-width:760px){#flow{--cols:1}.step{grid-template-columns:1fr;min-width:0}.step .items{grid-template-columns:1fr}.step .item{grid-column:auto!important}.flowhead{display:none}}
 .item{background:var(--panel);border:1px solid var(--line);border-top:3px solid var(--lane,var(--ac));border-radius:12px;padding:10px 12px;min-width:240px;flex:1 1 260px;max-width:420px;cursor:pointer;text-align:left}
 .item:hover{border-color:var(--ac)}
 .item.sel{outline:2px solid var(--ac)}
@@ -596,13 +604,23 @@ function itemCard(c, step1) {
 
 function renderFlow() {
   var B = S.board, box = clear($("flow")), any = false;
+  var cols = B.lanes.filter(function (l) { return !S.laneOff[l.id]; }), col = {};
+  cols.forEach(function (l, i) { col[l.id] = i + 1; });
+  box.style.setProperty("--cols", String(Math.max(1, cols.length)));
+  var head = null;
+  if (cols.length > 1) {
+    head = h("div", {class: "step flowhead"}, h("div", {class: "sh"}), h("div", {class: "items"}));
+    cols.forEach(function (l) { var lh = h("div", {class: "lanehead", style: "--lane:" + laneColor(l.id), title: l.title || l.id}, h("span", {class: "dot"}), " " + (l.title || l.id)); lh.dataset.lane = l.id; head.lastChild.appendChild(lh); });
+  }
   B.steps.forEach(function (ids, n) {
     var cs = ids.map(byId).filter(function (c) { return c && match(c); });
     if (!cs.length) return;
+    if (!any && head) box.appendChild(head);
     any = true;
     var sh = h("div", {class: "sh"}, h("b", {text: t("step") + " " + (n + 1)}), cs.length > 1 ? h("div", {class: "sub", text: "∥ " + t("together")}) : null);
     var items = h("div", {class: "items"});
-    cs.forEach(function (c, i) { if (i) items.appendChild(h("span", {class: "par", text: "∥"})); items.appendChild(itemCard(c, n === 0)); });
+    cs.sort(function (a, b) { return (col[a.lane] || 1) - (col[b.lane] || 1); });
+    cs.forEach(function (c) { var el = itemCard(c, n === 0); el.style.gridColumn = String(col[c.lane] || 1); el.dataset.lane = c.lane; items.appendChild(el); });
     box.appendChild(h("div", {class: "step"}, sh, items));
   });
   if (!any) box.appendChild(h("div", {class: "empty", text: t("empty_flow")}));
