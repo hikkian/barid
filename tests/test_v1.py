@@ -245,6 +245,72 @@ class FileNames(Base):
         self.assertIn("caf\u00e9.txt", " ".join(it["changed"]["files"]))
 
 
+class AcceptClean(Base):
+    def make_review(self, iid, outcome="complete", **kw):
+        self.add(iid, lane=kw.pop("lane", "main"), **kw)
+        self.run_(iid)
+        self.finish(iid, outcome)
+
+    def test_only_reports_that_need_no_reading_are_accepted(self):
+        self.make_review("OK1")
+        self.make_review("OK2")
+        self.make_review("PART", "partial")
+        self.make_review("FAIL", "failed")
+        self.make_review("WARN")
+        rb.mutate(self.path, lambda d: rb.get_item(d, "WARN").update(violations=[{"type": "outside_scope", "path": "x"}]))
+        self.make_review("DIST")
+        rb.mutate(self.path, lambda d: rb.get_item(d, "DIST").update(disturbed_by=[{"id": "L", "why": "load"}]))
+        ids = rb.mutate(self.path, lambda d: rb.op_accept_clean(d, HUMAN))
+        self.assertEqual(sorted(ids), ["OK1", "OK2"])
+        for iid, status in (("OK1", "done"), ("OK2", "done"), ("PART", "review"), ("FAIL", "review"), ("WARN", "review"), ("DIST", "review")):
+            self.assertEqual(self.comp(iid)["status"], status, iid)
+
+    def test_an_agent_cannot_accept_reports(self):
+        self.make_review("OK1")
+        with self.assertRaises(rb.RBError):
+            rb.mutate(self.path, lambda d: rb.op_accept_clean(d, AGENT))
+        self.assertEqual(self.comp("OK1")["status"], "review")
+
+    def test_the_command_line_says_what_it_did(self):
+        self.make_review("OK1")
+        code, out, err = cli(self.path, "--human", "accept-clean")
+        self.assertEqual(code, 0, err)
+        self.assertIn("accepted 1 clean report", out)
+        self.assertIn("nothing to accept", cli(self.path, "--human", "accept-clean")[1])
+
+
+class Overview(Base):
+    def test_every_session_gets_one_line_and_the_tail_says_what_waits_for_you(self):
+        self.add("A")
+        self.add("B", lane="second")
+        self.add("C", lane="third", not_before="+4h")
+        self.run_("A")
+        self.make_done = None
+        g = rb.status_summary(rb.load(self.path))
+        rows = {x["id"]: x for x in g["lanes"]}
+        self.assertEqual((rows["main"]["state"], rows["main"]["task"]), ("working", "A"))
+        self.assertEqual((rows["second"]["next"], rows["second"]["next_id"]), ("task", "B"))
+        self.assertEqual(rows["third"]["next"], "wait")
+        text = rb.status_text(g)
+        self.assertEqual(len(text.splitlines()), 4)               # three sessions and the line about you
+        self.assertIn("Needs you: nothing", text)
+        brief = cli(self.path, "overview", "--brief")
+        self.assertEqual(brief[0], 0)
+        self.assertEqual(len(brief[1].strip().splitlines()), 1)
+        self.assertIn("main: A", brief[1])
+
+    def test_a_dead_holder_and_a_report_to_read_show_up(self):
+        self.add("A")
+        self.run_("A")
+        expire_lease(self.path, "A")
+        self.add("R", lane="second")
+        self.run_("R", AGENT)
+        self.finish("R", "partial")
+        text = cli(self.path, "overview")[1]
+        self.assertIn("LEASE EXPIRED", text)
+        self.assertIn("1 to accept", text)
+
+
 def alive(pid):
     try:
         os.kill(pid, 0)

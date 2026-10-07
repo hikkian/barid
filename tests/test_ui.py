@@ -172,6 +172,42 @@ class PanelInBrowser(unittest.TestCase):
         self.assertIn("done", barid(self.board, "list", "--all"))
         self.assertNoJsErrors()
 
+    def test_clean_reports_are_accepted_together_after_a_second_click_and_the_rest_stays(self):
+        for iid in ("C1", "C2", "P1"):
+            barid(self.board, "add", iid, "--lane", "a", "--title", "Quiet " + iid, "--text", "x", "--profile", "light")
+        for iid, outcome, who in (("C1", "complete", "w1"), ("C2", "complete", "w2"), ("P1", "partial", "w3")):
+            barid(self.board, "claim", iid, "--by", who, "--force")
+            barid(self.board, "finish", iid, "--report", "r.md", "--outcome", outcome, "--by", who)
+        self.b.wait("document.getElementById('acceptall') !== null", what="the accept-all button")
+        self.assertIn("Accept 2 clean reports", self.text("#acceptall"))
+        self.b.click("#acceptall")
+        self.assertIn("Sure? Accept 2", self.text("#acceptall"))        # one click only asks
+        self.assertIn("review", barid(self.board, "list", "--all"))
+        self.b.click("#acceptall")
+        self.b.wait("document.getElementById('acceptall') === null", what="the accept-all button to go")
+        listing = barid(self.board, "list", "--all")
+        self.assertEqual(sum(1 for ln in listing.splitlines() if ln.startswith(("C1", "C2")) and " done " in ln), 2, listing)
+        self.assertTrue(any(ln.startswith("P1") and " review " in ln for ln in listing.splitlines()), listing)    # the partial one still waits for a person
+        self.assertNoJsErrors()
+
+    def test_a_reminder_comes_only_when_more_things_wait_and_the_tab_is_in_the_background(self):
+        self.b.exec("""window.__notes = [];
+            window.Notification = function (title, opts) { window.__notes.push([title, opts && opts.body]); };
+            Notification.permission = "granted"; Notification.requestPermission = function () { return Promise.resolve("granted"); };
+            document.hasFocus = function () { return false; };
+            localStorage.setItem("barid.notify", "1");""")
+        barid(self.board, "claim", "T1", "--by", "w1", "--force")
+        barid(self.board, "finish", "T1", "--report", "r.md", "--outcome", "complete", "--by", "w1")
+        self.b.wait("window.__notes.length === 1", what="one reminder")
+        self.assertEqual(self.b.exec("return document.getElementById('notifybtn').hidden;"), False)
+        self.assertEqual(self.b.exec("return document.getElementById('notifybtn').getAttribute('aria-pressed');"), "true")
+        self.assertEqual(self.b.exec("return window.__notes[0][0];"), "Barid: needs you")
+        barid(self.board, "--human", "accept", "T1")                      # fewer things wait: no new reminder
+        import time
+        time.sleep(4)
+        self.assertEqual(self.b.exec("return window.__notes.length;"), 1)
+        self.assertNoJsErrors()
+
     def test_a_measurement_that_ran_next_to_load_is_flagged_in_the_report(self):
         barid(self.board, "add", "L1", "--lane", "b", "--title", "Load", "--text", "x", "--profile", "dev")
         barid(self.board, "claim", "T1", "--by", "w1", "--force")

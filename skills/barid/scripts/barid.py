@@ -1417,6 +1417,62 @@ def op_accept(d: dict, actor: Actor, iid: str) -> dict:
     return it
 
 
+def is_clean_report(it: dict) -> bool:
+    """A finished task whose report can be accepted without reading it closely: it ended complete, left no file warning and did not
+    run next to something that disturbs a measurement. Anything else the person looks at."""
+    return it["status"] == "review" and it.get("outcome") == "complete" and not it.get("violations") and not it.get("disturbed_by")
+
+
+def op_accept_clean(d: dict, actor: Actor) -> list:
+    """Accept every clean report at once (see is_clean_report); returns the ids. A partial, failed or warned one stays for a person to read."""
+    require_human(actor, "accept reports")
+    ids = [i["id"] for i in d["items"] if is_clean_report(i)]
+    for iid in ids:
+        op_accept(d, actor, iid)
+    return ids
+
+
+def status_summary(d: dict, now=None) -> dict:
+    """One look at the whole board for a status line: what every session does, what it would start next, and what waits for the person."""
+    now = now or now_dt()
+    comp = compute(d, now)
+    lanes = []
+    for lane in d["lanes"]:
+        running = next((c for c in comp if c["lane"] == lane["id"] and c["status"] == "running"), None)
+        seen = lane.get("seen") or {}
+        at = parse_ts(seen.get("at"))
+        nxt = next_step(d, lane["id"], now, comp)
+        row = {"id": lane["id"], "state": "working" if running else (seen.get("state") or "idle"), "task": running["id"] if running else "", "by": "", "for": None,
+               "stale": bool(running and running["stale"]), "signal_ago": int((now - at).total_seconds()) if at else None, "next": nxt["status"], "next_id": nxt.get("id")}
+        if running:
+            cl = running.get("claim") or {}
+            since = parse_ts(cl.get("at"))
+            row.update(by=cl.get("by", ""), **{"for": int((now - since).total_seconds()) if since else None})
+        lanes.append(row)
+    return {"lanes": lanes, "to_accept": sum(1 for c in comp if c["status"] == "review"), "clean": sum(1 for c in comp if is_clean_report(c)),
+            "proposals": sum(1 for c in comp if c["status"] == "proposed"), "ready": sum(1 for c in comp if c["state"] == "ready")}
+
+
+def status_text(g: dict, brief: bool = False) -> str:
+    def lane_brief(x):
+        return f"{x['id']}: " + (f"{x['task']}{' (lease expired)' if x['stale'] else ''}" if x["task"] else {"task": f"idle, next {x['next_id']}", "wait": "idle, waiting", "stuck": "STUCK"}.get(x["next"], "idle"))
+    tail = [f"{g['to_accept']} to accept"] if g["to_accept"] else []
+    if g["proposals"]:
+        tail.append(f"{g['proposals']} proposal(s)")
+    if brief:
+        return " | ".join([lane_brief(x) for x in g["lanes"]] + tail)
+    out = []
+    for x in g["lanes"]:
+        if x["task"]:
+            what = f"{x['task']}  {x['by']}" + (f", {fmt_in(x['for'])}" if x["for"] is not None else "") + ("  LEASE EXPIRED" if x["stale"] else "")
+        else:
+            what = {"task": f"next: {x['next_id']}", "wait": "waits for something that ends by itself", "stuck": "STUCK: needs you", "none": "nothing queued"}[x["next"]]
+        sig = f"  (signal {fmt_in(x['signal_ago'])} ago)" if x["signal_ago"] is not None else ""
+        out.append(f"{x['id']:<10} {x['state']:<8} {what}{sig}")
+    out.append("Needs you: " + (", ".join(tail) if tail else "nothing") + (f"  ({g['clean']} clean: `accept-clean`)" if g["clean"] > 1 else ""))
+    return "\n".join(out)
+
+
 def op_note(d: dict, actor: Actor, iid: str, text: str) -> dict:
     it = get_item(d, iid)
     text = (text or "").strip()
@@ -2142,14 +2198,14 @@ def fmt_reason(r: dict) -> str:
     return code
 
 
-def next_step(d: dict, lane: str | None = None, now=None) -> dict:
+def next_step(d: dict, lane: str | None = None, now=None, comp: list | None = None) -> dict:
     """What `next` should answer for a lane (or for every lane): the first ready task in plan order; otherwise why nothing is ready.
 
     status: task (a task is ready: `id`), none (the lane has no queued task at all: it is done), wait (queued tasks exist and
     every one of them is held by something that ends by itself: a start time, other tasks, a conflict), stuck (nothing will
     change without the person: a report to accept, a draft to write, a dependency that was cancelled). `waiting` lists the queued
     tasks with their reasons; `retry_in` is a sensible number of seconds to look again."""
-    comp = compute(d, now)
+    comp = comp if comp is not None else compute(d, now)
     steps = plan_steps(d, comp)
     order = {iid: (n, pos) for n, step in enumerate(steps) for pos, iid in enumerate(step)}
     mine = [c for c in comp if c["status"] == "queued" and (not lane or c["lane"] == lane)]
@@ -2369,6 +2425,8 @@ def apply_action(board: Path, req: dict):
             return op_sent(d, h, iid)["status"]
         if a == "accept":
             return op_accept(d, h, iid)["status"]
+        if a == "accept_clean":
+            return op_accept_clean(d, h)
         if a == "release":
             return op_release(d, h, iid, force=True)["status"]
         if a == "note":
@@ -2913,6 +2971,19 @@ def cmd_worker(args):
     sys.exit(0)
 
 
+def cmd_overview(args):
+    board = find_board(getattr(args, "board", None))
+    g = status_summary(load(board))
+    out(args, g, status_text(g, getattr(args, "brief", False)))
+
+
+def cmd_accept_clean(args):
+    board = find_board(getattr(args, "board", None))
+    actor = cli_actor(args)
+    ids = mutate(board, lambda d: op_accept_clean(d, actor))
+    out(args, {"accepted": ids}, f"accepted {len(ids)} clean report(s)" + (": " + ", ".join(ids) if ids else "; nothing to accept without reading it (a partial, failed or warned report stays)"))
+
+
 def cmd_digest(args):
     board = find_board(getattr(args, "board", None))
     d = load(board)
@@ -3314,6 +3385,9 @@ def build_parser() -> argparse.ArgumentParser:
     s.add_argument("--max-tasks", type=int, default=0, metavar="N", help="stop after N tasks (default: until the lane is empty)")
     s.add_argument("--once", action="store_true", help="run one task and exit")
     s.add_argument("--max-attempts", type=int, default=3, metavar="N", help="a task that comes back to the queue without a report is started at most N times, then closed as failed (default 3)")
+    s = add("overview", cmd_overview, "one look at every session: what it does, what it would start next, what waits for you (for a status bar: --brief)")
+    s.add_argument("--brief", action="store_true", help="a single line")
+    s = add("accept-clean", cmd_accept_clean, "person: accept every report that ended complete with no file warnings, in one go (the rest stays for you to read)")
     s = add("digest", cmd_digest, "what happened while you were away: sessions, finished tasks and their reports, what needs you, what waits and why")
     s.add_argument("--since", default=None, metavar="WHEN", help="12h (default), 90m, 2d, or a time such as '2026-10-07 08:00'")
     s = add("lang", cmd_lang, "show or set the language of the texts written for agents (en, ru, kk); the panel language is separate")

@@ -161,6 +161,7 @@ details>summary{cursor:pointer;color:var(--mute);margin:6px 0}
   <span id="lanefilters" style="display:flex;gap:6px;flex-wrap:wrap"></span>
   <input type="search" id="q" autocomplete="off">
   <button class="btn pri" id="addbtn"></button>
+  <button class="pill" id="notifybtn" hidden></button>
   <span class="themewrap"><button class="pill" id="langbtn" aria-haspopup="true" aria-expanded="false"></button><div id="langpop" hidden></div></span>
   <span class="themewrap"><button class="pill" id="themebtn" aria-haspopup="true" aria-expanded="false"></button><div id="themepop" hidden></div></span>
 </header>
@@ -197,7 +198,7 @@ var STR = {
   quiet:"needs a quiet machine", noisy:"creates load", id:"ID", text:"Prompt text", create:"Create", offline:"No connection to the board server. Retrying…",
   copy_path:"Copy report path", reopen:"Reopen", sessions:"Sessions", go_ok:"Can run together with: {list}", go_wait:"Wait, conflict: {list}", go_not:"Do not run together with: {list}", lane_new:"New session", lane_name_ph:"Session name (for example: Codex, tests)", agent_which:"Which agent will work in it?", lane_create:"Create session", lane_created:"Session “{name}” created", connect:"Connect", connect_help_short:"How to attach an agent window to this session", connect_title:"Connect “{name}”", connect_help:"Open that agent (Codex, Claude Code…) in the project folder and paste this text as its first message. After that it takes its tasks from the board by itself.", copy_connect:"Copy connection text", color_reset:"Reset color", agent_ph:"Agent (claude, codex…)", ag_claude:"Claude Code", ag_codex:"Codex", ag_opencode:"OpenCode", ag_gemini:"Gemini CLI", ag_cursor:"Cursor", ag_aider:"Aider", ag_local:"Local model", why_paths:"same files", touches_l:"Files and folders it may change (comma separated)", files:"Files", workdir:"Checkout", branch:"Branch", viol_chip:"files need a look", viol_protected:"changed a protected file", viol_outside:"changed a file outside its scope", viol_collision:"touched a file that {id} is working on", changed_n:"{n} files changed on {branch}", viol_warn:"Barid found file changes you should look at before accepting.", updated:"updated", theme:"Appearance", mode_auto:"Auto", mode_light:"Light", mode_dark:"Dark", palette:"Colors", pal_forest:"Forest", pal_teal:"Teal", pal_graphite:"Graphite", pal_midnight:"Midnight", out:"Outcome", out_complete:"complete", out_partial:"partial", out_failed:"failed", out_none:"outcome not stated", accept_asis:"Accept as is", partial_warn:"The session stopped early or did not finish everything. Dependent tasks wait for your decision.", turn:"its turn has come", empty_flow:"No tasks yet. Ask your agent to add some, or press “+ New task”.",
   go_begin:"Starts not before {time}", go_person:"Waits for you: {list}", sum_begin:"{id} starts not before {time}", sum_person:"{id} waits for your decision ({list})",
-  rs_begin_time:"not before {time}", rs_dependency:"waits for {id} ({status})", rs_decision_accept:"needs you to accept the report of {id}", rs_decision_write:"needs you to write or approve {id}", rs_never:"{id} was cancelled: it can never finish, change the dependency", rs_conflict:"cannot run next to {id} ({why})", rs_stale:"{id} holds the way, but its lease ran out: the session is most likely gone. Return it to the queue", rs_via:"through {via}", reasons_l:"Why it waits",
+  rs_begin_time:"not before {time}", rs_dependency:"waits for {id} ({status})", rs_decision_accept:"needs you to accept the report of {id}", rs_decision_write:"needs you to write or approve {id}", rs_never:"{id} was cancelled: it can never finish, change the dependency", rs_conflict:"cannot run next to {id} ({why})", accept_all:"Accept {n} clean reports", accept_all_sure:"Sure? Accept {n}", ok_accept_all:"Reports accepted", notify_off:"Notify me when something needs me (only while this tab is in the background)", notify_on:"Notifications are on: click to turn them off", notify_denied:"Notifications are blocked in the browser settings", notify_title:"Barid: needs you", notify_body:"{n} waiting for you", rs_stale:"{id} holds the way, but its lease ran out: the session is most likely gone. Return it to the queue", rs_via:"through {via}", reasons_l:"Why it waits",
   after_l:"After (any outcome; IDs, comma separated)", not_before_l:"Not before (23:00, 2026-10-07 23:00, +3h)", timebox_l:"Time limit (90m, 8h, 1d)", deadline_l:"Deadline", after_row:"After (any outcome)", begin_row:"Not before",
   pres_working:"works on {task}", pres_waiting:"waiting: {reason}", pres_idle:"idle", pres_none:"no signal yet", pres_ago:"signal {ago}", ago_now:"just now", ago_m:"{n} min ago", ago_h:"{n} h ago", ago_d:"{n} d ago",
   night_mode:"Night mode: wait for the turn, never stop to ask", night_help:"For a session that works unattended: it waits for start times, other tasks and the GPU, and keeps going until its lane is empty.",
@@ -222,7 +223,7 @@ var STR = {
   quiet:"нужна тишина", noisy:"создаёт нагрузку", id:"ID", text:"Текст промпта", create:"Создать", offline:"Нет связи с сервером доски. Пробую снова…",
   copy_path:"Скопировать путь к отчёту", reopen:"Открыть заново", sessions:"Сессии", go_ok:"Можно запускать вместе с: {list}", go_wait:"Подождите, конфликт: {list}", go_not:"Нельзя запускать вместе с: {list}", lane_new:"Новая сессия", lane_name_ph:"Название сессии (например: Codex, тесты)", agent_which:"Какой агент в ней будет работать?", lane_create:"Создать сессию", lane_created:"Сессия «{name}» создана", connect:"Подключить", connect_help_short:"Как подключить окно агента к этой сессии", connect_title:"Подключить «{name}»", connect_help:"Откройте этого агента (Codex, Claude Code…) в папке проекта и вставьте этот текст первым сообщением. Дальше он сам берёт задачи с доски.", copy_connect:"Скопировать текст подключения", color_reset:"Сбросить цвет", agent_ph:"Агент (claude, codex…)", ag_claude:"Claude Code", ag_codex:"Codex", ag_opencode:"OpenCode", ag_gemini:"Gemini CLI", ag_cursor:"Cursor", ag_aider:"Aider", ag_local:"Локальная модель", why_paths:"те же файлы", touches_l:"Какие файлы и папки можно менять (через запятую)", files:"Файлы", workdir:"Рабочая копия", branch:"Ветка", viol_chip:"проверьте файлы", viol_protected:"изменён защищённый файл", viol_outside:"изменён файл вне своей области", viol_collision:"тронут файл, с которым работает {id}", changed_n:"изменено файлов: {n} (ветка {branch})", viol_warn:"Barid нашёл изменения файлов, которые стоит проверить перед принятием.", updated:"обновлено", theme:"Оформление", mode_auto:"Авто", mode_light:"Светлая", mode_dark:"Тёмная", palette:"Цвета", pal_forest:"Лес", pal_teal:"Бирюза", pal_graphite:"Графит", pal_midnight:"Полночь", out:"Итог", out_complete:"выполнено полностью", out_partial:"выполнено частично", out_failed:"не удалось", out_none:"итог не указан", accept_asis:"Принять как есть", partial_warn:"Сессия остановилась раньше или сделала не всё. Зависимые задачи ждут вашего решения.", turn:"подошла очередь", empty_flow:"Задач пока нет. Попросите агента добавить их или нажмите «+ Новая задача».",
   go_begin:"Старт не раньше {time}", go_person:"Ждёт вашего решения: {list}", sum_begin:"{id} стартует не раньше {time}", sum_person:"{id} ждёт вашего решения ({list})",
-  rs_begin_time:"не раньше {time}", rs_dependency:"ждёт {id} ({status})", rs_decision_accept:"ждёт, пока вы примете отчёт {id}", rs_decision_write:"ждёт, пока вы напишете или одобрите {id}", rs_never:"{id} отменена: она не завершится, измените зависимость", rs_conflict:"нельзя рядом с {id} ({why})", rs_stale:"{id} держит дорогу, но срок её аренды вышел: сессия, скорее всего, ушла. Верните её в очередь", rs_via:"через {via}", reasons_l:"Почему ждёт",
+  rs_begin_time:"не раньше {time}", rs_dependency:"ждёт {id} ({status})", rs_decision_accept:"ждёт, пока вы примете отчёт {id}", rs_decision_write:"ждёт, пока вы напишете или одобрите {id}", rs_never:"{id} отменена: она не завершится, измените зависимость", rs_conflict:"нельзя рядом с {id} ({why})", accept_all:"Принять {n} чистых отчётов", accept_all_sure:"Точно? Принять {n}", ok_accept_all:"Отчёты приняты", notify_off:"Уведомлять, когда что-то нужно от меня (только пока вкладка в фоне)", notify_on:"Уведомления включены: нажмите, чтобы выключить", notify_denied:"Уведомления заблокированы в настройках браузера", notify_title:"Барид: нужны вы", notify_body:"Ждут вас: {n}", rs_stale:"{id} держит дорогу, но срок её аренды вышел: сессия, скорее всего, ушла. Верните её в очередь", rs_via:"через {via}", reasons_l:"Почему ждёт",
   after_l:"После (любой исход; ID через запятую)", not_before_l:"Не раньше (23:00, 2026-10-07 23:00, +3h)", timebox_l:"Лимит времени (90m, 8h, 1d)", deadline_l:"Срок", after_row:"После (любой исход)", begin_row:"Не раньше",
   pres_working:"работает над {task}", pres_waiting:"ждёт: {reason}", pres_idle:"свободна", pres_none:"сигнала ещё не было", pres_ago:"сигнал {ago}", ago_now:"только что", ago_m:"{n} мин назад", ago_h:"{n} ч назад", ago_d:"{n} дн назад",
   night_mode:"Ночной режим: ждать очереди и не останавливаться с вопросами", night_help:"Для сессии, которая работает без присмотра: она ждёт время старта, другие задачи и видеокарту и идёт дальше, пока её линия не опустеет.",
@@ -247,7 +248,7 @@ var STR = {
   quiet:"тыныштық керек", noisy:"жүктеме жасайды", id:"ID", text:"Промпт мәтіні", create:"Жасау", offline:"Тақта серверімен байланыс жоқ. Қайта көріп жатырмыз…",
   copy_path:"Есеп жолын көшіру", reopen:"Қайта ашу", sessions:"Сессиялар", go_ok:"Бірге іске қосуға болады: {list}", go_wait:"Күтіңіз, қайшылық: {list}", go_not:"Бірге іске қоспаңыз: {list}", lane_new:"Жаңа сессия", lane_name_ph:"Сессия атауы (мысалы: Codex, тесттер)", agent_which:"Онда қай агент жұмыс істейді?", lane_create:"Сессия жасау", lane_created:"«{name}» сессиясы жасалды", connect:"Қосу", connect_help_short:"Агент терезесін осы сессияға қалай қосуға болады", connect_title:"«{name}» сессиясын қосу", connect_help:"Сол агентті (Codex, Claude Code…) жоба қалтасында ашып, осы мәтінді бірінші хабарлама ретінде қойыңыз. Содан кейін ол тапсырмаларды тақтадан өзі алады.", copy_connect:"Қосу мәтінін көшіру", color_reset:"Түсті бастапқыға қайтару", agent_ph:"Агент (claude, codex…)", ag_claude:"Claude Code", ag_codex:"Codex", ag_opencode:"OpenCode", ag_gemini:"Gemini CLI", ag_cursor:"Cursor", ag_aider:"Aider", ag_local:"Жергілікті модель", why_paths:"сол файлдар", touches_l:"Өзгерте алатын файлдар мен қалталар (үтір арқылы)", files:"Файлдар", workdir:"Жұмыс көшірмесі", branch:"Тармақ", viol_chip:"файлдарды қараңыз", viol_protected:"қорғалған файлды өзгертті", viol_outside:"өз аймағынан тыс файлды өзгертті", viol_collision:"{id} жұмыс істеп жатқан файлға тиді", changed_n:"өзгерген файл: {n} ({branch} тармағы)", viol_warn:"Barid қабылдамас бұрын қарап шығу керек файл өзгерістерін тапты.", updated:"жаңартылды", theme:"Көрініс", mode_auto:"Авто", mode_light:"Ашық", mode_dark:"Қараңғы", palette:"Түстер", pal_forest:"Орман", pal_teal:"Көгілдір", pal_graphite:"Графит", pal_midnight:"Түн жарымы", out:"Нәтиже", out_complete:"толық орындалды", out_partial:"ішінара орындалды", out_failed:"орындалмады", out_none:"нәтиже көрсетілмеген", accept_asis:"Қалай болса солай қабылдау", partial_warn:"Сессия ерте тоқтады немесе бәрін аяқтамады. Тәуелді тапсырмалар сіздің шешіміңізді күтеді.", turn:"оның кезегі келді", empty_flow:"Тапсырма әзірге жоқ. Агентіңізден қосуды сұраңыз немесе «+ Жаңа тапсырма» түймесін басыңыз.",
   go_begin:"{time} дейін басталмайды", go_person:"Сіздің шешіміңізді күтеді: {list}", sum_begin:"{id} {time} дейін басталмайды", sum_person:"{id} сіздің шешіміңізді күтеді ({list})",
-  rs_begin_time:"{time} дейін емес", rs_dependency:"{id} күтеді ({status})", rs_decision_accept:"{id} есебін қабылдауыңызды күтеді", rs_decision_write:"{id} жазуыңызды немесе мақұлдауыңызды күтеді", rs_never:"{id} болдырылмады: ол аяқталмайды, тәуелділікті өзгертіңіз", rs_conflict:"{id} жанында болмайды ({why})", rs_stale:"{id} жолды ұстап тұр, бірақ жалдау мерзімі өтті: сессия, сірә, кетті. Оны кезекке қайтарыңыз", rs_via:"{via} арқылы", reasons_l:"Неге күтеді",
+  rs_begin_time:"{time} дейін емес", rs_dependency:"{id} күтеді ({status})", rs_decision_accept:"{id} есебін қабылдауыңызды күтеді", rs_decision_write:"{id} жазуыңызды немесе мақұлдауыңызды күтеді", rs_never:"{id} болдырылмады: ол аяқталмайды, тәуелділікті өзгертіңіз", rs_conflict:"{id} жанында болмайды ({why})", accept_all:"{n} таза есепті қабылдау", accept_all_sure:"Сенімдісіз бе? {n} қабылдау", ok_accept_all:"Есептер қабылданды", notify_off:"Маған бірдеңе қажет болғанда хабарла (қойынды фонда тұрғанда ғана)", notify_on:"Хабарламалар қосулы: өшіру үшін басыңыз", notify_denied:"Хабарламалар браузер баптауларында бұғатталған", notify_title:"Барид: сіз керексіз", notify_body:"Сізді күтуде: {n}", rs_stale:"{id} жолды ұстап тұр, бірақ жалдау мерзімі өтті: сессия, сірә, кетті. Оны кезекке қайтарыңыз", rs_via:"{via} арқылы", reasons_l:"Неге күтеді",
   after_l:"Кейін (кез келген нәтиже; ID үтір арқылы)", not_before_l:"Бұдан ерте емес (23:00, 2026-10-07 23:00, +3h)", timebox_l:"Уақыт шегі (90m, 8h, 1d)", deadline_l:"Мерзім", after_row:"Кейін (кез келген нәтиже)", begin_row:"Бұдан ерте емес",
   pres_working:"{task} үстінде жұмыс істеп жатыр", pres_waiting:"күтіп тұр: {reason}", pres_idle:"бос", pres_none:"сигнал әлі жоқ", pres_ago:"сигнал {ago}", ago_now:"жаңа ғана", ago_m:"{n} мин бұрын", ago_h:"{n} сағ бұрын", ago_d:"{n} күн бұрын",
   night_mode:"Түнгі режим: кезегін күту, сұрақ қойып тоқтамау", night_help:"Қараусыз жұмыс істейтін сессия үшін: ол бастау уақытын, басқа тапсырмаларды және бейнекартаны күтеді және жолы бос болғанша жалғастырады.",
@@ -272,7 +273,7 @@ function errText(e) {
   var info = Object.assign({}, e.info || {}); if (info.status) info.status = st(info.status);
   return fmt(tpl, info);
 }
-var ACT_OK = {laneadd: "ok_saved", boardlang: "ok_saved", sent: "ok_sent", approve: "ok_approve", reject: "ok_reject", accept: "ok_accept", cancel: "ok_cancel", restore: "ok_restore", release: "ok_release", note: "ok_note", outcome: "ok_outcome", lane: "ok_saved", edit: "ok_saved", add: "ok_created"};
+var ACT_OK = {laneadd: "ok_saved", boardlang: "ok_saved", sent: "ok_sent", approve: "ok_approve", reject: "ok_reject", accept: "ok_accept", accept_clean: "ok_accept_all", cancel: "ok_cancel", restore: "ok_restore", release: "ok_release", note: "ok_note", outcome: "ok_outcome", lane: "ok_saved", edit: "ok_saved", add: "ok_created"};
 function st(s) { return (STR[S.lang] || STR.en).s[s] || s; }
 function $(id) { return document.getElementById(id); }
 var PALS = ["forest", "teal", "graphite", "midnight"], SWATCH = {forest: "#34d399", teal: "#feb83b", graphite: "#6ee7b7", midnight: "#5aa9ff"};
@@ -429,12 +430,29 @@ function setStatic() {
   $("h-now").textContent = t("now"); $("h-flow").textContent = t("flow"); $("q").placeholder = t("search"); $("addbtn").textContent = t("add"); $("langbtn").textContent = LANGNAME[S.lang] + " ▾";
   $("themebtn").textContent = "◐ " + t("theme"); $("themebtn").title = t("theme"); $("archbtn").textContent = (S.arch ? "▾ " : "▸ ") + t("archive"); $("actbtn").textContent = (S.act ? "▾ " : "▸ ") + t("activity");
   $("archive").hidden = !S.arch; $("activity").hidden = !S.act;
+  var nb = $("notifybtn"); nb.hidden = !("Notification" in window); nb.textContent = notifyOn() ? "🔔" : "🔕"; nb.title = notifyOn() ? t("notify_on") : t("notify_off"); nb.setAttribute("aria-pressed", notifyOn() ? "true" : "false");
+}
+function notifyOn() { return lsGet("barid.notify") === "1" && "Notification" in window && Notification.permission === "granted"; }
+function toggleNotify() {
+  if (!("Notification" in window)) return;
+  if (lsGet("barid.notify") === "1") { lsSet("barid.notify", "0"); setStatic(); return; }
+  var done = function (p) { if (p === "granted") lsSet("barid.notify", "1"); else toast(t("notify_denied"), true); setStatic(); };
+  if (Notification.permission !== "default") return done(Notification.permission);
+  var r = Notification.requestPermission();
+  if (r && r.then) r.then(done); else done(Notification.permission);
+}
+// A reminder only when the number of things waiting for the person grows and this tab is not the one in front: never a sound, never repeated
+function checkNotify(B) {
+  var n = B.items.filter(function (c) { return c.state === "review" || c.state === "proposed"; }).length;
+  var was = S.needsSeen; S.needsSeen = n;
+  if (was === undefined || n <= was || !notifyOn() || document.hasFocus()) return;
+  try { new Notification(t("notify_title"), {body: fmt(t("notify_body"), {n: n}), tag: "barid-needs"}); } catch (e) {}
 }
 
 function render() {
   var B = S.board; if (!B) return;
   if (!STR[S.lang]) { var nl = (navigator.language || "en").slice(0, 2); S.lang = STR[B.lang] && B.lang !== "en" ? B.lang : (B.lang === "kz" ? "kk" : (nl === "kz" ? "kk" : STR[nl] ? nl : "en")); }
-  setStatic();
+  setStatic(); checkNotify(B);
   $("proj").textContent = B.project + " · " + t("rev") + " " + B.rev;
   document.title = "Barid · " + B.project;
   // lane filter chips
@@ -544,7 +562,13 @@ function renderInbox() {
     wrap.appendChild(l);
   }
   if (revs.length) {
-    wrap.appendChild(h("h2", null, t("inbox_r") + " ", h("small", {text: "(" + revs.length + ")"})));
+    var clean = revs.filter(function (c) { return !badOutcome(c) && !(c.disturbed_by || []).length; });
+    wrap.appendChild(h("h2", null, t("inbox_r") + " ", h("small", {text: "(" + revs.length + ")"}),
+      clean.length > 1 ? h("button", {class: "btn ok sm", id: "acceptall", style: "margin-left:12px", text: fmt(t("accept_all"), {n: clean.length}), onclick: function (ev) {
+        var b = ev.currentTarget;
+        if (!b.dataset.sure) { b.dataset.sure = "1"; b.textContent = fmt(t("accept_all_sure"), {n: clean.length}); setTimeout(function () { delete b.dataset.sure; b.textContent = fmt(t("accept_all"), {n: clean.length}); }, 5000); return; }
+        act("accept_clean", "", {}, t("accept"));
+      }}) : null));
     var l2 = h("div", {class: "inbox"});
     revs.forEach(function (c) {
       var lastNote = (c.notes || []).slice(-1)[0];
@@ -788,6 +812,7 @@ function toggleLangPop(open) {
   if (show) { var r = $("langbtn").getBoundingClientRect(), w = pop.offsetWidth || 170; pop.style.left = Math.max(8, Math.min(r.left, window.innerWidth - w - 8)) + "px"; pop.style.top = (r.bottom + 8) + "px"; }
 }
 $("langbtn").addEventListener("click", function (e) { e.stopPropagation(); toggleLangPop(); });
+$("notifybtn").addEventListener("click", toggleNotify);
 $("archbtn").addEventListener("click", function () { S.arch = !S.arch; try { localStorage.setItem("rb.arch", S.arch ? "1" : "0"); } catch (e) {} setStatic(); });
 $("actbtn").addEventListener("click", function () { S.act = !S.act; try { localStorage.setItem("rb.act", S.act ? "1" : "0"); } catch (e) {} setStatic(); });
 function renderThemePop() {
