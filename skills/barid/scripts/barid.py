@@ -943,8 +943,9 @@ def _mark_unreachable(by_id: dict) -> None:
         c["reasons"] = fresh
 
 
-def plan_steps(d: dict, computed: list) -> list:
+def plan_steps(d: dict, computed: list, cache: "PairCache | None" = None) -> list:
     """Group the live tasks into steps; tasks in one step may run at the same time."""
+    cache = cache or PairCache(d)
     items = {i["id"]: i for i in d["items"]}
     live = [c for c in computed if c["status"] not in ("done", "cancelled", "review")]
     placed, steps = {}, {}
@@ -968,7 +969,7 @@ def plan_steps(d: dict, computed: list) -> list:
                 continue
             earliest = 1 + max([placed[n] for n in unfinished], default=0)
             s = earliest
-            while any(conflict_reason(d, items[c["id"]], items[o]) for o in steps.get(s, [])):
+            while any(conflict_reason(d, items[c["id"]], items[o], cache) for o in steps.get(s, [])):
                 s += 1
             placed[c["id"]] = s
             steps.setdefault(s, []).append(c["id"])
@@ -1450,12 +1451,13 @@ def status_summary(d: dict, now=None) -> dict:
     """One look at the whole board for a status line: what every session does, what it would start next, and what waits for the person."""
     now = now or now_dt()
     comp = compute(d, now)
+    steps = plan_steps(d, comp)               # once for every session, not once per session
     lanes = []
     for lane in d["lanes"]:
         running = next((c for c in comp if c["lane"] == lane["id"] and c["status"] == "running"), None)
         seen = lane.get("seen") or {}
         at = parse_ts(seen.get("at"))
-        nxt = next_step(d, lane["id"], now, comp)
+        nxt = next_step(d, lane["id"], now, comp, steps)
         row = {"id": lane["id"], "state": "working" if running else (seen.get("state") or "idle"), "task": running["id"] if running else "", "by": "", "for": None,
                "stale": bool(running and running["stale"]), "signal_ago": int((now - at).total_seconds()) if at else None, "next": nxt["status"], "next_id": nxt.get("id")}
         if running:
@@ -2214,7 +2216,7 @@ def fmt_reason(r: dict) -> str:
     return code
 
 
-def next_step(d: dict, lane: str | None = None, now=None, comp: list | None = None) -> dict:
+def next_step(d: dict, lane: str | None = None, now=None, comp: list | None = None, steps: list | None = None) -> dict:
     """What `next` should answer for a lane (or for every lane): the first ready task in plan order; otherwise why nothing is ready.
 
     status: task (a task is ready: `id`), none (the lane has no queued task at all: it is done), wait (queued tasks exist and
@@ -2222,7 +2224,7 @@ def next_step(d: dict, lane: str | None = None, now=None, comp: list | None = No
     change without the person: a report to accept, a draft to write, a dependency that was cancelled). `waiting` lists the queued
     tasks with their reasons; `retry_in` is a sensible number of seconds to look again."""
     comp = comp if comp is not None else compute(d, now)
-    steps = plan_steps(d, comp)
+    steps = steps if steps is not None else plan_steps(d, comp)
     order = {iid: (n, pos) for n, step in enumerate(steps) for pos, iid in enumerate(step)}
     mine = [c for c in comp if c["status"] == "queued" and (not lane or c["lane"] == lane)]
     mine.sort(key=lambda c: order.get(c["id"], (10 ** 6, 0)))

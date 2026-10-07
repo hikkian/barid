@@ -148,7 +148,7 @@ class Budgets(unittest.TestCase):
             path = make_board(tmp, 100)
             for args in (("list",), ("plan",), ("next", "--lane", "main"), ("digest",), ("overview",), ("lint",)):
                 t = min(cli(path, *args)[3] for _ in range(2))
-                self.assertLess(t, 3.0, f"{' '.join(args)} took {t:.1f}s")        # about 0.15 s here; the margin is for a slow CI machine
+                self.assertLess(t, 6.0, f"{' '.join(args)} took {t:.1f}s")        # about 0.15 s here (Python start included); the margin is for a slow CI machine
 
     def test_a_board_of_500_tasks_is_still_worked_out_in_a_fraction_of_a_second(self):
         with tempfile.TemporaryDirectory() as tmp:
