@@ -1,13 +1,13 @@
 # Unattended runs: nights, queues, chains
 
-A chain of tasks that runs while nobody watches fails in a few predictable ways. Barid 0.6 handles each of them in the board, so that it does not depend on an agent staying patient.
+A chain of tasks that runs while nobody watches fails in a few predictable ways. Barid 1.0 handles each of them in the board, so that it does not depend on an agent staying patient.
 
 | What goes wrong | What Barid does |
 |---|---|
 | The next task waits for a GPU or another session, the agent reads "nothing is ready" and stops | `next` separates **nothing queued** (exit 2) from **will start by itself** (exit 3) from **needs the person** (exit 4); `next --wait` and `claim --wait` do the waiting inside the command |
 | A task that ended *partial* silently blocks everything after it until someone accepts it | `--after` (run after any end) next to `--needs` (after a success); a task that waits for a report to be accepted says `decision`, one that waits for a cancelled task says `never` |
 | "Do not start before 23:00" lives only in the prompt text | `--not-before`: the board refuses the claim and `next` answers "wait" until then |
-| An agent that waits cannot be told from one that died | every `next`, `claim`, `note`, `finish` and `heartbeat` is a sign of life, shown per session in the panel; a worker renews a 3-minute lease every 30 seconds, so a dead one shows as stale within minutes |
+| An agent that waits cannot be told from one that died | every `next`, `claim`, `note`, `finish` and `heartbeat` is a sign of life, shown per session in the panel; a worker renews a 3-minute lease once a minute, so a dead one shows as stale within minutes |
 | The chat session gets distracted, compacts its context, or ends a long loop politely | `barid worker`: a loop outside the model (the "Ralph loop" pattern) with a fresh agent per task |
 | A task hangs and eats the night | `--timebox`: the worker stops its process group at the deadline and closes the task as failed |
 | Coming back in the morning to find out what happened | `barid digest` and the "While you were away" card |
@@ -51,7 +51,7 @@ With `--wait SECONDS` the command waits (checking every 5 seconds, a line on std
 
 `lane.seen` holds `{at, by, state, task, reason}` for each lane: `working` (a task is claimed), `waiting` (with the reason), `idle` (finished, nothing queued, or needs the person). It is written by the commands above, not by a background process, and only when something changed or a minute has passed.
 
-A claim has `lease_until` (default 12 hours; a task with a timebox gets timebox + 1 hour; a worker uses 3 minutes and renews it every 30 seconds), `signal` (the last sign of life) and, for a task with a timebox, `deadline`. A running task whose lease expired is shown as stale.
+A claim has `lease_until` (default 12 hours; a task with a timebox gets at least timebox + 1 hour and never less than the default; a worker uses 3 minutes and renews it once a minute), `signal` (the last sign of life) and, for a task with a timebox, `deadline`. A running task whose lease expired is shown as stale.
 
 ## The night connection text
 

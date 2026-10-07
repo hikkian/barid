@@ -2271,7 +2271,7 @@ def note_presence(board: Path, lane: str | None, by: str, state: str, task: str 
 def fmt_line(c: dict) -> str:
     extra = ""
     if c["state"] == "waiting":
-        extra = " (after " + ", ".join(c["waiting_on"]) + ")"
+        extra = " (after " + ", ".join(c["waiting_on"]) + ")" if c["waiting_on"] else f" (not before {local_time(c['not_before'])})"
     elif c["state"] == "blocked":
         extra = " (blocked by " + ", ".join(f"{x['id']}:{x['why']}" for x in c["conflicts"]) + ")"
     elif c.get("stale"):
@@ -2582,7 +2582,8 @@ def cmd_init(args):
 
 
 def cmd_where(args):
-    print(find_board(getattr(args, "board", None)))
+    board = find_board(getattr(args, "board", None))
+    out(args, {"board": str(board), "project": str(board.resolve().parent.parent)}, str(board))
 
 
 def cmd_add(args):
@@ -2661,6 +2662,9 @@ def cmd_profile(args):
     actor = cli_actor(args)
     if args.action == "list":
         d = load(board)
+        if getattr(args, "json", False):
+            out(args, [{"name": k, **v} for k, v in all_profiles(d).items()])
+            return
         for k, v in all_profiles(d).items():
             marks = " ".join(filter(None, ["quiet" if v.get("quiet") else "", "noisy" if v.get("noisy") else "", ("uses " + ",".join(v["uses"])) if v.get("uses") else ""])) or "nothing special"
             print(f"{k:<10} {'(built in)' if v.get('builtin') else '          '} {marks:<28} {v.get('label', '')}")
@@ -3011,6 +3015,58 @@ def cmd_worker(args):
     sys.exit(0)
 
 
+POLICY_KEYS = {"dependents_wait_for_accept": (bool, False, "a report that ended complete unlocks its dependents only after the person accepts it"),
+               "lease_hours": (float, 12.0, "how long a claim lasts before it counts as expired (a task with a timebox gets at least timebox + 1 hour)"),
+               "footer": (bool, True, "put the 'how to finish' footer under every prompt"),
+               "handoff": (bool, True, "add the handoff lines to the prompts"),
+               "git_check": (bool, True, "snapshot git at claim and compare at finish (files outside the declared scope)")}
+
+
+def parse_policy_value(key: str, text: str):
+    kind = POLICY_KEYS[key][0]
+    if kind is bool:
+        t = str(text).strip().lower()
+        if t in ("true", "yes", "on", "1"):
+            return True
+        if t in ("false", "no", "off", "0"):
+            return False
+        raise RBError(f"{key} is true or false, not {text!r}", "bad_input", field=key)
+    try:
+        v = float(text)
+    except ValueError:
+        raise RBError(f"{key} is a number of hours, not {text!r}", "bad_input", field=key) from None
+    if not 0 < v <= 24 * 30:
+        raise RBError(f"{key} must be more than 0 and at most {24 * 30} hours", "bad_input", field=key)
+    return v
+
+
+def op_policy_set(d: dict, actor: Actor, key: str, text: str):
+    require_human(actor, "change the board policy")
+    if key not in POLICY_KEYS:
+        raise RBError(f"unknown policy {key!r}; one of: {', '.join(POLICY_KEYS)}", "bad_input", field="key")
+    value = parse_policy_value(key, text)
+    d.setdefault("policy", {})[key] = value
+    log_event(d, actor, "policy", key, str(value))
+    return value
+
+
+def cmd_policy(args):
+    """Show the board policy, or set one value as the person: `barid policy dependents_wait_for_accept true --human`."""
+    board = find_board(getattr(args, "board", None))
+    if args.key and args.value is not None:
+        actor = cli_actor(args)
+        v = mutate(board, lambda d: op_policy_set(d, actor, args.key, args.value))
+        out(args, {args.key: v}, f"{args.key} = {str(v).lower() if isinstance(v, bool) else v}")
+        return
+    pol = load(board).get("policy", {})
+    cur = {k: pol.get(k, spec[1]) for k, spec in POLICY_KEYS.items()}
+    if args.key:
+        if args.key not in POLICY_KEYS:
+            raise RBError(f"unknown policy {args.key!r}; one of: {', '.join(POLICY_KEYS)}", "bad_input", field="key")
+        cur = {args.key: cur[args.key]}
+    out(args, cur, "\n".join(f"{k:<28} {str(v).lower() if isinstance(v, bool) else v:<6} {POLICY_KEYS[k][2]}" for k, v in cur.items()))
+
+
 def cmd_overview(args):
     board = find_board(getattr(args, "board", None))
     g = status_summary(load(board))
@@ -3146,7 +3202,7 @@ def cmd_protect(args):
     actor = cli_actor(args)
     action = args.words[0]
     if action == "list":
-        print("\n".join(load(board).get("protect", [])) or "(nothing is protected)")
+        out(args, {"protect": load(board).get("protect", [])}, "\n".join(load(board).get("protect", [])) or "(nothing is protected)")
         return
     if action not in ("add", "remove") or len(args.words) != 2:
         raise RBError("usage: barid protect add PATH  |  barid protect remove PATH  |  barid protect list")
@@ -3209,7 +3265,8 @@ def cmd_lane(args):
     actor = cli_actor(args)
     lane_id = _add_word(args.words, "lane")
     if lane_id is None:
-        print("\n".join(f"{l['id']:<12} {l.get('title', ''):<24} {l.get('color', '') or '-':<8} {l.get('agent', '') or '-'}" for l in load(board)["lanes"]))
+        lanes = load(board)["lanes"]
+        out(args, lanes, "\n".join(f"{l['id']:<12} {l.get('title', ''):<24} {l.get('color', '') or '-':<8} {l.get('agent', '') or '-'}" for l in lanes))
         return
     args.lane_id = lane_id
     editing = args.words[0] == "edit"
@@ -3238,7 +3295,8 @@ def cmd_resource(args):
     actor = cli_actor(args)
     name = _add_word(args.words, "resource")
     if name is None:
-        print("\n".join(f"{k:<12} {v.get('label', k)}{'' if v.get('exclusive', True) else ' (shared)'}" for k, v in load(board).get("resources", {}).items()))
+        res = load(board).get("resources", {})
+        out(args, res, "\n".join(f"{k:<12} {v.get('label', k)}{'' if v.get('exclusive', True) else ' (shared)'}" for k, v in res.items()))
         return
     args.name = name
 
@@ -3302,11 +3360,12 @@ def cmd_template(args):
 
 def cmd_doctor(args):
     ok = True
+    checks = []
 
-    def line(good, msg):
+    def line(good, msg, kind=None):
         nonlocal ok
         ok = ok and good
-        print(("ok    " if good else "FAIL  ") + msg)
+        checks.append({"ok": good, "kind": kind or ("ok" if good else "fail"), "message": msg})
     line(sys.version_info >= (3, 9), f"python {sys.version.split()[0]} (needs 3.9+)")
     line((HERE / "panel.html").is_file(), "panel.html next to barid.py")
     try:
@@ -3318,9 +3377,14 @@ def cmd_doctor(args):
         line(True, "lock works")
         line(not has_cycle({i["id"]: i for i in d["items"]}), "no dependency cycles")
         info = server_alive(board)
-        print("info  panel server: " + (f"running on port {info['port']}" if info else "not running (starts on `barid open`)"))
+        line(True, "panel server: " + (f"running on port {info['port']}" if info else "not running (starts on `barid open`)"), "info")
     except RBError as e:
         line(False, str(e))
+    if getattr(args, "json", False):
+        print(json.dumps({"ok": ok, "checks": checks}, ensure_ascii=False, indent=1))
+    else:
+        for c in checks:
+            print((c["kind"] + " " * 6)[:6] + c["message"])
     sys.exit(0 if ok else 1)
 
 
@@ -3425,6 +3489,9 @@ def build_parser() -> argparse.ArgumentParser:
     s.add_argument("--max-tasks", type=int, default=0, metavar="N", help="stop after N tasks (default: until the lane is empty)")
     s.add_argument("--once", action="store_true", help="run one task and exit")
     s.add_argument("--max-attempts", type=int, default=3, metavar="N", help="a task that comes back to the queue without a report is started at most N times, then closed as failed (default 3)")
+    s = add("policy", cmd_policy, "show the board policy, or set one value as the person (e.g. dependents_wait_for_accept true)")
+    s.add_argument("key", nargs="?")
+    s.add_argument("value", nargs="?")
     s = add("overview", cmd_overview, "one look at every session: what it does, what it would start next, what waits for you (for a status bar: --brief)")
     s.add_argument("--brief", action="store_true", help="a single line")
     s = add("accept-clean", cmd_accept_clean, "person: accept every report that ended complete with no file warnings, in one go (the rest stays for you to read)")

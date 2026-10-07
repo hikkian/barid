@@ -21,8 +21,8 @@ rb = importlib.util.module_from_spec(spec)
 sys.modules["rb_contract"] = rb
 spec.loader.exec_module(rb)
 
-COMMANDS = ["accept", "add", "approve", "cancel", "check", "claim", "connect", "context", "digest", "doctor", "edit", "explain", "export", "finish", "gen",
-            "heartbeat", "init", "lane", "lang", "lint", "list", "log", "move", "next", "note", "open", "outcome", "plan", "profile", "protect", "purge",
+COMMANDS = ["accept", "accept-clean", "add", "approve", "cancel", "check", "claim", "connect", "context", "digest", "doctor", "edit", "explain", "export", "finish", "gen",
+            "heartbeat", "init", "lane", "lang", "lint", "list", "log", "move", "next", "note", "open", "outcome", "overview", "plan", "policy", "profile", "protect", "purge",
             "reject", "release", "resource", "restore", "sent", "serve", "shim", "show", "status", "template", "trust", "where", "worker", "worktree"]
 LIST_ITEM_KEYS = {"after", "begin_in", "branch", "can_run_with", "cannot_run_with", "claim", "conflicts", "created", "created_by", "described", "effective", "id",
                   "lane", "lint", "lint_ok", "needs", "noisy", "not_before", "notes", "outline", "profile", "quiet", "reasons", "report", "stale", "state", "status",

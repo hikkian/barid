@@ -27,4 +27,4 @@ A command or field that has to be removed is first marked as deprecated, with a 
 
 ## Files Barid writes
 
-`board.json` (written atomically and flushed to the disk), `board.json.bak` (the version before the last change, a hard link: no extra data written), `board.json.lock`, the temporary `board.json.tmp*` (removed when old), and `runs/` (logs of `barid worker`). Environment: `BARID_BOARD`, `BARID_AGENT` and `BARID_LOCK_WAIT` (seconds a command waits for the board lock, default 60) are stable; `BARID_WORKER_BACKOFF` exists for tests only.
+`board.json` (written atomically and flushed to the disk), `board.json.bak` (the version before the last change, a hard link: no extra data written), `board.json.lock`, the temporary `board.json.tmp*` (removed when old), and `runs/` (logs of `barid worker`). Environment: `BARID_BOARD`, `BARID_AGENT`, `BARID_ACTOR` (`human`: act as the person) and `BARID_LOCK_WAIT` (seconds a command waits for the board lock, default 60) are stable; `BARID_WORKER_BACKOFF` exists for tests only.

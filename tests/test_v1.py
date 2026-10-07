@@ -383,6 +383,49 @@ class Overview(Base):
         self.assertIn("1 to accept", text)
 
 
+class PolicyAndJson(Base):
+    def test_the_person_can_make_dependents_wait_for_the_accept(self):
+        self.add("A")
+        self.add("B", lane="second", needs=["A"])
+        self.run_("A")
+        self.finish("A")
+        self.assertEqual(self.comp("B")["state"], "ready")             # a complete report unlocks it ...
+        code, out, err = cli(self.path, "--human", "policy", "dependents_wait_for_accept", "true")
+        self.assertEqual(code, 0, err)
+        self.assertEqual(self.comp("B")["state"], "waiting")           # ... until the setting says the person decides
+        self.assertIn("dependents_wait_for_accept", cli(self.path, "policy")[1])
+        self.assertEqual(json.loads(cli(self.path, "--json", "policy")[1])["dependents_wait_for_accept"], True)
+
+    def test_an_agent_cannot_change_the_policy_and_wrong_values_are_refused(self):
+        self.assertEqual(cli(self.path, "--by", "w", "policy", "footer", "false")[0], 1)
+        for key, value in (("footer", "maybe"), ("lease_hours", "abc"), ("lease_hours", "0"), ("lease_hours", "99999"), ("nonsense", "true")):
+            code, _, err = cli(self.path, "--human", "policy", key, value)
+            self.assertEqual(code, 1, (key, value))
+            self.assertNotIn("Traceback", err)
+        self.assertEqual(json.loads(cli(self.path, "--json", "policy", "footer")[1]), {"footer": True})
+
+    def test_a_policy_value_is_used_when_a_claim_is_made(self):
+        self.add("A")
+        self.assertEqual(cli(self.path, "--human", "policy", "lease_hours", "2")[0], 0)
+        self.run_("A")
+        left = (rb.parse_ts(self.comp("A")["claim"]["lease_until"]) - rb.now_dt()).total_seconds()
+        self.assertTrue(3600 < left <= 7200, left)
+
+    def test_commands_that_report_data_give_json(self):
+        self.add("A")
+        for args in (("where",), ("doctor",), ("lane", "list"), ("resource", "list"), ("profile", "list"), ("protect", "list")):
+            code, out, err = cli(self.path, "--json", *args)
+            self.assertEqual(code, 0, (args, err))
+            json.loads(out)                                             # must be valid JSON, not text
+        self.assertTrue(json.loads(cli(self.path, "--json", "doctor")[1])["ok"])
+
+    def test_a_task_that_waits_only_for_a_start_time_does_not_print_an_empty_after(self):
+        self.add("A", not_before="+3h")
+        listing = cli(self.path, "list")[1]
+        self.assertNotIn("(after )", listing)
+        self.assertIn("not before", listing)
+
+
 def alive(pid):
     try:
         os.kill(pid, 0)

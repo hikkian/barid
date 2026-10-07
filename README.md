@@ -17,7 +17,7 @@ Your planner agent writes the prompts, you copy them into the other sessions, an
 
 - **No more "which prompt next?"** The panel shows what to send now, and which tasks may run together or must wait ("blocked by T1: GPU", "same files: src/api").
 - **Agents manage the board themselves.** Install the skill; your agent adds tasks, writes missing prompts, records reports. Other sessions claim their task and finish it with a report.
-- **Safe by construction.** Exclusive resources (a GPU, a test server, "user present") are leased, and file scopes with a git check catch sessions that edit the same files, so sessions do not step on each other. Agent-added tasks wait for your approval. Nothing is ever deleted, only cancelled. Every change is logged.
+- **Safe by construction.** Exclusive resources (a GPU, a test server, "user present") are leased, and file scopes with a git check catch sessions that edit the same files, so sessions do not step on each other. Agent-added tasks wait for your approval. Nothing is ever deleted, only cancelled. Every change is logged (the board keeps the last 500 entries).
 - **Zero dependencies, tiny, local.** One Python file (3.9+), one JSON file, a local panel that starts on demand and exits when idle. No account, no cloud, no telemetry.
 
 ## 60-second start
@@ -80,7 +80,7 @@ https://github.com/hikkian/barid and use `python3 <path>/barid.py` as described 
 - **Tasks** have a prompt, dependencies (`--needs`), exclusive resources (`--uses gpu`) and two flags: `--quiet` (needs a quiet machine) and `--noisy` (loads the CPU or the desktop). The board computes from them what is *ready*, *waiting* or *blocked*, and plans *steps*: tasks in one step may run at the same time.
 - **Prompts carry their own instructions.** When you press *Copy prompt*, the board appends a short footer with the exact commands (`claim`, `finish`, `note`) and the path of `barid.py`, so even a session without the skill knows how to report.
 - **Draft tasks** hold only an outline. When their turn comes the panel offers *Generate prompt*: it copies a request (outline, the reports of finished dependencies, context files, a prompt skeleton) for your agent, which writes the prompt and stores it with `barid edit`.
-- **Reports** end up in a review inbox. *Accept report* unlocks dependents (or they unlock as soon as the report is written; a policy switch decides).
+- **Reports** end up in a review inbox. *Accept report* unlocks dependents. A report that ended complete unlocks them as soon as it is written; to make them wait for your accept, run `barid policy dependents_wait_for_accept true --human`.
 
 ```
 draft -> queued -> sent -> running -> review -> done        (proposed -> queued on approval; cancelled anywhere before done)
@@ -179,10 +179,11 @@ English, Russian and Kazakh built in (auto-detected, pick one from the language 
 
 ## Command line
 
-Every command accepts `--json`. `barid --help` lists them all.
+Every command that reports data accepts `--json`; `template`, `check`, `gen` and `export` print plain text (read their exit codes). `barid --help` lists them all.
 
 ```bash
 barid init --lanes main,helper               # create .barid/board.json here
+# tasks added by an agent wait as proposals unless the planner is trusted (barid trust add planner --human)
 barid add T1 --lane main --title "Build" --text-file p.md --uses gpu --by planner
 barid add T2 --lane helper --title "Analyse" --outline "summarise T1's results" --needs T1 --by planner
 barid plan                                   # steps and what can run together
@@ -205,13 +206,13 @@ barid check T3                            # what could collide with it
 barid lint                                   # which tasks say too little to be checked against others
 barid explain T1 T2                           # why two tasks can or cannot run together
 barid add T4 --lane a --profile bench --uses gpu --text-file p.md   # profiles: light, dev, bench, attended (or `barid profile add`)
-barid lane edit a --title Builder --color "#7c5cff" --agent codex   # name, colour and agent of a session
-barid lane add tests --title Tests --agent codex       # a new session (or the "+" button in the panel)
+barid lane edit a --title Builder --color "#7c5cff" --agent codex --human   # name, colour and agent of a session
+barid lane add tests --title Tests --agent codex --human       # a new session (or the "+" button in the panel)
 barid connect tests                          # the first message to paste into that agent's window
 barid open                                   # panel;  barid export board.html  = read-only snapshot
 ```
 
-Person-only actions (`approve`, `accept`, `sent`, `status`, `restore`, `purge`, `trust`) need `--human` (or `BARID_ACTOR=human`); the panel does them for you. See [docs/PROTOCOL.md](docs/PROTOCOL.md) for every rule and the file format.
+Person-only actions (`approve`, `reject`, `accept`, `accept-clean`, `sent`, `status`, `restore`, `purge`, `trust`, `policy` when it sets a value) need `--human` (or `BARID_ACTOR=human`); the panel does them for you. See [docs/PROTOCOL.md](docs/PROTOCOL.md) for every rule and the file format.
 
 ## Safety model
 
@@ -220,7 +221,7 @@ Barid prevents accidents, not malice. Identities are self-declared (`--by`), so 
 - all writes are atomic and serialised by a file lock; two agents racing for one GPU cannot both win (tested with threads and processes);
 - agents cannot approve, accept, set arbitrary statuses, purge, or finish a task another agent holds;
 - file changes outside a task's declared scope, in another running task's scope or in protected paths are detected at the end of the task and keep dependents locked until you decide;
-- tasks are never deleted by agents, only cancelled; the event log is append-only;
+- tasks are never deleted by agents, only cancelled; the event log is only added to, and keeps the last 500 entries;
 - the panel server binds to loopback only, rejects foreign `Host` and `Origin` headers and writes only through one guarded endpoint (a custom header, so another website cannot post to it);
 - the panel never reads files named in tasks (report paths are shown, not opened).
 

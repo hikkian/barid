@@ -17,6 +17,8 @@ Found by a red-team review of 0.6.0 (twelve processes writing for a minute, a ki
 
 Panel: the order of work ("Order, and what can run together") is a grid with one column per session and a coloured header over each column, so a card always stays under its own session however narrow the window is (before, cards wrapped like text and the third session dropped below the others); titles wrap instead of being cut; on a phone the cards stack. A browser test checks the alignment.
 
+A documentation check of 134 claims against the code (done by an AI agent, spot-checked by hand; 13 mismatches, 4 stale) led to: `barid policy` (show the board policy, or set `dependents_wait_for_accept`, `lease_hours`, `footer`, `handoff`, `git_check` as the person: the README promised a "policy switch" that no command could set); `--json` now works for `where`, `doctor`, `lane list`, `resource list`, `profile list` and `protect list` (the documents said every command accepted it); a task that waits only for its start time no longer prints `(after )`; and corrected wording about the event log (it keeps the last 500 entries), the worker lease (renewed once a minute), person-only commands in the examples (`--human`), trusted planners, the footer languages, `GET /api/digest` and `BARID_ACTOR`.
+
 New, small and meant for the morning:
 
 - `barid overview` (and `--brief` for a status bar) shows every session on one line: what it does, what it would start next, what waits for you.
