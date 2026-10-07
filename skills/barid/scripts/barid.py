@@ -1458,7 +1458,7 @@ def status_summary(d: dict, now=None) -> dict:
         seen = lane.get("seen") or {}
         at = parse_ts(seen.get("at"))
         nxt = next_step(d, lane["id"], now, comp, steps)
-        row = {"id": lane["id"], "state": "working" if running else (seen.get("state") or "idle"), "task": running["id"] if running else "", "by": "", "for": None,
+        row = {"id": lane["id"], "state": "working" if running else ("idle" if seen.get("state") in ("working", None, "") else seen["state"]), "task": running["id"] if running else "", "by": "", "for": None,
                "stale": bool(running and running["stale"]), "signal_ago": int((now - at).total_seconds()) if at else None, "next": nxt["status"], "next_id": nxt.get("id")}
         if running:
             cl = running.get("claim") or {}

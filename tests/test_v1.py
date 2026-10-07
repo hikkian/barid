@@ -363,6 +363,14 @@ class Overview(Base):
         self.assertEqual(len(brief[1].strip().splitlines()), 1)
         self.assertIn("main: A", brief[1])
 
+    def test_a_session_that_left_is_not_shown_as_working(self):
+        self.add("A")
+        self.run_("A")                                   # the session marks itself as working ...
+        rb.mutate(self.path, lambda d: rb.op_release(d, HUMAN, "A"))     # ... and the task goes back to the queue: nothing runs
+        row = {x["id"]: x for x in rb.status_summary(rb.load(self.path))["lanes"]}["main"]
+        self.assertEqual(row["task"], "")
+        self.assertNotEqual(row["state"], "working")
+
     def test_a_dead_holder_and_a_report_to_read_show_up(self):
         self.add("A")
         self.run_("A")
