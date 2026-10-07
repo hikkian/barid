@@ -21,6 +21,8 @@ New, small and meant for the morning:
 - `barid accept-clean` and one button in the panel (after a second click) accept the reports that ended `complete` with no file warnings and no disturbed measurement; anything else stays for you to read.
 - An optional bell in the panel: a browser notification when more things wait for you, only while the tab is in the background, never a sound.
 
+Found by two independent reviews of the first candidate and fixed before release: a sent task below a dead holder could still be claimed; a chain of several hundred tasks listed in reverse order raised a RecursionError in `compute()`; the digest listed a task twice when two paths led to one cancelled task; a worker killed an agent that had already reported its task itself, and a deleted task was not stopped; lost claim races counted as attempts; `cat "{prompt_file}"` broke in a folder with a space; SIGHUP left the agent running; a `.bak<pid>` file could be left behind; a typo in `BARID_LOCK_WAIT` raised at start; a board with a byte order mark was refused; and a lease that had just run out (a computer that slept) was taken as lost at once (there is a five-minute grace now).
+
 Tests: 189 plus the contract tests (frozen commands, exit codes, reason codes, board and `--json` fields, text and time budgets, manifests, documents in three languages), and a board written by 0.6.0 among the old-release fixtures.
 
 ## 0.6.0 (2026-10-06)

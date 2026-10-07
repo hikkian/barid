@@ -17,9 +17,9 @@ from test_rb import HUMAN, RB_PATH, rb
 from test_unattended import AGENT, Base, cli
 
 
-def expire_lease(path, iid):
+def expire_lease(path, iid, minutes=60):
     def go(d):
-        next(i for i in d["items"] if i["id"] == iid)["claim"]["lease_until"] = (dt.datetime.now(dt.timezone.utc) - dt.timedelta(hours=1)).isoformat()
+        next(i for i in d["items"] if i["id"] == iid)["claim"]["lease_until"] = (dt.datetime.now(dt.timezone.utc) - dt.timedelta(minutes=minutes)).isoformat()
     rb.mutate(path, go)
 
 
@@ -112,6 +112,70 @@ class UnreachableWaits(Base):
                         self.assertNotEqual(t["status"], "cancelled", (w, up))
                         self.assertFalse(comp[up]["stale"], (w, up))
                         todo += comp[up]["waiting_on"]
+
+
+class FoundByReview(Base):
+    """Found by an independent review of the first release candidate."""
+
+    def test_a_sent_task_below_a_dead_holder_is_refused_too(self):
+        self.add("R")
+        self.add("P")
+        self.add("S", lane="second", needs=["P"])
+        self.run_("R")
+        expire_lease(self.path, "R")
+        rb.mutate(self.path, lambda d: rb.op_sent(d, HUMAN, "S"))
+        self.assertEqual(cli(self.path, "--by", "bot2", "claim", "S")[0], 4)
+        self.assertEqual(self.comp("S")["status"], "sent")
+
+    def test_a_chain_of_hundreds_is_worked_out_whatever_the_order_of_the_tasks(self):
+        def fill(d):
+            now = rb.now_iso()
+            for k in reversed(range(700)):                 # a dependent is listed before what it needs
+                d["items"].append({"id": f"T{k}", "title": "t", "text": "x", "status": "queued", "lane": "main", "needs": [f"T{k - 1}"] if k else [],
+                                   "after": [], "uses": [], "notes": [], "profile": "", "created": now, "updated": now})
+        rb.mutate(self.path, fill)
+        comp = {c["id"]: c for c in rb.compute(rb.load(self.path))}
+        self.assertEqual(comp["T0"]["state"], "ready")
+        self.assertEqual(comp["T699"]["state"], "waiting")
+
+    def test_two_paths_to_one_cancelled_task_are_one_reason_and_one_line_in_the_digest(self):
+        for iid in "XAB":
+            self.add(iid)
+        self.add("Q", lane="second", needs=["A", "B"])
+        self.add("A2", lane="third")                      # keeps the board busy in another lane
+        rb.mutate(self.path, lambda d: (rb.get_item(d, "A").update(needs=["X"]), rb.get_item(d, "B").update(needs=["X"])))
+        rb.mutate(self.path, lambda d: rb.op_cancel(d, HUMAN, "X"))
+        q = self.comp("Q")
+        self.assertEqual([(r["code"], r["id"]) for r in q["reasons"]], [("never", "X")])
+        g = rb.digest(rb.load(self.path), rb.now_dt() - dt.timedelta(hours=1))
+        self.assertEqual([n["id"] for n in g["needs_you"]].count("Q"), 1)
+
+    def test_a_sent_task_that_waits_is_planned_after_what_it_waits_for(self):
+        self.add("P", uses=["gpu"])
+        self.add("Z")
+        self.add("S", lane="second", uses=["gpu"], needs=["P"])
+        rb.mutate(self.path, lambda d: rb.op_sent(d, HUMAN, "S"))
+        res = rb.next_step(rb.load(self.path), "main")
+        self.assertEqual(res["id"], "P")                   # not Z: P is what S waits for
+
+    def test_a_lease_that_just_ran_out_is_waited_for_a_while_a_lost_one_is_not(self):
+        self.add("J1")
+        self.add("J2")
+        self.run_("J1")
+        expire_lease(self.path, "J1", minutes=1)          # a computer that slept: the session may still renew it
+        self.assertEqual(rb.next_step(rb.load(self.path), "main")["status"], rb.NEXT_WAIT)
+        self.assertTrue(self.comp("J1")["stale"])           # shown as expired at once
+        self.assertFalse(self.comp("J1")["gone"])
+        expire_lease(self.path, "J1", minutes=30)
+        self.assertEqual(rb.next_step(rb.load(self.path), "main")["status"], rb.NEXT_STUCK)
+
+    def test_overview_counts_a_stuck_session_as_something_for_you(self):
+        self.add("J1")
+        self.add("J2")
+        self.run_("J1")
+        expire_lease(self.path, "J1")
+        text = rb.status_text(rb.status_summary(rb.load(self.path)))
+        self.assertIn("session(s) stuck", text)
 
 
 class SentKeepsItsOrder(Base):
@@ -535,6 +599,98 @@ class Durability(Base):
         notes = self.comp("A")["notes"]
         self.assertEqual(len(notes), 90)
         self.assertEqual(len({n["text"] for n in notes}), 90)
+
+
+@unittest.skipUnless(os.name == "posix", "the worker tests use a POSIX shell")
+class WorkerFoundByReview(WorkerSafety):
+    def test_an_agent_that_finishes_its_task_itself_is_not_killed_for_it(self):
+        self.add("A")
+        marker = Path(self._tmp.name) / "done.marker"
+        finish = f"{sys.executable} {RB_PATH} finish $BARID_TASK --no-report --outcome complete"
+        p = self.start_worker(f"{finish}; sleep 4; touch {marker}", "--max-tasks", "1")
+        code, out = self.finish_worker(p)
+        self.assertEqual(code, 0, out)
+        self.assertTrue(marker.exists(), "the agent was stopped after it had reported: " + out)
+        self.assertNotIn("took the task away", out)
+        self.assertIn("reported by the agent (review, complete)", out)
+
+    def test_a_task_that_is_deleted_while_it_runs_stops_its_agent(self):
+        self.add("A")
+        pidfile = Path(self._tmp.name) / "purge.pid"
+        p = self.start_worker(f"echo $$ > {pidfile}; exec sleep 300")
+        self.assertTrue(self.wait_for(lambda: pidfile.exists() and self.comp("A")["status"] == "running"))
+        rb.mutate(self.path, lambda d: (rb.op_cancel(d, HUMAN, "A"), rb.op_purge(d, HUMAN, "A")))
+        code, out = self.finish_worker(p)
+        self.assertEqual(code, 0, out)
+        self.assertFalse(alive(int(pidfile.read_text())))
+
+    def test_a_hangup_stops_the_agent_and_closes_the_task(self):
+        import signal
+        self.add("A")
+        pidfile = Path(self._tmp.name) / "hup.pid"
+        p = self.start_worker(f"echo $$ > {pidfile}; exec sleep 300")
+        self.assertTrue(self.wait_for(lambda: pidfile.exists() and self.comp("A")["status"] == "running"))
+        p.send_signal(signal.SIGHUP)
+        code, out = self.finish_worker(p)
+        self.assertFalse(alive(int(pidfile.read_text())))
+        a = self.comp("A")
+        self.assertEqual((a["status"], a["outcome"]), ("review", "failed"))
+
+    def test_lost_claim_races_are_not_attempts(self):
+        self.add("A")
+        calls = []
+        real = rb.claim_task
+
+        def flaky(*a, **k):
+            calls.append(1)
+            if len(calls) <= 3:
+                raise rb.RBError("someone else was first", "conflict")
+            return real(*a, **k)
+        rb.claim_task = flaky
+        self.addCleanup(setattr, rb, "claim_task", real)
+        os.environ["BARID_BOARD"] = str(self.path)
+        os.environ["BARID_WORKER_BACKOFF"] = "0"
+        self.addCleanup(os.environ.pop, "BARID_BOARD", None)
+        self.addCleanup(os.environ.pop, "BARID_WORKER_BACKOFF", None)
+        with self.assertRaises(SystemExit) as ctx:
+            rb.main(["--board", str(self.path), "worker", "--lane", "main", "--cmd", "true", "--poll", "1", "--max-attempts", "2"])
+        self.assertEqual(ctx.exception.code, 0)
+        self.assertEqual(self.comp("A")["outcome"], "partial")      # it ran (and ended without a report): it was not given up on for the lost claims
+
+    def test_a_prompt_file_the_command_already_quotes_is_not_quoted_twice(self):
+        self.assertEqual(rb.fill_prompt_file('cat "{prompt_file}"', "/a b/c.md"), 'cat "/a b/c.md"')
+        self.assertEqual(rb.fill_prompt_file("cat '{prompt_file}'", "/a b/c.md"), "cat '/a b/c.md'")
+        self.assertEqual(rb.fill_prompt_file("cat {prompt_file}", "/a b/c.md"), "cat '/a b/c.md'")
+        board_dir = Path(self._tmp.name) / "my project"
+        board_dir.mkdir()
+        path = board_with_in(board_dir)
+        add_to(path, "A")
+        out_file = Path(self._tmp.name) / "seen2.txt"
+        p = self.start_worker(f'cat "{{prompt_file}}" > {out_file}', board=path)
+        code, out = self.finish_worker(p, 60)
+        self.assertIn("do the thing", out_file.read_text())
+
+
+class SmallThingsFoundByReview(Base):
+    def test_a_board_saved_with_a_byte_order_mark_opens(self):
+        self.add("A")
+        text = self.path.read_text("utf-8")
+        self.path.write_bytes(b"\xef\xbb\xbf" + text.replace("\n", "\r\n").encode("utf-8"))
+        self.assertEqual(rb.load(self.path)["items"][0]["id"], "A")
+
+    def test_old_backup_link_leftovers_are_removed(self):
+        old = Path(str(self.path) + ".bak31337")
+        old.write_text("x")
+        os.utime(old, (time.time() - 7200, time.time() - 7200))
+        self.add("A")
+        self.assertFalse(old.exists())
+        self.assertTrue(Path(str(self.path) + ".bak").exists())
+
+    def test_a_typo_in_the_lock_wait_variable_does_not_stop_the_program(self):
+        self.add("A")
+        env = {**os.environ, "BARID_BOARD": str(self.path), "BARID_LOCK_WAIT": "abc"}
+        p = subprocess.run([sys.executable, str(RB_PATH), "list"], capture_output=True, text=True, env=env)
+        self.assertEqual(p.returncode, 0, p.stderr)
 
 
 def board_with_in(folder):

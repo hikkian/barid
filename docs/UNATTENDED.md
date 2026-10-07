@@ -79,6 +79,8 @@ For each ready task of the lane the worker:
 
 Safety nets: a `--cwd` that is not a folder is refused before anything is claimed; a command that cannot even start closes its task as `failed` (never leaves it `running`) and three such failures in a row stop the worker (exit 1); a task that comes back to the queue again and again without a report (an agent that calls `release`) is started at most `--max-attempts` times (default 3, with a pause that grows), then closed as `failed` so that you see it in the morning; the prompt is written to the agent from a thread, so a big prompt that the agent does not read cannot block the worker.
 
+Limits that are worth knowing: the worker stops the agent's **process group** (on Windows its process tree, and only while the agent's leading process is alive), so an agent that detaches itself (`setsid`, a daemon) escapes it; a worker that is killed with SIGKILL cannot close its task, and the task is taken as lost five minutes after its lease ran out (the grace is there so that a computer that slept can renew its leases first); a closed terminal or a dropped ssh session (SIGHUP) stops the agent and closes the task like SIGTERM does. `{prompt_file}` is quoted for the shell unless the command already put it in quotes.
+
 A fresh agent for every task is deliberate: long sessions accumulate stale context, and "one task, one context, state in the board" is the pattern the unattended-agent community converged on.
 
 ## A wait that can never end
