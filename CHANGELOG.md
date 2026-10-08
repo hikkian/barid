@@ -27,6 +27,8 @@ README: the "How it works" diagram is a real picture (`docs/img/how-it-works.svg
 
 An open panel tab now notices when `panel.html` was replaced (an update of Barid) and shows a bar "The panel was updated. Reload": before, the data kept refreshing but the page ran the old code until you reloaded by hand, which made fixed behaviour look unfixed. (`/api/rev` carries a stamp of the panel file.)
 
+A scenario sweep of the panel (`tests/scenario_sweep.py`: odd boards from 1 to 10 sessions, very long names and unbroken strings, every status, 300 tasks, other alphabets, x eight window widths x light and dark x English and Russian, each page audited for sideways scrolling, cards outside the window or on top of each other, cut-off text and cards not under their own session) found and fixed a long unbroken string (a report path, a link in a title) that made the whole page scroll sideways; a small subset runs as a test.
+
 New, small and meant for the morning:
 
 - `barid overview` (and `--brief` for a status bar) shows every session on one line: what it does, what it would start next, what waits for you.
