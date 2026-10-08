@@ -21,6 +21,8 @@ A documentation check of 134 claims against the code (done by an AI agent, spot-
 
 The "While you were away" card no longer lists what you have already seen: a report you accepted, or a task that finished while the panel was open in front of you. It lists what ended while you were really away (a browser test checks it).
 
+The Kazakh texts of this release were checked by two independent AI passes (a blind back-translation into English, then a comparison with the originals) because no native reader was at hand: it found and fixed an ambiguous notification title ("you are needed" / "you are not needed"), a README sentence that said bug reports were "pleasant" instead of "welcome", the informal form in one panel label, cancelled tasks called deleted, and mixed terms (folder, release, flag, lease). The remaining risk is unnatural phrasing that only a native speaker would notice.
+
 New, small and meant for the morning:
 
 - `barid overview` (and `--brief` for a status bar) shows every session on one line: what it does, what it would start next, what waits for you.
