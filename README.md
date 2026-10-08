@@ -67,14 +67,7 @@ https://github.com/hikkian/barid and use `python3 <path>/barid.py` as described 
 
 ## How it works
 
-```
-        you                         planner agent                  worker sessions
-         |  barid open (panel)              |  barid add / barid edit              |  barid next / claim / finish
-         v                               v                                v
-   +----------------------------------------------------------------------------+
-   |   .barid/board.json   (one file, locked + atomic writes, event log)    |
-   +----------------------------------------------------------------------------+
-```
+![How Barid works: you, a planner agent and worker sessions all use one file, .barid/board.json](docs/img/how-it-works.svg)
 
 - **Lanes** are your sessions. A lane runs one task at a time. Add one with the "+" button in the panel or `barid lane add`; the *Connect* button (or `barid connect LANE`) gives you the first message to paste into that agent's window, after which it takes its tasks from the board by itself.
 - **Tasks** have a prompt, dependencies (`--needs`), exclusive resources (`--uses gpu`) and two flags: `--quiet` (needs a quiet machine) and `--noisy` (loads the CPU or the desktop). The board computes from them what is *ready*, *waiting* or *blocked*, and plans *steps*: tasks in one step may run at the same time.

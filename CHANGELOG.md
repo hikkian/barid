@@ -23,6 +23,8 @@ The "While you were away" card no longer lists what you have already seen: a rep
 
 **Kazakh is hidden for now.** The panel does not offer it, a Kazakh locale gets Russian, and the README and the compatibility promise in Kazakh moved to `docs/drafts/` (nothing links to them) until a native reader has reviewed them; boards that already say `kk` still open, and `?lang=kk` still shows the panel in Kazakh. The Kazakh texts of this release were checked by two independent AI passes (a blind back-translation into English, then a comparison with the originals) because no native reader was at hand: it found and fixed an ambiguous notification title ("you are needed" / "you are not needed"), a README sentence that said bug reports were "pleasant" instead of "welcome", the informal form in one panel label, cancelled tasks called deleted, and mixed terms (folder, release, flag, lease). The remaining risk is unnatural phrasing that only a native speaker would notice.
 
+README: the "How it works" diagram is a real picture (`docs/img/how-it-works.svg`, readable on GitHub's light and dark themes) instead of a hand-drawn text box.
+
 New, small and meant for the morning:
 
 - `barid overview` (and `--brief` for a status bar) shows every session on one line: what it does, what it would start next, what waits for you.
