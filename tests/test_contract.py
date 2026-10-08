@@ -118,8 +118,8 @@ class Release(unittest.TestCase):
         text = (ROOT / "CHANGELOG.md").read_text("utf-8")
         self.assertIn("## " + rb.__version__.split("-")[0], text)
 
-    def test_the_documents_exist_in_all_three_languages(self):
-        for f in ("README.md", "README.ru.md", "README.kz.md", "docs/COMPATIBILITY.md", "docs/COMPATIBILITY.ru.md", "docs/COMPATIBILITY.kk.md"):
+    def test_the_documents_exist_in_english_and_russian_and_the_kazakh_drafts_stay_unlinked(self):
+        for f in ("README.md", "README.ru.md", "docs/COMPATIBILITY.md", "docs/COMPATIBILITY.ru.md", "docs/drafts/README.kk.md", "docs/drafts/COMPATIBILITY.kk.md"):
             self.assertGreater((ROOT / f).stat().st_size, 1000, f)
 
 

@@ -8,7 +8,7 @@
 <img src="https://img.shields.io/badge/agent-skill-005b5d" alt="agent skill">
 </p>
 
-<p align="center">English · <a href="README.ru.md">Русский</a> · <a href="README.kz.md">Қазақша</a></p>
+<p align="center">English · <a href="README.ru.md">Русский</a></p>
 
 **A prompt board for people who run several AI agent sessions at once.**
 Your planner agent writes the prompts, you copy them into the other sessions, and the board keeps track of the order, what depends on what, what may run in parallel, and what could collide: a shared GPU or test server, the same files, or the same session. It ships as an **agent skill** (so your agent can run it for you) plus a small **browser panel** (so you can see and click).
@@ -173,7 +173,7 @@ More in [docs/UNATTENDED.md](docs/UNATTENDED.md).
 | **Details** | prompt text, notes, history, edit form, any status |
 | **Archive / Activity** | finished and cancelled tasks, the event log |
 
-English, Russian and Kazakh built in (auto-detected, pick one from the language list in the header; the texts written for your agents have their own language, taken from your system language when the board is created, changeable with `barid lang en|ru|kk`), light, dark or automatic mode and four colour palettes (Forest, Teal, Graphite, Midnight) from the *Appearance* button, works on a phone. The same menu lets you **name and colour each session** and say which **agent** runs in it (Claude Code, Codex, OpenCode, Gemini CLI, Cursor, Aider, a local model, or any name); the agent shows as a badge on the session. The panel polls only while its tab is visible and costs nothing when closed: the server exits after 30 idle minutes (`barid open --idle-exit 0` keeps it).
+English and Russian built in (auto-detected, pick one from the language list in the header; the texts written for your agents have their own language, taken from your system language when the board is created, changeable with `barid lang en|ru`), light, dark or automatic mode and four colour palettes (Forest, Teal, Graphite, Midnight) from the *Appearance* button, works on a phone. The same menu lets you **name and colour each session** and say which **agent** runs in it (Claude Code, Codex, OpenCode, Gemini CLI, Cursor, Aider, a local model, or any name); the agent shows as a badge on the session. The panel polls only while its tab is visible and costs nothing when closed: the server exits after 30 idle minutes (`barid open --idle-exit 0` keeps it).
 
 ![Details drawer](docs/img/panel-light-drawer.png)
 

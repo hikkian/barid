@@ -375,9 +375,9 @@ def mutate(path: Path, fn):
 
 
 def system_lang() -> str:
-    """en, ru or kk from the usual locale variables; anything else means en."""
+    """en or ru from the usual locale variables (a Kazakh locale gets ru: Kazakh is not offered until a native reader has reviewed it); anything else means en."""
     loc = (os.environ.get("LC_ALL") or os.environ.get("LC_MESSAGES") or os.environ.get("LANG") or "").lower()
-    return "ru" if loc.startswith("ru") else "kk" if loc.startswith(("kk", "kz")) else "en"
+    return "ru" if loc.startswith(("ru", "kk", "kz")) else "en"
 
 
 def new_board(project: str, lanes, lang: str = "en") -> dict:
@@ -3421,7 +3421,7 @@ def build_parser() -> argparse.ArgumentParser:
     s = add("init", cmd_init, "create a board in .barid/ of the current folder")
     s.add_argument("--project")
     s.add_argument("--lanes", default="main,second", help="comma list, id or id:Title (one lane per agent session)")
-    s.add_argument("--lang", default=None, choices=["en", "ru", "kk", "kz"], help="language of the texts written for agents (default: from your system language, else en)")
+    s.add_argument("--lang", default=None, choices=["en", "ru", "kk", "kz"], help="language of the texts written for agents (default: from your system language, else en; kk exists as an unreviewed draft)")
     s.add_argument("--force", action="store_true")
     add("where", cmd_where, "print the board file in use")
 
@@ -3497,7 +3497,7 @@ def build_parser() -> argparse.ArgumentParser:
     s = add("accept-clean", cmd_accept_clean, "person: accept every report that ended complete with no file warnings, in one go (the rest stays for you to read)")
     s = add("digest", cmd_digest, "what happened while you were away: sessions, finished tasks and their reports, what needs you, what waits and why")
     s.add_argument("--since", default=None, metavar="WHEN", help="12h (default), 90m, 2d, or a time such as '2026-10-07 08:00'")
-    s = add("lang", cmd_lang, "show or set the language of the texts written for agents (en, ru, kk); the panel language is separate")
+    s = add("lang", cmd_lang, "show or set the language of the texts written for agents (en, ru; kk is an unreviewed draft); the panel language is separate")
     s.add_argument("value", nargs="?", choices=["en", "ru", "kk", "kz"])
     s = add("connect", cmd_connect, "print the message that connects an agent session to a lane (paste it as the session's first message)")
     s.add_argument("lane")

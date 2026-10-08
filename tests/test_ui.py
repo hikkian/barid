@@ -100,18 +100,16 @@ class PanelInBrowser(unittest.TestCase):
         self.assertNotEqual(colours[0], colours[1])
         self.assertNotEqual(colours[0], self.b.exec("return getComputedStyle(document.body).color;"))
 
-    def test_language_dropdown_lists_three_languages_and_switches(self):
+    def test_language_dropdown_lists_two_languages_and_switches(self):
         self.b.click("#langbtn")
         self.b.wait("!document.getElementById('langpop').hidden", what="the language list")
         names = self.b.exec("return [].map.call(document.querySelectorAll('#langpop button'), function (x) { return x.textContent; });")
-        self.assertEqual(len(names), 3)
+        self.assertEqual(len(names), 2)
+        self.assertNotIn("Қазақша", " ".join(names))      # Kazakh is not offered until a native reader has reviewed it
         self.b.click_text("#langpop button", "Русский")
         self.b.wait("document.querySelector('#h-now').textContent.indexOf('Что делать') >= 0", what="Russian headings")
         self.assertTrue(self.b.exec("return document.getElementById('langpop').hidden;"))
         self.assertIn("Русский", self.text("#langbtn"))
-        self.b.click("#langbtn")
-        self.b.click_text("#langpop button", "Қазақша")
-        self.b.wait("document.querySelector('#h-now').textContent.indexOf('Қазір') >= 0", what="Kazakh headings")
         self.assertNoJsErrors()
 
     def test_appearance_menu_stays_open_while_choosing_an_agent(self):
@@ -225,6 +223,21 @@ class PanelInBrowser(unittest.TestCase):
         self.assertEqual(self.b.exec("return " + digest + ".indexOf('C1') >= 0;"), True)
         barid(self.board, "--human", "accept", "C1")                                                      # accepted: seen
         self.b.wait("document.getElementById('digest').textContent.indexOf('C1') < 0", timeout=30, what="the accepted report to leave the card")
+        self.assertNoJsErrors()
+
+    def test_kazakh_is_not_picked_by_itself_but_still_opens_when_asked(self):
+        self.b.exec("localStorage.setItem('rb.lang', 'kk');")                      # an earlier visit remembered Kazakh
+        self.b.goto(self.url)
+        self.b.wait("document.querySelectorAll('#now .lane-card').length > 0", what="the lane cards")
+        self.assertEqual(self.b.exec("return document.documentElement.lang;"), "en")          # the board and the browser say English
+        barid(self.board, "lang", "kk")                                            # a board that says kk (an older board)
+        self.b.exec("localStorage.removeItem('rb.lang');")
+        self.b.goto(self.url)
+        self.b.wait("document.querySelectorAll('#now .lane-card').length > 0", what="the lane cards")
+        self.assertEqual(self.b.exec("return document.documentElement.lang;"), "ru")
+        self.b.goto(self.url + "?lang=kk")                                         # explicit: still available for the drafts
+        self.b.wait("document.querySelectorAll('#now .lane-card').length > 0", what="the lane cards")
+        self.assertEqual(self.b.exec("return document.documentElement.lang;"), "kk")
         self.assertNoJsErrors()
 
     def test_every_card_of_the_order_stays_under_its_own_session_in_a_narrow_window(self):

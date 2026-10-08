@@ -270,6 +270,8 @@ var STR = {
    wrong_state:"{id} тапсырмасы қазір «{status}» күйінде: бұл әрекет мүмкін емес", human_only:"Мұны тек сіз істей аласыз", empty_note:"Жазба бос", bad_status:"Белгісіз күй", bad_outcome:"Белгісіз нәтиже", no_git:"Бұл қалта git репозиторийі емес", bad_color:"Түс #feb83b сияқты болуы керек", bad_agent:"Агент атауы: әріптер, цифрлар, бос орын, . _ + - (24 таңбаға дейін)"}}
 };
 var LANGNAME = {en: "English", ru: "Русский", kk: "Қазақша"};
+// Kazakh stays in STR but is not offered, not picked by itself and not kept from an earlier visit until a native reader has reviewed it (docs/drafts/README.md); ?lang=kk still opens it.
+var LANGS_SHOWN = ["en", "ru"];
 var S = {board:null, lang:"en", lanes:{}, sel:null, q:"", laneOff:{}, arch:false, act:false, editing:false, rev:-1, offline:false};
 try { S.lang = localStorage.getItem("rb.lang") || ""; S.arch = localStorage.getItem("rb.arch") === "1"; S.act = localStorage.getItem("rb.act") === "1"; } catch (e) {}
 function t(k) { var d = STR[S.lang] || STR.en; return d[k] != null ? d[k] : (STR.en[k] != null ? STR.en[k] : k); }
@@ -459,7 +461,8 @@ function checkNotify(B) {
 
 function render() {
   var B = S.board; if (!B) return;
-  if (!STR[S.lang]) { var nl = (navigator.language || "en").slice(0, 2); S.lang = STR[B.lang] && B.lang !== "en" ? B.lang : (B.lang === "kz" ? "kk" : (nl === "kz" ? "kk" : STR[nl] ? nl : "en")); }
+  if (S.lang === "kk" && QS.get("lang") !== "kk") S.lang = "";          // an earlier visit remembered Kazakh: it is not offered now
+  if (!STR[S.lang]) { var nl = (navigator.language || "en").slice(0, 2); var bl = B.lang === "kz" ? "kk" : B.lang; S.lang = (STR[bl] && bl !== "en" && bl !== "kk") ? bl : ((bl === "kk" || nl === "kk" || nl === "kz") ? "ru" : STR[nl] ? nl : "en"); }
   setStatic(); checkNotify(B); noteFinished(B);
   $("proj").textContent = B.project + " · " + t("rev") + " " + B.rev;
   document.title = "Barid · " + B.project;
@@ -834,7 +837,7 @@ function toggleLangPop(open) {
   var pop = $("langpop"), show = open === undefined ? pop.hidden : open;
   if (show) {
     toggleThemePop(false); clear(pop);
-    Object.keys(LANGNAME).forEach(function (k) {
+    Object.keys(LANGNAME).filter(function (k) { return LANGS_SHOWN.indexOf(k) >= 0 || S.lang === k; }).forEach(function (k) {
       pop.appendChild(h("button", {class: S.lang === k ? "on" : "", onclick: function () { S.lang = k; try { localStorage.setItem("rb.lang", k); } catch (e) {} toggleLangPop(false); render(); }}, h("span", {text: LANGNAME[k]}), h("span", {text: S.lang === k ? "✓" : ""})));
     });
   }

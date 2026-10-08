@@ -1,6 +1,6 @@
 # Compatibility promise (1.0)
 
-[Русский](COMPATIBILITY.ru.md) · [Қазақша](COMPATIBILITY.kk.md)
+[Русский](COMPATIBILITY.ru.md)
 
 From 1.0 on, scripts, agent prompts and boards written for one 1.x release keep working with every later 1.x release. `tests/test_contract.py` checks the list below on every change; if one of those tests has to change, that is a 2.0.
 
