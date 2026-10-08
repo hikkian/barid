@@ -2719,8 +2719,15 @@ def cmd_plan(args):
     v = board_view(board)
     byid = {c["id"]: c for c in v["items"]}
     lines = []
-    for n, ids in enumerate(v["steps"], 1):
-        lines.append(f"Step {n}" + ("  (can run at the same time)" if len(ids) > 1 else ""))
+    n, drafts_shown = 0, False
+    for ids in v["steps"]:
+        if (n or drafts_shown) and all(byid[i]["status"] == "draft" for i in ids):   # drafts after real work: one heading, no step number
+            if not drafts_shown:
+                lines.append("Drafts (not in the queue, they do not run until queued)")
+                drafts_shown = True
+        else:
+            n += 1
+            lines.append(f"Step {n}" + ("  (can run at the same time)" if len(ids) > 1 else ""))
         for i in ids:
             lines.append("  " + fmt_line(byid[i]))
     out(args, {"steps": v["steps"], "next_by_lane": v["next_by_lane"]}, "\n".join(lines) or "(nothing planned)")

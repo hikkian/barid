@@ -642,7 +642,7 @@ function renderFlow() {
     if (!cs.length) return;
     if (!any && head) box.appendChild(head);
     any = true;
-    var allDrafts = cs.every(function (c) { return c.state === "draft"; });
+    var allDrafts = (stepNo > 0 || draftsShown) && cs.every(function (c) { return c.state === "draft"; });
     var sh;
     if (allDrafts) {   // drafts are not in the queue: one heading says so, they take no step number and do not "run together"
       sh = h("div", {class: "sh"}, draftsShown ? null : h("b", {text: t("drafts_step")}), draftsShown ? null : h("div", {class: "sub", text: t("drafts_note")}));
