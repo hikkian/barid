@@ -25,6 +25,8 @@ The "While you were away" card no longer lists what you have already seen: a rep
 
 README: the "How it works" diagram is a real picture (`docs/img/how-it-works.svg`, readable on GitHub's light and dark themes) instead of a hand-drawn text box.
 
+An open panel tab now notices when `panel.html` was replaced (an update of Barid) and shows a bar "The panel was updated. Reload": before, the data kept refreshing but the page ran the old code until you reloaded by hand, which made fixed behaviour look unfixed. (`/api/rev` carries a stamp of the panel file.)
+
 New, small and meant for the morning:
 
 - `barid overview` (and `--brief` for a status bar) shows every session on one line: what it does, what it would start next, what waits for you.

@@ -2290,6 +2290,15 @@ def host_ok(host: str) -> bool:
     return h in ("localhost", "127.0.0.1", "[::1]") or h.endswith(".localhost")
 
 
+def panel_stamp() -> str:
+    """Changes when panel.html is replaced: an open tab runs the old code until it is reloaded, so it is told to (the page compares this)."""
+    try:
+        st = (HERE / "panel.html").stat()
+        return f"{st.st_mtime_ns}-{st.st_size}"
+    except OSError:
+        return ""
+
+
 def server_file(board: Path) -> Path:
     return board.with_name("server.json")
 
@@ -2330,7 +2339,7 @@ def make_handler(board: Path, tracker: dict):
                         return self._send(500, "panel.html is missing next to barid.py", "text/plain; charset=utf-8")
                     return self._send(200, f.read_bytes(), "text/html; charset=utf-8")
                 if path == "/api/rev":
-                    return self._send(200, {"rev": load(board).get("rev", 0)})
+                    return self._send(200, {"rev": load(board).get("rev", 0), "panel": panel_stamp()})
                 if path == "/api/board":
                     return self._send(200, board_view(board))
                 if path == "/api/digest":

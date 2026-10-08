@@ -240,6 +240,20 @@ class PanelInBrowser(unittest.TestCase):
         self.assertEqual(self.b.exec("return document.documentElement.lang;"), "kk")
         self.assertNoJsErrors()
 
+    def test_an_open_tab_is_told_when_the_panel_file_is_replaced(self):
+        panel = ROOT / "skills" / "barid" / "scripts" / "panel.html"
+        before = panel.stat()
+        self.addCleanup(lambda: os.utime(panel, ns=(before.st_atime_ns, before.st_mtime_ns)))
+        self.b.wait("document.getElementById('updatebar').hidden === true", what="no update bar yet")
+        import time
+        time.sleep(4)                                                      # one poll has recorded the stamp of the page that was loaded
+        os.utime(panel, ns=(before.st_atime_ns, before.st_mtime_ns + 5_000_000_000))      # a new panel.html arrives
+        self.b.wait("document.getElementById('updatebar').hidden === false", timeout=15, what="the update bar")
+        self.assertIn("Reload", self.text("#updatebar"))
+        self.b.click("#reloadbtn")
+        self.b.wait("document.getElementById('updatebar').hidden === true", timeout=15, what="the page to reload and the bar to go")
+        self.assertNoJsErrors()
+
     def test_every_card_of_the_order_stays_under_its_own_session_in_a_narrow_window(self):
         barid(self.board, "lane", "add", "c", "--title", "Third agent")
         for iid, lane in (("C1", "c"), ("C2", "c"), ("B2", "b"), ("A2", "a")):
