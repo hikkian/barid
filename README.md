@@ -102,9 +102,11 @@ Several tools already help with more than one agent. Barid is a small one with a
 | | What it mainly does | How it differs from Barid |
 |---|---|---|
 | [Claude Squad](https://github.com/smtg-ai/claude-squad) | A terminal UI that runs several agents, each in its own git worktree | It launches and hosts the sessions; Barid does not launch anything, it plans the work and hands you the prompts |
-| [Vibe Kanban](https://github.com/BloopAI/vibe-kanban) | A kanban app that starts coding agents on cards and reviews the results | It orchestrates the agents itself; with Barid you stay in the middle and use the windows you already have |
+| [Vibe Kanban](https://github.com/BloopAI/vibe-kanban) | A kanban app that starts coding agents on cards and reviews the results (the company behind it closed in April 2026; the open-source project continues, community maintained) | It orchestrates the agents itself; with Barid you stay in the middle and use the windows you already have |
 | [MCP Agent Mail](https://github.com/Dicklesworthstone/mcp_agent_mail) | Messaging between agents, with identities, inboxes and advisory file leases | Agents talk to each other through an MCP server; Barid has no agent-to-agent chat and needs no MCP |
-| [Aqua](https://github.com/vignesh07/aqua) | A shared task queue with atomic claiming and file locking for CLI agents | Closest in spirit. Aqua lets agents pick tasks from a queue; Barid also stores the prompt text, plans the order and the parallel steps, and records an honest outcome |
+| [Aqua](https://github.com/vignesh07/aqua) | A shared task queue for CLI agents: priorities, dependencies, atomic claiming, file locking, heartbeats and leader election | Closest in spirit. Aqua lets agents pick tasks from a queue themselves; Barid keeps you in the loop: it stores the prompt text, shows the plan and the parallel steps, checks declared conflicts, and records an honest outcome that you accept |
+| [herdr](https://herdr.dev) | A terminal multiplexer that keeps agents running in panes and shows which one is working, blocked or idle | It hosts the terminals; Barid holds the plan. They are complements: Barid's prompts are plain text, so you can paste its connect message into a herdr pane |
+| [T3 Code](https://github.com/pingdotgg/t3code) | A desktop and web front end for coding agents, with threads and permission modes | It is the window an agent works in; Barid decides what each window runs next. Also complements: connect a T3 Code thread to a Barid lane like any other session |
 | Claude Code agent teams | A lead agent that spawns and directs teammates inside Claude Code | Works inside one product; Barid works across products (Claude Code, Codex, OpenCode, a local model) |
 
 What Barid adds, in one line each:
@@ -114,7 +116,7 @@ What Barid adds, in one line each:
 - **Honest endings.** A stopped, partial or failed run never unlocks the tasks that depend on it by itself; you decide.
 - **One file, no daemon.** Python only, a JSON board, optional panel. No MCP server, no database, no API keys.
 
-Who it is not for: if you want agents to run unattended, split a goal into subtasks on their own and merge branches, use an orchestrator from the table. Barid is for people who prefer to keep the steering wheel.
+Who it is not for: if you want a system that splits a goal into subtasks on its own and merges branches, use an orchestrator from the table (Barid can run a chain you planned while you sleep, see below, but the plan is yours). Barid is for people who prefer to keep the steering wheel.
 
 ## Can these run together? How Barid decides
 
