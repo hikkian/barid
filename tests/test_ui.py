@@ -274,6 +274,40 @@ class PanelInBrowser(unittest.TestCase):
         self.assertLessEqual(data["pageOverflow"], 0)
         self.assertNoJsErrors()
 
+    def row_geometry(self, frame=None):
+        """The session rows of the What-to-do-now area, in the window or in a frame of the page (a frame is how a phone width is tested here)."""
+        scope = (f"var f = document.getElementById('{frame}'), d = f.contentDocument, w = f.contentWindow;" if frame else "var d = document, w = window;")
+        return json.loads(self.b.exec(scope + """var cards = [].slice.call(d.querySelectorAll('#now .lane-card'));
+            return JSON.stringify({width: w.innerWidth, rows: cards.map(function (c) { var r = c.getBoundingClientRect(); return [Math.round(r.left), Math.round(r.top), Math.round(r.right), Math.round(r.bottom)]; }),
+                withState: cards.every(function (c) { return !!c.querySelector('.chip, .empty'); }), overflow: d.documentElement.scrollWidth - w.innerWidth});"""))
+
+    def assertOneRowPerSession(self, geo):
+        width, rows = geo["width"], geo["rows"]
+        self.assertEqual(len(rows), 5, f"at {width} px")
+        self.assertEqual(len({r[0] for r in rows}), 1, f"at {width} px the sessions must start at one left edge, one row each")
+        for above, below in zip(rows, rows[1:]):
+            self.assertGreaterEqual(below[1], above[3] - 1, f"at {width} px the rows must not overlap")
+        for r in rows:
+            self.assertLessEqual(r[2], width, f"at {width} px a row runs past the window")
+        self.assertTrue(geo["withState"], f"at {width} px every row must say what its session is doing")
+        self.assertLessEqual(geo["overflow"], 0, f"at {width} px the page scrolls sideways")
+
+    def test_each_session_is_one_full_width_row_in_what_to_do_now(self):
+        for lid, title in (("c", "Third agent"), ("d", "Fourth agent"), ("e", "Fifth agent")):
+            barid(self.board, "lane", "add", lid, "--title", title)
+        barid(self.board, "add", "C1", "--lane", "c", "--title", "A rather long title of C1", "--text", "x", "--profile", "light")
+        self.addCleanup(lambda: self.b.cmd("WebDriver:SetWindowRect", {"width": 1280, "height": 900}))
+        self.open()
+        self.b.wait("document.querySelectorAll('#now .lane-card').length === 5", what="a card for every session")
+        for width in (1280, 950):
+            self.b.cmd("WebDriver:SetWindowRect", {"width": width, "height": 900})
+            self.assertOneRowPerSession(self.row_geometry())
+        # Firefox will not make the window narrower than 500 px here, so a phone width is a 390 px frame of the same page
+        self.b.exec("var f = document.createElement('iframe'); f.id = 'phone'; f.style.cssText = 'width:390px;height:800px;border:0'; f.src = arguments[0]; document.body.appendChild(f); return 1;", self.url + "?lang=en")
+        self.b.wait("(function () { var f = document.getElementById('phone'); return !!(f && f.contentDocument && f.contentDocument.querySelectorAll('#now .lane-card').length === 5); })()", what="the 390 px frame")
+        self.assertOneRowPerSession(self.row_geometry("phone"))
+        self.assertNoJsErrors()
+
     def test_a_measurement_that_ran_next_to_load_is_flagged_in_the_report(self):
         barid(self.board, "add", "L1", "--lane", "b", "--title", "Load", "--text", "x", "--profile", "dev")
         barid(self.board, "claim", "T1", "--by", "w1", "--force")

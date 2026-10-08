@@ -52,10 +52,17 @@ h2 small{font-weight:500;letter-spacing:0;text-transform:none}
 .banner{background:var(--bad);color:#fff;padding:8px 16px;text-align:center;font-weight:600}
 .card{background:var(--panel);border:1px solid var(--line);border-radius:14px;box-shadow:var(--shadow)}
 /* NOW */
-.now{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:12px}
-.lane-card{padding:14px;border-left:4px solid var(--lane,var(--ac))}
-.lane-card .lh{display:flex;align-items:center;flex-wrap:wrap;gap:6px 8px;font-weight:700;margin-bottom:8px}
-.lane-card .lh .btn,.lane-card .lh .tag{white-space:nowrap}
+/* one row per session, in the order of the lanes at any width: left = who the session is and whether it reports; right = what it does now, what is next and the buttons for it */
+.now{display:flex;flex-direction:column;gap:10px}
+.lane-card{padding:12px 14px;border-left:4px solid var(--lane,var(--ac));display:grid;grid-template-columns:minmax(170px,230px) minmax(0,1fr);gap:6px 18px;align-items:start}
+.lwho{min-width:0;display:flex;flex-direction:column;align-items:flex-start;gap:4px}
+.lname{display:flex;align-items:center;flex-wrap:wrap;gap:4px 8px;max-width:100%;min-width:0}
+.lname b{font-weight:700;overflow-wrap:anywhere}
+.lwhat{min-width:0}
+.lline{display:flex;flex-wrap:wrap;align-items:flex-start;gap:4px 8px;margin-bottom:2px}
+.ltitle{flex:1 1 180px;min-width:0;font-weight:700;overflow-wrap:anywhere}
+.lwhat .row{margin-top:8px}
+@media (max-width:600px){.lane-card{grid-template-columns:minmax(0,1fr);gap:8px}}
 .dot{width:10px;height:10px;border-radius:50%;background:var(--lane,var(--ac));display:inline-block}
 .big{font-size:16px;font-weight:700}
 .sub{color:var(--mute);font-size:13px}
@@ -482,41 +489,42 @@ function renderNow() {
     var mine = B.items.filter(function (c) { return c.lane === l.id; });
     var running = mine.filter(function (c) { return c.state === "running" || c.state === "sent"; });
     var fo = B.focus && B.focus[l.id], fc = fo && byId(fo.id);
-    var card = h("div", {class: "card lane-card", style: "--lane:" + laneColor(l.id)}, h("div", {class: "lh"}, h("span", {class: "dot"}), l.title || l.id, l.agent ? h("span", {class: "tag", style: "margin-left:auto", text: agentLabel(l.agent)}) : h("span", {style: "margin-left:auto"}), h("button", {class: "btn sm", style: "margin-left:8px", title: t("connect_help_short"), text: "⇄ " + t("connect"), onclick: function () { openConnect(l.id); }})));
-    var pl = presenceLine(l); if (pl) card.appendChild(pl);
+    var what = h("div", {class: "lwhat"});
+    var who = h("div", {class: "lwho"}, h("div", {class: "lname"}, h("span", {class: "dot"}), h("b", {text: l.title || l.id}), l.agent ? h("span", {class: "tag", text: agentLabel(l.agent)}) : null),
+      h("button", {class: "btn sm", title: t("connect_help_short"), text: "⇄ " + t("connect"), onclick: function () { openConnect(l.id); }}));
+    var pl = presenceLine(l); if (pl) who.appendChild(pl);
+    var card = h("div", {class: "card lane-card", style: "--lane:" + laneColor(l.id)}, who, what);
     running.forEach(function (c) {
       var cl = c.claim;
-      card.appendChild(h("div", {style: "margin-bottom:8px"}, h("div", {class: "sub", text: t("running")}), h("div", {class: "big", text: c.id + " · " + c.title}),
-        h("div", {class: "sub", text: (cl ? fmt(t("held_by"), {name: cl.by, time: fmtTime(cl.at)}) : st(c.state)) + (c.stale ? " · ⚠ " + t("stale") : "")}),
-        h("div", {class: "row"}, h("button", {class: "btn sm", text: t("copy"), onclick: function () { copyPrompt(c.id); }}), h("button", {class: "btn sm", text: t("release"), onclick: function () { act("release", c.id); }}),
-          h("button", {class: "btn sm", text: "…", onclick: function () { openDrawer(c.id); }}))));
+      what.appendChild(h("div", {class: "lline"}, h("span", {class: "chip s-running", text: t("running")}), h("span", {class: "ltitle", text: c.id + " · " + c.title})));
+      what.appendChild(h("div", {class: "sub", text: (cl ? fmt(t("held_by"), {name: cl.by, time: fmtTime(cl.at)}) : st(c.state)) + (c.stale ? " · ⚠ " + t("stale") : "")}));
+      what.appendChild(h("div", {class: "row"}, h("button", {class: "btn sm", text: t("copy"), onclick: function () { copyPrompt(c.id); }}), h("button", {class: "btn sm", text: t("release"), onclick: function () { act("release", c.id); }}),
+        h("button", {class: "btn sm", text: "…", onclick: function () { openDrawer(c.id); }})));
     });
     if (!running.length && fc) {
-      var hl = hintLine(fo);
+      var hl = hintLine(fo), ll = lintLine(fc);
       if (fo.role === "ready") {
         picks.push(fc);
-        card.appendChild(h("div", {class: "sub", text: t("next")}));
-        card.appendChild(h("div", {class: "big", text: fc.id + " · " + fc.title}));
-        if (hl) card.appendChild(hl);
-        var ll = lintLine(fc); if (ll) card.appendChild(ll);
-        card.appendChild(h("div", {class: "row"}, h("button", {class: "btn pri", text: t("copy"), onclick: function () { copyPrompt(fc.id); }}),
+        what.appendChild(h("div", {class: "lline"}, h("span", {class: "chip s-ready", text: t("next")}), h("span", {class: "ltitle", text: fc.id + " · " + fc.title})));
+        if (hl) what.appendChild(hl);
+        if (ll) what.appendChild(ll);
+        what.appendChild(h("div", {class: "row"}, h("button", {class: "btn pri", text: t("copy"), onclick: function () { copyPrompt(fc.id); }}),
           h("button", {class: "btn", text: t("sent"), onclick: function () { act("sent", fc.id, {}, t("sent")); }}), h("button", {class: "btn sm", text: "…", onclick: function () { openDrawer(fc.id); }})));
       } else if (fo.role === "turn") {
-        card.appendChild(h("div", {class: "sub", text: t("turn")}));
-        card.appendChild(h("div", {class: "big", text: fc.id + " · " + fc.title}));
-        if (hl) card.appendChild(hl);
-        var ll2 = lintLine(fc); if (ll2) card.appendChild(ll2);
-        card.appendChild(h("div", {class: "row"}, h("button", {class: "btn pri", title: t("genhint"), text: t("gen"), onclick: function () { copyGen(fc.id); }}), h("button", {class: "btn sm", text: t("edit"), onclick: function () { openDrawer(fc.id, true); }})));
+        what.appendChild(h("div", {class: "lline"}, h("span", {class: "chip s-draft", text: t("turn")}), h("span", {class: "ltitle", text: fc.id + " · " + fc.title})));
+        if (hl) what.appendChild(hl);
+        if (ll) what.appendChild(ll);
+        what.appendChild(h("div", {class: "row"}, h("button", {class: "btn pri", title: t("genhint"), text: t("gen"), onclick: function () { copyGen(fc.id); }}), h("button", {class: "btn sm", text: t("edit"), onclick: function () { openDrawer(fc.id, true); }})));
       } else {
         // blocked (conflict) or waiting (dependencies): say why, with the same line as everywhere
         var why2 = (fc.reasons || []).filter(function (r) { return r.code !== "conflict"; }).map(reasonText).join("; ");
-        card.appendChild(h("div", {class: "sub", text: fo.role === "waiting" ? t("nothing_ready") + (why2 || waitText(fc)) : t("nothing_ready_now")}));
-        card.appendChild(h("div", {class: "big", style: "margin-top:6px", text: fc.id + " · " + fc.title}));
-        if (hl && fo.role !== "waiting") card.appendChild(hl);
-        var ll3 = lintLine(fc); if (ll3) card.appendChild(ll3);
-        card.appendChild(h("div", {class: "row"}, h("button", {class: "btn sm", text: "…", onclick: function () { openDrawer(fc.id); }})));
+        what.appendChild(h("div", {class: "lline"}, chip(fc), h("span", {class: "ltitle", text: fc.id + " · " + fc.title})));
+        what.appendChild(h("div", {class: "sub", text: fo.role === "waiting" ? t("nothing_ready") + (why2 || waitText(fc)) : t("nothing_ready_now")}));
+        if (hl && fo.role !== "waiting") what.appendChild(hl);
+        if (ll) what.appendChild(ll);
+        what.appendChild(h("div", {class: "row"}, h("button", {class: "btn sm", text: "…", onclick: function () { openDrawer(fc.id); }})));
       }
-    } else if (!running.length) card.appendChild(h("div", {class: "empty", text: t("idle")}));
+    } else if (!running.length) what.appendChild(h("div", {class: "empty", text: t("idle")}));
     box.appendChild(card);
   });
   // one summary for the whole section, from the same server data as the cards
