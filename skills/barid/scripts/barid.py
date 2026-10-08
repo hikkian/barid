@@ -959,41 +959,24 @@ def plan_steps(d: dict, computed: list, cache: "PairCache | None" = None) -> lis
             steps.setdefault(1, []).append(c["id"])
     pending = [c for c in live if c["id"] not in placed]
     liveids = {c["id"] for c in live} | set(placed)
-    # Drafts are not in the queue: they never delay a task that can really run. They (and whatever waits for a
-    # draft) are planned after all the real work, so the first steps show what will actually happen.
-    later = {c["id"] for c in pending if c["status"] == "draft"}
-    grew = True
-    while grew:
-        grew = False
-        for c in pending:
-            if c["id"] not in later and any(n in later for n in deps_of(c)):
-                later.add(c["id"])
-                grew = True
-
-    def place(group, floor):
-        guard = 0
-        while group and guard < len(live) + 5:
-            guard += 1
-            progressed = False
-            for c in list(group):
-                unfinished = [n for n in deps_of(c) if n in liveids]
-                if any(n not in placed for n in unfinished):
-                    continue
-                s = max(floor, 1 + max([placed[n] for n in unfinished], default=0))
-                while any(conflict_reason(d, items[c["id"]], items[o], cache) for o in steps.get(s, [])):
-                    s += 1
-                placed[c["id"]] = s
-                steps.setdefault(s, []).append(c["id"])
-                group.remove(c)
-                progressed = True
-            if not progressed:
-                break
-
-    now_group = [c for c in pending if c["id"] not in later]
-    place(now_group, 1)
-    later_group = [c for c in pending if c["id"] in later]
-    place(later_group, (max(steps) if steps else 0) + 1)
-    pending = now_group + later_group
+    guard = 0
+    while pending and guard < len(live) + 5:
+        guard += 1
+        progressed = False
+        for c in list(pending):
+            unfinished = [n for n in deps_of(c) if n in liveids]
+            if any(n not in placed for n in unfinished):
+                continue
+            earliest = 1 + max([placed[n] for n in unfinished], default=0)
+            s = earliest
+            while any(conflict_reason(d, items[c["id"]], items[o], cache) for o in steps.get(s, [])):
+                s += 1
+            placed[c["id"]] = s
+            steps.setdefault(s, []).append(c["id"])
+            pending.remove(c)
+            progressed = True
+        if not progressed:
+            break
     last = max(steps) if steps else 0
     for c in pending:  # dependency cycle or dangling reference: put at the end, in order
         last += 1

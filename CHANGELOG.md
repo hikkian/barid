@@ -4,8 +4,6 @@
 
 **The 1.0 release candidate.** What stays the same inside 1.x is written down in [docs/COMPATIBILITY.md](docs/COMPATIBILITY.md) (also in Russian and Kazakh) and checked by `tests/test_contract.py`. 1.0.0 is tagged after a real unattended night on this version.
 
-**The order of work no longer puts drafts in line with real tasks.** A draft is not in the queue, yet the plan gave it a step like any other, so a task that could run next to nothing ended up at step 6 behind drafts nobody had queued. Now the plan places drafts (and whatever waits for a draft) after all the real work, the panel shows them under one heading, "Drafts: not in the queue", with no step number, and the step numbers count real steps only. The first steps now show what will actually happen. Tests: `test_rb` (the plan) and `test_ui` (the heading).
-
 Found by a red-team review of 0.6.0 (twelve processes writing for a minute, a killed writer, clock changes, a stuck lock holder, a worker driven by hostile commands), each with a test that fails on 0.6.0:
 
 - **A wait that cannot end is no longer called a wait.** A task below a cancelled one, or below a holder whose lease ran out, got exit `3` ("it will start by itself") and `--wait` could sit for 14 hours; now it is `4` at once, with `via` naming the task it waits for. A task marked `sent` kept no order (it could be claimed before the task it needs, and two tasks could wait for each other); now `claim` refuses it, and a sent task that waits does not hold back the task it waits for.

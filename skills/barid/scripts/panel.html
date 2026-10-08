@@ -207,7 +207,7 @@ var STR = {
   stale:"the claim has expired: is the session still running?", copy:"Copy prompt", sent:"Mark as sent", release:"Return to queue", approve:"Approve", reject:"Reject",
   edit:"Edit", accept:"Accept report", sendback:"Send back", cancel:"Cancel task", restore:"Restore", gen:"Generate prompt",
   genhint:"Copies a request for your AI agent. The agent writes the prompt and stores it here.",
-  copied:"Copied", copied_gen:"Request copied. Paste it into your AI agent.", saved:"Saved", close:"Close", save:"Save", step:"Step", together:"can run at the same time", drafts_step:"Drafts", drafts_note:"not in the queue, they do not run until you queue them", after:"after",
+  copied:"Copied", copied_gen:"Request copied. Paste it into your AI agent.", saved:"Saved", close:"Close", save:"Save", step:"Step", together:"can run at the same time", after:"after",
   blocked_by:"waiting for", next:"Next", can:"These can run at the same time: ", cant:"Run them one after another (conflict): ",
   status:"Status", notes:"Notes", addnote:"New note (Enter to save)", history:"History", report:"Report", needs:"Depends on", uses:"Resources", lane:"Session", when:"When", created:"Created by", claim:"Held by",
   prompt:"Prompt", noprompt:"There is no prompt text yet.", title:"Title", outline:"Outline (what the prompt must achieve)", needs_l:"Depends on (IDs, comma separated)", uses_l:"Resources (comma separated)",
@@ -232,7 +232,7 @@ var STR = {
   stale:"срок занятия истёк: сессия ещё работает?", copy:"Скопировать промпт", sent:"Отметить как отправленный", release:"Вернуть в очередь", approve:"Одобрить", reject:"Отклонить",
   edit:"Редактировать", accept:"Принять отчёт", sendback:"Вернуть на доработку", cancel:"Отменить задачу", restore:"Восстановить", gen:"Сгенерировать промпт",
   genhint:"Копирует запрос для вашего ИИ-агента. Агент напишет промпт и сохранит его здесь.",
-  copied:"Скопировано", copied_gen:"Запрос скопирован. Вставьте его в окно ИИ-агента.", saved:"Сохранено", close:"Закрыть", save:"Сохранить", step:"Шаг", together:"можно запускать одновременно", drafts_step:"Черновики", drafts_note:"не в очереди, пока вы их не поставите, не запускаются", after:"после",
+  copied:"Скопировано", copied_gen:"Запрос скопирован. Вставьте его в окно ИИ-агента.", saved:"Сохранено", close:"Закрыть", save:"Сохранить", step:"Шаг", together:"можно запускать одновременно", after:"после",
   blocked_by:"ждёт завершения", next:"Следующая", can:"Можно запускать одновременно: ", cant:"Запускайте по очереди (конфликт): ",
   status:"Статус", notes:"Заметки", addnote:"Новая заметка (Enter — сохранить)", history:"История", report:"Отчёт", needs:"Зависит от", uses:"Ресурсы", lane:"Сессия", when:"Когда", created:"Автор", claim:"В работе у",
   prompt:"Промпт", noprompt:"Текста промпта ещё нет.", title:"Название", outline:"Суть (что должен сделать промпт)", needs_l:"Зависит от (ID через запятую)", uses_l:"Ресурсы (через запятую)",
@@ -257,7 +257,7 @@ var STR = {
   stale:"броньның мерзімі өтті: сессия әлі жұмыс істеп тұр ма?", copy:"Промптты көшіру", sent:"Жіберілді деп белгілеу", release:"Кезекке қайтару", approve:"Мақұлдау", reject:"Қабылдамау",
   edit:"Өзгерту", accept:"Есепті қабылдау", sendback:"Қайта жұмысқа қайтару", cancel:"Тапсырманы болдырмау", restore:"Қалпына келтіру", gen:"Промпт жасату",
   genhint:"ЖИ-агентіңізге арналған сұрауды көшіреді. Агент промптты жазып, осы жерге сақтайды.",
-  copied:"Көшірілді", copied_gen:"Сұрау көшірілді. ЖИ-агентіңізге қойыңыз.", saved:"Сақталды", close:"Жабу", save:"Сақтау", step:"Қадам", together:"бір мезгілде орындалуы мүмкін", drafts_step:"Жобалар", drafts_note:"кезекте емес, сіз кезекке қоймайынша іске қосылмайды", after:"кейін",
+  copied:"Көшірілді", copied_gen:"Сұрау көшірілді. ЖИ-агентіңізге қойыңыз.", saved:"Сақталды", close:"Жабу", save:"Сақтау", step:"Қадам", together:"бір мезгілде орындалуы мүмкін", after:"кейін",
   blocked_by:"күтіп тұр:", next:"Келесі", can:"Мыналарды бір мезгілде іске қосуға болады: ", cant:"Бірінен соң бірін орындаңыз (қайшылық): ",
   status:"Күйі", notes:"Жазбалар", addnote:"Жаңа жазба (сақтау үшін Enter)", history:"Тарих", report:"Есеп", needs:"Тәуелді", uses:"Ресурстар", lane:"Сессия", when:"Қашан", created:"Жасаған", claim:"Алған",
   prompt:"Промпт", noprompt:"Промпт мәтіні әлі жоқ.", title:"Атауы", outline:"Қысқаша мазмұны (промпт нені орындауы керек)", needs_l:"Тәуелділік (ID, үтір арқылы)", uses_l:"Ресурстар (үтір арқылы)",
@@ -636,21 +636,12 @@ function renderFlow() {
     head = h("div", {class: "step flowhead"}, h("div", {class: "sh"}), h("div", {class: "items"}));
     cols.forEach(function (l) { var lh = h("div", {class: "lanehead", style: "--lane:" + laneColor(l.id), title: l.title || l.id}, h("span", {class: "dot"}), " " + (l.title || l.id)); lh.dataset.lane = l.id; head.lastChild.appendChild(lh); });
   }
-  var stepNo = 0, draftsShown = false;
   B.steps.forEach(function (ids, n) {
     var cs = ids.map(byId).filter(function (c) { return c && match(c); });
     if (!cs.length) return;
     if (!any && head) box.appendChild(head);
     any = true;
-    var allDrafts = cs.every(function (c) { return c.state === "draft"; });
-    var sh;
-    if (allDrafts) {   // drafts are not in the queue: one heading says so, they take no step number and do not "run together"
-      sh = h("div", {class: "sh"}, draftsShown ? null : h("b", {text: t("drafts_step")}), draftsShown ? null : h("div", {class: "sub", text: t("drafts_note")}));
-      draftsShown = true;
-    } else {
-      stepNo += 1;
-      sh = h("div", {class: "sh"}, h("b", {text: t("step") + " " + stepNo}), cs.length > 1 ? h("div", {class: "sub", text: "∥ " + t("together")}) : null);
-    }
+    var sh = h("div", {class: "sh"}, h("b", {text: t("step") + " " + (n + 1)}), cs.length > 1 ? h("div", {class: "sub", text: "∥ " + t("together")}) : null);
     var items = h("div", {class: "items"});
     cs.sort(function (a, b) { return (col[a.lane] || 1) - (col[b.lane] || 1); });
     cs.forEach(function (c) { var el = itemCard(c, n === 0); el.style.gridColumn = String(col[c.lane] || 1); el.dataset.lane = c.lane; items.appendChild(el); });

@@ -635,23 +635,6 @@ class SchedulerTests(unittest.TestCase):
         with self.assertRaises(rb.RBError):
             rb.mutate(self.path, lambda d: rb.op_move(d, PLANNER, "Q", 9))
 
-    def test_drafts_never_delay_real_tasks_and_come_last(self):
-        add(self.path, PLANNER, "D", lane="second", noisy=True)
-        add(self.path, PLANNER, "Q", lane="main", quiet=True)
-        add(self.path, PLANNER, "W", lane="second", needs="D")
-        add(self.path, PLANNER, "R", lane="second", noisy=True, needs="Q")
-
-        def to_draft(d):
-            next(i for i in d["items"] if i["id"] == "D")["status"] = "draft"
-        rb.mutate(self.path, to_draft)
-        s = self.steps()
-        flat = [i for step in s for i in step]
-        self.assertEqual(s[0], ["Q"])                              # the quiet task is not pushed back by a draft listed before it
-        self.assertLess(flat.index("R"), flat.index("D"))          # real work before the draft
-        self.assertLess(flat.index("D"), flat.index("W"))          # what waits for a draft still comes after it
-        self.assertLess(flat.index("R"), flat.index("W"))
-        self.assertEqual(sorted(flat), ["D", "Q", "R", "W"])       # nothing lost
-
     def test_noisy_tasks_are_pushed_away_from_quiet_ones(self):
         add(self.path, PLANNER, "Q", lane="main", quiet=True)
         add(self.path, PLANNER, "N", lane="second", noisy=True)
