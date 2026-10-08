@@ -308,6 +308,20 @@ class PanelInBrowser(unittest.TestCase):
         self.assertOneRowPerSession(self.row_geometry("phone"))
         self.assertNoJsErrors()
 
+    def test_drafts_sit_under_one_heading_after_the_real_steps(self):
+        barid(self.board, "add", "DR1", "--lane", "a", "--title", "A draft idea", "--outline", "only an outline", "--profile", "dev")
+        barid(self.board, "add", "DR2", "--lane", "b", "--title", "Another draft idea", "--outline", "only an outline", "--profile", "dev")
+        self.open()
+        self.b.wait("document.querySelectorAll('#flow .step .sh').length > 1", what="the steps of the plan")
+        heads = self.b.exec("return Array.prototype.map.call(document.querySelectorAll('#flow .step:not(.flowhead) .sh'), function (e) { return e.textContent.trim(); });")
+        steps = [x for x in heads if x.startswith("Step")]
+        drafts = [x for x in heads if x.startswith("Drafts")]
+        self.assertTrue(steps, heads)
+        self.assertEqual(len(drafts), 1, "one heading says that drafts are not in the queue: %r" % heads)
+        self.assertEqual(heads.index(drafts[0]), len(steps), "the drafts come after every real step: %r" % heads)
+        self.assertEqual(steps, ["Step %d" % n + x[len("Step %d" % n):] for n, x in enumerate(steps, 1)], "step numbers count the real steps only: %r" % heads)
+        self.assertNoJsErrors()
+
     def test_a_measurement_that_ran_next_to_load_is_flagged_in_the_report(self):
         barid(self.board, "add", "L1", "--lane", "b", "--title", "Load", "--text", "x", "--profile", "dev")
         barid(self.board, "claim", "T1", "--by", "w1", "--force")
