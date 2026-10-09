@@ -619,12 +619,15 @@ function renderDigest(g) {
   var stale = (g.running || []).filter(function (r) { return r.stale; });
   // reports to accept and proposals to approve already have their own section; the card is for what happened and what is stuck
   var stuck = g.needs_you.filter(function (n) { return n.kind === "decision" || n.kind === "never"; });
+  // "Got it" must also quiet what is stuck: that is a state, not news, so it would never leave the card otherwise. The card stays hidden until the set changes.
+  var stuckKey = JSON.stringify([stuck.map(function (n) { return [n.kind, n.id]; }), stale.map(function (r) { return r.id; })]);
+  if (stuckKey !== "[[],[]]" && lsGet("barid.stuckack") === stuckKey) { stuck = []; stale = []; }
   var seen = seenIds();
   g = Object.assign({}, g, {ended: g.ended.filter(function (e) { var c = byId(e.id); return seen.indexOf(e.id) < 0 && !(c && c.status === "done"); })});
   if (!g.ended.length && !stuck.length && !stale.length) return;
   var card = h("div", {class: "card", style: "padding:12px 14px;margin-bottom:12px;border-left:4px solid var(--ac)"});
   card.appendChild(h("div", {class: "lh", style: "display:flex;align-items:center;gap:8px;font-weight:700;margin-bottom:6px"}, h("span", {text: "☾ " + t("digest_title")}),
-    h("button", {class: "btn sm", style: "margin-left:auto", text: t("digest_ok"), onclick: function () { lsSet("barid.visit", new Date().toISOString()); S.digestAt = 0; loadDigest(); }})));
+    h("button", {class: "btn sm", style: "margin-left:auto", text: t("digest_ok"), onclick: function () { lsSet("barid.visit", new Date().toISOString()); lsSet("barid.stuckack", stuckKey); S.digestAt = 0; loadDigest(); }})));
   if (g.ended.length) {
     card.appendChild(h("div", {class: "sub", text: t("digest_ended")}));
     g.ended.forEach(function (e) {

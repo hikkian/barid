@@ -346,6 +346,26 @@ class PanelInBrowser(unittest.TestCase):
         self.assertIn("exit code 3", self.text("#modalbox .connectbox"))
         self.assertNoJsErrors()
 
+    def test_got_it_also_quiets_tasks_that_wait_for_a_decision(self):
+        barid(self.board, "add", "D1", "--lane", "a", "--title", "Draft", "--outline", "later", "--draft")
+        for i in ("W1", "W2"):
+            barid(self.board, "add", i, "--lane", "b", "--title", "Waits " + i, "--text", "x", "--profile", "light", "--needs", "D1")
+        self.b.exec("location.reload();")
+        digest = "document.getElementById('digest').textContent"
+        self.b.wait(digest + ".indexOf('While you were away') >= 0", what="the card with tasks that wait for a decision")
+        self.assertIn("W1", self.text("#digest"))
+        self.b.click_text("#digest button", "Got it")
+        self.b.wait(digest + ".indexOf('While you were away') < 0", what="the card to go away although the tasks still wait")
+        self.b.exec("location.reload();")
+        self.b.wait("document.querySelectorAll('#now .lane-card').length > 0", what="the lane cards")
+        import time
+        time.sleep(2.5)    # the card is drawn after an api call; give it time to appear if it were going to
+        self.assertEqual(self.b.exec("var e = document.getElementById('digest'); return !!(e && e.textContent.indexOf('While you were away') >= 0);"), False, "an acknowledged set must stay quiet after a reload")
+        barid(self.board, "add", "W3", "--lane", "b", "--title", "Waits W3", "--text", "x", "--profile", "light", "--needs", "D1")
+        self.b.exec("location.reload();")
+        self.b.wait(digest + ".indexOf('W3') >= 0", what="a new stuck task to show again")
+        self.assertNoJsErrors()
+
     def test_a_digest_card_tells_what_finished_while_the_person_was_away(self):
         self.agent("claim", "T1", "--by", "w1", "--force")
         self.agent("finish", "T1", "--report", "/tmp/r.md", "--outcome", "partial", "--by", "w1")

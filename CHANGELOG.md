@@ -48,6 +48,8 @@ required and shows a hint; a session with the name of another one is refused; th
 
 An open edit form is no longer dropped silently when another task is clicked: with typed, unsaved text the panel asks "Discard what you typed?" first. When every session is switched off in the bar, the flow says so ("All sessions are switched off in the bar. Switch one on to see its tasks.") instead of "No tasks yet".
 
+"Got it" on the "While you were away" card now also quiets the tasks that wait for a decision: that is a state, not news, so the card used to come back at once; it stays hidden until the set of stuck tasks changes.
+
 Known limitation (kept on purpose for 1.0): while the task drawer is open it covers the language, theme and notification buttons; close the drawer first.
 
 Tests: 189 plus the contract tests (frozen commands, exit codes, reason codes, board and `--json` fields, text and time budgets, manifests, documents in three languages), and a board written by 0.6.0 among the old-release fixtures.
