@@ -744,6 +744,50 @@ class SmallThingsFoundByReview(Base):
         self.assertEqual(p.returncode, 0, p.stderr)
 
 
+class StaleEdits(Base):
+    """Two browser tabs (FIXSCN1, finding 2): an edit may name the version of the task it was opened on. If the task changed since,
+    it is refused with code "changed" and nothing is written. Without the field the server behaves as before."""
+
+    def edit(self, iid, **args):
+        return rb.apply_action(self.path, {"action": "edit", "id": iid, "args": args})
+
+    def test_an_edit_without_the_version_field_works_as_before(self):
+        self.add("A", title="one")
+        self.edit("A", title="two")                      # what the CLI and older panels send
+        self.assertEqual(self.comp("A")["title"], "two")
+
+    def test_an_edit_that_names_the_current_version_is_saved(self):
+        self.add("A", title="one")
+        self.edit("A", title="two", seen_updated=self.comp("A")["updated"])
+        self.assertEqual(self.comp("A")["title"], "two")
+
+    def test_an_edit_on_a_version_someone_else_replaced_is_refused_and_writes_nothing(self):
+        self.add("A", title="one")
+        seen = self.comp("A")["updated"]
+        self.edit("A", title="from tab 2")                # the other tab saves first
+        with self.assertRaises(rb.RBError) as cm:
+            self.edit("A", title="from tab 1", seen_updated=seen)
+        self.assertEqual(cm.exception.code, "changed")
+        self.assertEqual(self.comp("A")["title"], "from tab 2")
+
+    def test_a_refused_edit_made_within_the_same_second_is_still_refused(self):
+        """The stored time has microseconds, so two saves in one second are told apart."""
+        self.add("A", title="one")
+        self.edit("A", title="two")
+        seen = self.comp("A")["updated"]
+        self.edit("A", title="three")
+        with self.assertRaises(rb.RBError) as cm:
+            self.edit("A", title="four", seen_updated=seen)
+        self.assertEqual(cm.exception.code, "changed")
+
+    def test_a_version_field_that_is_not_text_is_refused(self):
+        self.add("A", title="one")
+        with self.assertRaises(rb.RBError) as cm:
+            self.edit("A", title="two", seen_updated=5)
+        self.assertEqual(cm.exception.code, "bad_input")
+        self.assertEqual(self.comp("A")["title"], "one")
+
+
 def board_with_in(folder):
     path = Path(folder) / ".barid" / "board.json"
     path.parent.mkdir(parents=True)

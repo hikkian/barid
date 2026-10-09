@@ -37,6 +37,19 @@ New, small and meant for the morning:
 
 Found by two independent reviews of the first candidate and fixed before release: a sent task below a dead holder could still be claimed; a chain of several hundred tasks listed in reverse order raised a RecursionError in `compute()`; the digest listed a task twice when two paths led to one cancelled task; a worker killed an agent that had already reported its task itself, and a deleted task was not stopped; lost claim races counted as attempts; `cat "{prompt_file}"` broke in a folder with a space; SIGHUP left the agent running; a `.bak<pid>` file could be left behind; a typo in `BARID_LOCK_WAIT` raised at start; a board with a byte order mark was refused; and a lease that had just run out (a computer that slept) was taken as lost at once (there is a five-minute grace now).
 
+Panel fixes from the SCN1 exploration (FIXSCN1): the New-task dialog, the session dialog and the task drawer take keyboard focus when they open, Tab stays inside them,
+and closing them returns focus to what opened them; two tabs editing the same task no longer overwrite each other silently (the second save is refused with a message,
+the typed text stays, and "Show the current version" displays the saved text beside it; the edit names the version it was opened on with the optional field
+`seen_updated`, see docs/PROTOCOL.md); Escape with typed text asks "Discard what you typed?" first; a save while the server is unreachable says "No connection to the
+board server. Your text is kept"; a damaged or empty board file is named as such and the cards are dimmed as possibly out of date; a search with no match says "Nothing
+found" and matches the session name, and ё and е are the same letter for search; Enter in the title of the New-task dialog saves the task; the ID field is marked
+required and shows a hint; a session with the name of another one is refused; the switched-off sessions stay off after a reload; "Mark as sent", "Return to queue" and
+"Accept report" are disabled while they run. The task's `updated` time is stored with microseconds (still ISO 8601).
+
+An open edit form is no longer dropped silently when another task is clicked: with typed, unsaved text the panel asks "Discard what you typed?" first. When every session is switched off in the bar, the flow says so ("All sessions are switched off in the bar. Switch one on to see its tasks.") instead of "No tasks yet".
+
+Known limitation (kept on purpose for 1.0): while the task drawer is open it covers the language, theme and notification buttons; close the drawer first.
+
 Tests: 189 plus the contract tests (frozen commands, exit codes, reason codes, board and `--json` fields, text and time budgets, manifests, documents in three languages), and a board written by 0.6.0 among the old-release fixtures.
 
 ## 0.6.0 (2026-10-06)

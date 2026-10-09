@@ -81,6 +81,11 @@ def now_iso() -> str:
     return now_dt().isoformat()
 
 
+def item_stamp() -> str:
+    """When a task was last written, with microseconds: the panel sends back the value it saw, and two saves in one second must differ."""
+    return dt.datetime.now(dt.timezone.utc).isoformat()
+
+
 def parse_ts(s):
     """A stored time as an aware datetime (None if it cannot be read). One without an offset (a hand-edited board) is local time: left
     naive it would make every comparison with `now` raise and the whole board unusable."""
@@ -1085,7 +1090,7 @@ def op_add(d: dict, actor: Actor, f: dict) -> dict:
         "not_before": not_before, "timebox": timebox,
         "quiet": bool(f.get("quiet")), "noisy": bool(f.get("noisy")), "profile": profile, "lint_ok": lint_ok,
         "when": f.get("when") or "", "outline": f.get("outline") or "", "touches": split_list(f.get("touches")), "workdir": f.get("workdir") or "", "branch": f.get("branch") or "",
-        "text": text, "report": "", "notes": [], "created": now_iso(), "updated": now_iso(), "created_by": actor.name, "claim": None,
+        "text": text, "report": "", "notes": [], "created": now_iso(), "updated": item_stamp(), "created_by": actor.name, "claim": None,
     }
     d["items"].append(item)
     if has_cycle({i["id"]: i for i in d["items"]}):
@@ -1102,6 +1107,9 @@ def op_edit(d: dict, actor: Actor, iid: str, f: dict) -> dict:
         raise RBError(f"you cannot edit {iid}: it is not your proposal (ask the person, or leave a note)")
     if it["status"] in ("done", "cancelled"):
         raise RBError(f"{iid} is {it['status']}; restore or recreate it instead of editing", "wrong_state", id=iid, status=it["status"])
+    # the panel sends the `updated` value it showed when its edit form opened: a save over a newer version is refused, nothing is written
+    if f.get("seen_updated") is not None and f["seen_updated"] != it.get("updated"):
+        raise RBError(f"{iid} was changed by someone else since it was opened: reload to see the current version", "changed", id=iid)
     if "lane" in f and f["lane"] is not None:
         check_refs(d, f["lane"], None, None)
         it["lane"] = f["lane"]
@@ -1151,7 +1159,7 @@ def op_edit(d: dict, actor: Actor, iid: str, f: dict) -> dict:
         it["text"] = f["text"].strip()
     if it["status"] == "draft" and it["text"]:
         it["status"] = "queued" if direct_allowed(d, actor) else "proposed"
-    it["updated"] = now_iso()
+    it["updated"] = item_stamp()
     log_event(d, actor, "edit", iid)
     return it
 
@@ -1170,7 +1178,7 @@ def op_set_status(d: dict, actor: Actor, iid: str, status: str, detail: str = ""
         # a task the person sets to "running" by hand still gets a claim, so that the panel shows who holds it, the lease works and nobody else can finish it
         hours = float(d.get("policy", {}).get("lease_hours", 12))
         it["claim"] = {"by": actor.name, "at": now_iso(), "lease_until": (now_dt() + dt.timedelta(hours=hours)).isoformat()}
-    it["updated"] = now_iso()
+    it["updated"] = item_stamp()
     log_event(d, actor, "status", iid, f"{status} {detail}".strip())
     return it
 
@@ -1181,7 +1189,7 @@ def op_approve(d: dict, actor: Actor, iid: str) -> dict:
     if it["status"] != "proposed":
         raise RBError(f"{iid} is {it['status']}, not a proposal", "wrong_state", id=iid, status=it["status"])
     it["status"] = "queued" if it["text"].strip() else "draft"
-    it["updated"] = now_iso()
+    it["updated"] = item_stamp()
     log_event(d, actor, "approve", iid)
     return it
 
@@ -1192,7 +1200,7 @@ def op_reject(d: dict, actor: Actor, iid: str, reason: str = "") -> dict:
     if it["status"] != "proposed":
         raise RBError(f"{iid} is {it['status']}, not a proposal", "wrong_state", id=iid, status=it["status"])
     it["status"] = "cancelled"
-    it["updated"] = now_iso()
+    it["updated"] = item_stamp()
     if reason:
         it["notes"].append({"t": now_iso(), "by": actor.name, "text": f"rejected: {reason}"})
     log_event(d, actor, "reject", iid, reason)
@@ -1210,7 +1218,7 @@ def op_cancel(d: dict, actor: Actor, iid: str, reason: str = "") -> dict:
         raise RBError(f"{iid} is running: its owner must `release` or `finish` it first")
     it["status"] = "cancelled"
     it["claim"] = None
-    it["updated"] = now_iso()
+    it["updated"] = item_stamp()
     if reason:
         it["notes"].append({"t": now_iso(), "by": actor.name, "text": f"cancelled: {reason}"})
     log_event(d, actor, "cancel", iid, reason)
@@ -1223,7 +1231,7 @@ def op_restore(d: dict, actor: Actor, iid: str) -> dict:
     if it["status"] != "cancelled":
         raise RBError(f"{iid} is {it['status']}, not cancelled", "wrong_state", id=iid, status=it["status"])
     it["status"] = "queued" if it["text"].strip() else "draft"
-    it["updated"] = now_iso()
+    it["updated"] = item_stamp()
     log_event(d, actor, "restore", iid)
     return it
 
@@ -1236,7 +1244,7 @@ def op_sent(d: dict, actor: Actor, iid: str) -> dict:
     if not it["text"].strip():
         raise RBError(f"{iid} has no prompt text yet (generate it first)", "no_text", id=iid)
     it["status"] = "sent"
-    it["updated"] = now_iso()
+    it["updated"] = item_stamp()
     log_event(d, actor, "sent", iid)
     return it
 
@@ -1309,7 +1317,7 @@ def op_claim(d: dict, actor: Actor, iid: str, force: bool = False, lease_minutes
     op_seen(d, it["lane"], actor.name, "working", iid)
     it.pop("violations", None)
     it.pop("changed", None)
-    it["updated"] = now_iso()
+    it["updated"] = item_stamp()
     log_event(d, actor, "claim", iid, "; ".join(warnings))
     return warnings
 
@@ -1370,7 +1378,7 @@ def op_finish(d: dict, actor: Actor, iid: str, report: str = "", note: str = "",
     it["report"] = report or it.get("report", "")
     it["claim"] = None
     op_seen(d, it["lane"], actor.name, "idle", "", f"finished {iid}")
-    it["updated"] = now_iso()
+    it["updated"] = item_stamp()
     if note:
         it["notes"].append({"t": now_iso(), "by": actor.name, "text": note})
     log_event(d, actor, "finish", iid, f"{outcome or 'no outcome stated'}: {report}" + (f" ({len(violations)} file warnings)" if violations else "")
@@ -1388,7 +1396,7 @@ def op_outcome(d: dict, actor: Actor, iid: str, outcome: str) -> dict:
     if it["status"] not in ("review", "done"):
         raise RBError(f"{iid} is {it['status']}: only reported tasks have an outcome", "wrong_state", id=iid, status=it["status"])
     it["outcome"] = outcome
-    it["updated"] = now_iso()
+    it["updated"] = item_stamp()
     log_event(d, actor, "outcome", iid, outcome)
     return it
 
@@ -1416,7 +1424,7 @@ def op_release(d: dict, actor: Actor, iid: str, force: bool = False) -> dict:
     _close_run(it)
     it["status"] = "queued"
     it["claim"] = None
-    it["updated"] = now_iso()
+    it["updated"] = item_stamp()
     log_event(d, actor, "release", iid)
     return it
 
@@ -1427,7 +1435,7 @@ def op_accept(d: dict, actor: Actor, iid: str) -> dict:
     if it["status"] != "review":
         raise RBError(f"{iid} is {it['status']}, not waiting for review", "wrong_state", id=iid, status=it["status"])
     it["status"] = "done"
-    it["updated"] = now_iso()
+    it["updated"] = item_stamp()
     log_event(d, actor, "accept", iid)
     return it
 
@@ -1497,7 +1505,7 @@ def op_note(d: dict, actor: Actor, iid: str, text: str) -> dict:
     if not text:
         raise RBError("empty note", "empty_note")
     it["notes"].append({"t": now_iso(), "by": actor.name, "text": text[:2000]})
-    it["updated"] = now_iso()
+    it["updated"] = item_stamp()
     if it["status"] == "running" and it.get("claim"):
         it["claim"]["signal"] = now_iso()
     log_event(d, actor, "note", iid)
@@ -2405,6 +2413,8 @@ def check_args(args) -> dict:
     for k in ARG_BOOL:
         if k in args and args[k] is not None and not isinstance(args[k], bool):
             raise RBError(f"{k} must be true or false", "bad_input", field=k)
+    if args.get("seen_updated") is not None and not isinstance(args["seen_updated"], str):
+        raise RBError("seen_updated must be text", "bad_input", field="seen_updated")
     return args
 
 
@@ -2424,7 +2434,7 @@ def apply_action(board: Path, req: dict):
             return op_add(d, h, f)["id"]
         if a == "edit":
             f = {k: args.get(k) for k in ("title", "lane", "needs", "after", "uses", "quiet", "noisy", "profile", "lint_ok", "when", "outline", "text", "touches",
-                                          "workdir", "branch", "not_before", "timebox") if k in args}
+                                          "workdir", "branch", "not_before", "timebox", "seen_updated") if k in args}
             return op_edit(d, h, iid, f)["id"]
         if a == "status":
             return op_set_status(d, h, iid, str(args.get("status", "")))["status"]
@@ -3240,7 +3250,7 @@ def cmd_worktree(args):
     def fn(b):
         t = get_item(b, args.id)
         t["workdir"], t["branch"] = str(wt), branch
-        t["updated"] = now_iso()
+        t["updated"] = item_stamp()
         log_event(b, actor, "worktree", args.id, f"{wt} ({branch})")
     mutate(board, fn)
     print(f"worktree {wt} on branch {branch}; the task's footer now tells the session to work only there")
