@@ -337,7 +337,7 @@ class CoreTests(unittest.TestCase):
     def test_system_language_picks_the_default_board_language(self):
         old = {k: os.environ.get(k) for k in ("LC_ALL", "LC_MESSAGES", "LANG")}
         try:
-            for var, val, want in (("LANG", "ru_RU.UTF-8", "ru"), ("LANG", "kk_KZ.UTF-8", "kk"), ("LANG", "de_DE.UTF-8", "en")):
+            for var, val, want in (("LANG", "ru_RU.UTF-8", "ru"), ("LANG", "kk_KZ.UTF-8", "ru"), ("LANG", "de_DE.UTF-8", "en")):
                 for k in old:
                     os.environ.pop(k, None)
                 os.environ[var] = val

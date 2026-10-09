@@ -28,7 +28,7 @@ import webbrowser
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
-__version__ = "0.6.0"
+__version__ = "1.0.0-rc.1"
 SCHEMA = 1
 HERE = Path(__file__).resolve().parent
 STATUSES = ("draft", "proposed", "queued", "sent", "running", "review", "done", "cancelled")
@@ -39,6 +39,15 @@ FINISHED = ("review", "done", "cancelled")    # a task that is over (the person 
 # other tasks finish); the last two need the person.
 REASONS = ("begin_time", "dependency", "conflict", "decision", "never")
 SELF_RESOLVING = ("begin_time", "dependency", "conflict")
+
+
+STALE_GRACE_SECONDS = 300     # a lease is only taken as lost this long after it ran out: a computer that slept lets its sessions renew first
+
+
+def is_hard(r: dict) -> bool:
+    """A reason that does not end by itself: it needs the person (an unaccepted report, a draft, a cancelled task, or a holder whose
+    lease ran out, so its session is most likely gone). `next` then says `stuck` instead of asking the session to wait."""
+    return r["code"] not in SELF_RESOLVING or bool(r.get("stale"))
 NEXT_TASK, NEXT_NONE, NEXT_WAIT, NEXT_STUCK = "task", "none", "wait", "stuck"   # outcomes of `next`; exit codes 0, 2, 3, 4
 EXIT_NONE, EXIT_WAIT, EXIT_STUCK = 2, 3, 4
 PRESENCE_STATES = ("idle", "waiting", "working")
@@ -72,10 +81,21 @@ def now_iso() -> str:
     return now_dt().isoformat()
 
 
+def item_stamp() -> str:
+    """When a task was last written, with microseconds: the panel sends back the value it saw, and two saves in one second must differ."""
+    return dt.datetime.now(dt.timezone.utc).isoformat()
+
+
 def parse_ts(s):
+    """A stored time as an aware datetime (None if it cannot be read). One without an offset (a hand-edited board) is local time: left
+    naive it would make every comparison with `now` raise and the whole board unusable."""
     try:
-        return dt.datetime.fromisoformat(s)
+        ts = dt.datetime.fromisoformat(s)
     except (TypeError, ValueError):
+        return None
+    try:
+        return ts if ts.tzinfo is not None else ts.astimezone()
+    except (OverflowError, OSError, ValueError):
         return None
 
 
@@ -87,21 +107,26 @@ def parse_when(text: str, now: dt.datetime | None = None) -> str:
     if not text:
         return ""
     now = now or now_dt()
-    m = re.fullmatch(r"\+\s*(\d+)\s*([mhd])", text.lower())
+    m = re.fullmatch(r"\+\s*(\d{1,6})\s*([mhd])", text.lower())
     if m:
         n = int(m.group(1))
-        delta = {"m": dt.timedelta(minutes=n), "h": dt.timedelta(hours=n), "d": dt.timedelta(days=n)}[m.group(2)]
-        return (now + delta).isoformat()
+        try:
+            delta = {"m": dt.timedelta(minutes=n), "h": dt.timedelta(hours=n), "d": dt.timedelta(days=n)}[m.group(2)]
+            return (now + delta).isoformat()
+        except OverflowError:
+            raise RBError(f"that is too far away: {text!r}", "bad_time", value=text) from None
     m = re.fullmatch(r"(\d{1,2}):(\d{2})", text)
     if m:
+        # The wall-clock time is built without an offset and only then given the zone of that day: with the offset of `now` a day
+        # that has a clock change in between would land an hour off.
         local_now = now.astimezone()
         try:
-            at = local_now.replace(hour=int(m.group(1)), minute=int(m.group(2)), second=0, microsecond=0)
+            at = local_now.replace(tzinfo=None, hour=int(m.group(1)), minute=int(m.group(2)), second=0, microsecond=0)
         except ValueError:
             raise RBError(f"not a time of day: {text!r}", "bad_time", value=text) from None
-        if at <= local_now:
+        if at.astimezone() <= local_now:
             at += dt.timedelta(days=1)
-        return at.astimezone(dt.timezone.utc).replace(microsecond=0).isoformat()
+        return at.astimezone().astimezone(dt.timezone.utc).replace(microsecond=0).isoformat()
     ts = None
     try:
         iso = text.replace(" ", "T")
@@ -182,27 +207,44 @@ def find_board(explicit=None) -> Path:
     raise RBError("no board found here: run `barid init` in your project folder, or pass --board PATH / set BARID_BOARD")
 
 
+def real(path: Path) -> Path:
+    """The file a board path really is (a symlinked board.json is written through, and its lock is the target's lock)."""
+    return Path(os.path.realpath(path))
+
+
+def _lock_wait() -> float:
+    try:
+        return max(0.0, float(os.environ.get("BARID_LOCK_WAIT", "60")))
+    except ValueError:
+        return 60.0                     # a typo in the variable must not stop every command at start
+
+
+LOCK_WAIT_SECONDS = _lock_wait()
+
+
 @contextlib.contextmanager
 def locked(path: Path):
-    """Cross-process lock around read-modify-write of the board file."""
+    """Cross-process lock around read-modify-write of the board file. Waits at most LOCK_WAIT_SECONDS (BARID_LOCK_WAIT): a process that
+    is stopped or hung while it holds the lock must give a clear refusal to the others, not make every command hang for ever."""
+    path = real(path)
     lock_path = path.with_name(path.name + ".lock")
     path.parent.mkdir(parents=True, exist_ok=True)
     fh = open(lock_path, "a+")
     try:
-        if os.name == "nt":
-            import msvcrt
-            deadline = time.time() + 15
-            while True:
-                try:
+        deadline = time.monotonic() + LOCK_WAIT_SECONDS
+        while True:
+            try:
+                if os.name == "nt":
+                    import msvcrt
                     msvcrt.locking(fh.fileno(), msvcrt.LK_NBLCK, 1)
-                    break
-                except OSError:
-                    if time.time() > deadline:
-                        raise RBError("board is locked by another process")
-                    time.sleep(0.05)
-        else:
-            import fcntl
-            fcntl.flock(fh, fcntl.LOCK_EX)
+                else:
+                    import fcntl
+                    fcntl.flock(fh, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                break
+            except OSError:
+                if time.monotonic() > deadline:
+                    raise RBError(f"the board is locked by another process (waited {int(LOCK_WAIT_SECONDS)} s): {lock_path}", "locked") from None
+                time.sleep(0.02)
         yield
     finally:
         try:
@@ -228,34 +270,107 @@ def _retry_io(fn, attempts: int = 40, delay: float = 0.05):
             time.sleep(delay)
 
 
+def _damaged(path: Path, why: str) -> RBError:
+    bak = path.with_name(path.name + ".bak")
+    hint = f" The previous version is kept as {bak}: copy it over the board file to go back one step." if bak.exists() else ""
+    return RBError(f"the board file is damaged ({path}): {why}.{hint}", "damaged")
+
+
 def load(path: Path) -> dict:
+    path = real(path)
     try:
-        d = json.loads(_retry_io(lambda: path.read_text("utf-8")))
+        d = json.loads(_retry_io(lambda: path.read_text("utf-8-sig")))      # a board saved by Notepad or PowerShell starts with a BOM
     except FileNotFoundError:
         raise RBError(f"board file not found: {path}")
-    except json.JSONDecodeError as e:
-        raise RBError(f"board file is not valid JSON ({path}): {e}")
+    except (json.JSONDecodeError, UnicodeDecodeError) as e:
+        raise _damaged(path, f"it is not valid JSON ({e})") from None
+    if not isinstance(d, dict):
+        raise _damaged(path, "it is not a board")
     if d.get("schema") != SCHEMA:
         raise RBError(f"unsupported board schema {d.get('schema')!r} (this barid understands {SCHEMA})")
+    if not isinstance(d.get("items"), list) or not isinstance(d.get("lanes"), list):
+        raise _damaged(path, "it has no list of tasks or of sessions")
+    for i in d["items"]:
+        if not (isinstance(i, dict) and isinstance(i.get("id"), str) and i.get("status") in STATUSES and isinstance(i.get("lane"), str)):
+            raise _damaged(path, f"a task is broken: {str(i)[:80]}")
+    d.setdefault("events", [])
+    d.setdefault("resources", {})
+    d.setdefault("policy", {})
     if d.get("lang") == "kz":  # people write kz; the language code is kk
         d["lang"] = "kk"
     d["_root"] = str(path.resolve().parent.parent)  # the project folder (real path); lives in memory only
     return d
 
 
+def _keep_previous(path: Path) -> None:
+    """Keep the version being replaced as `<board>.bak` with a hard link: no data is copied (no extra writes), and the file the link
+    points to is never changed afterwards because every save writes a new file. Best effort: a file system without links goes without."""
+    bak = path.with_name(path.name + ".bak")
+    tmp = path.with_name(f"{path.name}.bak{os.getpid()}")
+    try:
+        if path.exists():
+            tmp.unlink(missing_ok=True)
+            os.link(path, tmp)
+            os.replace(tmp, bak)
+    except OSError:
+        with contextlib.suppress(OSError):
+            tmp.unlink(missing_ok=True)
+
+
+def _sync_dir(folder: Path) -> None:
+    if os.name == "nt":
+        return
+    try:
+        fd = os.open(folder, os.O_RDONLY)
+        try:
+            os.fsync(fd)
+        finally:
+            os.close(fd)
+    except OSError:
+        pass
+
+
+def _remove_old_temp_files(path: Path, older_than: float = 3600.0) -> None:
+    """Temp files of a save that was cut off (a crash, a full disk) are not needed by anyone: remove the ones that are an hour old."""
+    now = time.time()
+    for f in [*path.parent.glob(path.name + ".tmp*"), *path.parent.glob(path.name + ".bak[0-9]*")]:      # a save, or a backup link, that was cut off
+        try:
+            if now - f.stat().st_mtime > older_than:
+                f.unlink()
+        except OSError:
+            pass
+
+
 def save(path: Path, d: dict) -> None:
+    """Write the board so that a crash or a power cut leaves either the old or the new one: the new file is written and flushed to the
+    disk before it replaces the old one, and the folder entry is flushed after."""
+    path = real(path)
     d["updated"] = now_iso()
     tmp = path.with_name(f"{path.name}.tmp{os.getpid()}")
     clean = {k: v for k, v in d.items() if not k.startswith("_")}
-    tmp.write_text(json.dumps(clean, ensure_ascii=False, indent=1) + "\n", "utf-8")
+    data = (json.dumps(clean, ensure_ascii=False, indent=1) + "\n").encode("utf-8")
     try:
+        with open(tmp, "wb") as f:
+            f.write(data)
+            f.flush()
+            os.fsync(f.fileno())
+        _keep_previous(path)
         _retry_io(lambda: os.replace(tmp, path))
+        _sync_dir(path.parent)
     except PermissionError:
-        raise RBError(f"could not write {path}: it is held by another program")
+        with contextlib.suppress(OSError):
+            tmp.unlink(missing_ok=True)
+        raise RBError(f"could not write {path}: it is held by another program or the folder is read-only", "write_failed") from None
+    except OSError as e:
+        with contextlib.suppress(OSError):
+            tmp.unlink(missing_ok=True)
+        raise RBError(f"could not write {path}: {e.strerror or e} (the board was not changed)", "write_failed") from None
+    _remove_old_temp_files(path)
 
 
 def mutate(path: Path, fn):
     """Run fn(board) under the lock; save only if it did not raise."""
+    path = real(path)
     with locked(path):
         d = load(path)
         out = fn(d)
@@ -265,9 +380,9 @@ def mutate(path: Path, fn):
 
 
 def system_lang() -> str:
-    """en, ru or kk from the usual locale variables; anything else means en."""
+    """en or ru from the usual locale variables (a Kazakh locale gets ru: Kazakh is not offered until a native reader has reviewed it); anything else means en."""
     loc = (os.environ.get("LC_ALL") or os.environ.get("LC_MESSAGES") or os.environ.get("LANG") or "").lower()
-    return "ru" if loc.startswith("ru") else "kk" if loc.startswith(("kk", "kz")) else "en"
+    return "ru" if loc.startswith(("ru", "kk", "kz")) else "en"
 
 
 def new_board(project: str, lanes, lang: str = "en") -> dict:
@@ -394,12 +509,14 @@ def expand_protected(d: dict) -> list:
     return out
 
 
-def _git(args, cwd, timeout: int = 30):
+def _git(args, cwd, timeout: int = 30, raw: bool = False):
     try:
-        r = subprocess.run(["git", *args], cwd=str(cwd), capture_output=True, encoding="utf-8", errors="replace", timeout=timeout)
+        r = subprocess.run(["git", "-c", "core.quotepath=off", *args], cwd=str(cwd), capture_output=True, encoding="utf-8", errors="replace", timeout=timeout)
     except (OSError, subprocess.TimeoutExpired):
         return None
-    return r.stdout.strip() if r.returncode == 0 else None
+    if r.returncode != 0:
+        return None
+    return r.stdout if raw else r.stdout.strip()
 
 
 def git_state(workdir):
@@ -415,8 +532,10 @@ def git_changed(state: dict) -> list:
     """Files that differ from the commit the task started at, plus new untracked files (absolute paths)."""
     repo, base = state["repo"], state.get("head")
     files = set()
-    for args in ((["diff", "--name-only", base] if base else ["diff", "--name-only"]), ["ls-files", "--others", "--exclude-standard"]):
-        files |= {ln for ln in (_git(args, repo) or "").splitlines() if ln}
+    # -z: names come NUL separated and unquoted, so a name with non-ASCII letters or spaces is the real name (without it git writes
+    # "src/caf\\303\\251.txt" in quotes, which matches no scope and made a finished task look as if it had left its scope)
+    for args in ((["diff", "--name-only", "-z", base] if base else ["diff", "--name-only", "-z"]), ["ls-files", "--others", "--exclude-standard", "-z"]):
+        files |= {f for f in (_git(args, repo, raw=True) or "").split("\0") if f}
     return sorted((Path(repo) / f).as_posix() for f in files)
 
 
@@ -509,34 +628,59 @@ def is_described(d: dict, it: dict) -> bool:
     return bool(e["uses"] or e["quiet"] or e["noisy"] or it.get("touches") or it.get("profile"))
 
 
-def conflicts_between(d: dict, a: dict, b: dict) -> list:
-    """Every reason why two tasks must not run at the same time. One pure function: symmetric, and a task never conflicts with itself."""
+class PairCache:
+    """What `conflicts_between` needs about one task, found once per task (not once per pair of tasks): its effective marks, the folder
+    its relative scopes live in and its normalised scopes (real paths: every one of them is a few system calls)."""
+
+    def __init__(self, d: dict):
+        self.d, self._eff, self._root, self._scopes = d, {}, {}, {}
+
+    def eff(self, it):
+        if it["id"] not in self._eff:
+            self._eff[it["id"]] = effective(self.d, it)
+        return self._eff[it["id"]]
+
+    def root(self, it):
+        if it["id"] not in self._root:
+            self._root[it["id"]] = task_root(self.d, it)
+        return self._root[it["id"]]
+
+    def scopes(self, it):
+        if it["id"] not in self._scopes:
+            self._scopes[it["id"]] = [norm_scope(self.d, x, self.root(it)) for x in it.get("touches", [])]
+        return self._scopes[it["id"]]
+
+
+def conflicts_between(d: dict, a: dict, b: dict, cache: "PairCache | None" = None) -> list:
+    """Every reason why two tasks must not run at the same time. One pure function: symmetric, and a task never conflicts with itself.
+    `cache` only saves work when many pairs are looked at (compute); the answer is the same without it."""
     if a["id"] == b["id"]:
         return []
+    cache = cache or PairCache(d)
     out = []
     if a["lane"] == b["lane"]:
         out.append({"rule": "lane", "why": "lane"})
     res = d.get("resources", {})
-    ea, eb = effective(d, a), effective(d, b)
+    ea, eb = cache.eff(a), cache.eff(b)
     for r in ea["uses"]:
         if r in eb["uses"] and res.get(r, {}).get("exclusive", True):
             out.append({"rule": "resource", "why": r})
     if (ea["quiet"] and eb["noisy"]) or (ea["noisy"] and eb["quiet"]):
         out.append({"rule": "quiet", "why": "quiet"})
     # different checkouts (git worktrees) cannot overwrite each other's files; their changes meet at merge time
-    if a.get("touches") and b.get("touches") and _case(str(task_root(d, a))) == _case(str(task_root(d, b))):
+    if a.get("touches") and b.get("touches") and _case(str(cache.root(a))) == _case(str(cache.root(b))):
         done = False
-        for x in own_scopes(d, a):
-            for y in own_scopes(d, b):
+        for x in cache.scopes(a):
+            for y in cache.scopes(b):
                 if not done and scopes_overlap(x, y):
-                    out.append({"rule": "paths", "why": "paths:" + show_scope(d, x if len(x) >= len(y) else y, task_root(d, a))})
+                    out.append({"rule": "paths", "why": "paths:" + show_scope(d, x if len(x) >= len(y) else y, cache.root(a))})
                     done = True
     return out
 
 
-def conflict_reason(d: dict, a: dict, b: dict):
+def conflict_reason(d: dict, a: dict, b: dict, cache: "PairCache | None" = None):
     """Why two tasks must not run at the same time (the first reason, None if they can)."""
-    c = conflicts_between(d, a, b)
+    c = conflicts_between(d, a, b, cache)
     return c[0]["why"] if c else None
 
 
@@ -684,20 +828,33 @@ def wait_reasons(d: dict, items: dict, i: dict, waiting_on: list, begin_in: int,
         else:
             out.append({"code": "dependency", "id": n, "status": t["status"]})
     for x in conflicts:
-        out.append({"code": "conflict", "id": x["id"], "why": x["why"]})
+        out.append({"code": "conflict", "id": x["id"], "why": x["why"], **({"stale": True} if x.get("stale") else {})})
     return out
 
 
 def compute(d: dict, now=None) -> list:
-    """Return the tasks with computed fields: state, waiting_on, conflicts, can_run_with, stale."""
+    """Return the tasks with computed fields: state, waiting_on, conflicts, can_run_with, stale, reasons.
+
+    Done in passes so that nothing is worked out twice for a pair of tasks (a board of 500 tasks must stay quick): what each task
+    declares and the tasks it is ordered after are found once; then conflicts with the tasks that can really run; then the reasons,
+    where a wait that can never end (a cancelled task somewhere up the chain, a holder whose lease ran out) is marked as such for
+    every task below it, not only for the first one."""
     now = now or now_dt()
     items = {i["id"]: i for i in d["items"]}
-    active = [i for i in d["items"] if i["status"] in ACTIVE]
-    out = []
+    cache = PairCache(d)
+    eff = {i["id"]: cache.eff(i) for i in d["items"]}
+    closure = {}
+
+    def clo(iid):
+        if iid not in closure:
+            closure[iid] = _closure(items, iid)
+        return closure[iid]
+
+    out, by_id = [], {}
     for i in d["items"]:
         c = dict(i)
         c.setdefault("profile", "")
-        c["effective"] = effective(d, i)
+        c["effective"] = eff[i["id"]]
         c["described"] = is_described(d, i)
         c["lint"] = lint_task(d, i)
         c["waiting_on"] = [n for n in i.get("needs", []) if not _satisfied(d, items, n)]
@@ -707,12 +864,24 @@ def compute(d: dict, now=None) -> list:
         begin = parse_ts(i.get("not_before")) if i.get("not_before") else None
         c["begin_in"] = max(0, int((begin - now).total_seconds())) if begin and begin > now else 0
         c["conflicts"] = []
-        for a in active:
-            if a["id"] != i["id"]:
-                r = conflict_reason(d, i, a)
+        cl = i.get("claim")
+        ts = parse_ts(cl.get("lease_until")) if cl else None
+        c["stale"] = bool(i["status"] == "running" and ts and ts < now)
+        c["gone"] = bool(c["stale"] and (now - ts).total_seconds() > STALE_GRACE_SECONDS)       # stale for good: nothing will renew it
+        out.append(c)
+        by_id[i["id"]] = c
+    # tasks that really hold something: one that runs, or one the person sent that has nothing left to wait for. A sent task that
+    # still waits for another task must not block that other task (it would wait for it for ever).
+    holders = [c for c in out if c["status"] == "running" or (c["status"] == "sent" and not c["waiting_on"] and not c["begin_in"])]
+    for c in out:
+        i = items[c["id"]]
+        for a in holders:
+            if a["id"] != c["id"]:
+                r = conflict_reason(d, i, a, cache)
                 if r:
-                    c["conflicts"].append({"id": a["id"], "why": r})
-        c["reasons"] = wait_reasons(d, items, i, c["waiting_on"], c["begin_in"], c["conflicts"]) if i["status"] == "queued" else []
+                    c["conflicts"].append({"id": a["id"], "why": r, **({"stale": True} if a["gone"] else {})})
+        waits = i["status"] in ("queued", "sent")
+        c["reasons"] = wait_reasons(d, items, i, c["waiting_on"], c["begin_in"], c["conflicts"]) if waits else []
         if i["status"] == "queued":
             if c["waiting_on"] or c["begin_in"]:
                 c["state"] = "waiting"
@@ -720,19 +889,16 @@ def compute(d: dict, now=None) -> list:
                 c["state"] = "blocked" if c["conflicts"] else "ready"
         else:
             c["state"] = i["status"]
-        cl = i.get("claim")
-        ts = parse_ts(cl.get("lease_until")) if cl else None
-        c["stale"] = bool(i["status"] == "running" and ts and ts < now)
         c["can_run_with"], c["cannot_run_with"] = [], []
-        out.append(c)
+    _mark_unreachable(by_id)
     # everything that could be started now or already runs; a draft whose turn has come (nothing it needs is open) counts too
     live = [c for c in out if c["state"] in ("ready", "blocked", "sent", "running") or (c["status"] == "draft" and not c["waiting_on"])]
     for a in live:
         for b in live:
             if a["id"] == b["id"]:
                 continue
-            related = a["id"] in _closure(items, b["id"]) or b["id"] in _closure(items, a["id"])
-            r = conflict_reason(d, a, b)
+            related = a["id"] in clo(b["id"]) or b["id"] in clo(a["id"])
+            r = conflict_reason(d, a, b, cache)
             if r:
                 a["cannot_run_with"].append({"id": b["id"], "why": r})
             elif not related:
@@ -740,8 +906,51 @@ def compute(d: dict, now=None) -> list:
     return out
 
 
-def plan_steps(d: dict, computed: list) -> list:
+def _mark_unreachable(by_id: dict) -> None:
+    """A task that waits for a task that can never start waits for ever too. Rewrite such `dependency` reasons into the reason at the
+    bottom of the chain (with `via`, the task it waits for), and a wait for a holder whose lease is gone into a decision for the person.
+    Worked out by repeating until nothing changes (not by recursion: a chain of hundreds of tasks must not exhaust the stack)."""
+    hard = {}                                  # task id -> the hard reason at the bottom of its chain
+    for iid, c in by_id.items():
+        own = next((r for r in c["reasons"] if is_hard(r) and r["code"] != "dependency"), None)
+        if own:
+            hard[iid] = own
+
+    def lost(t):                               # what a wait for task `t` is really a wait for (None: it can still end by itself)
+        if t["gone"]:
+            return {"code": "decision", "id": t["id"], "status": "running", "stale": True}
+        if t["status"] in ("queued", "sent") and t["id"] in hard:
+            return {**hard[t["id"]], "via": t["id"]}
+        return None
+
+    changed = True
+    while changed:
+        changed = False
+        for iid, c in by_id.items():
+            if iid in hard:
+                continue
+            for r in c["reasons"]:
+                t = by_id.get(r["id"]) if r["code"] == "dependency" else None
+                found = lost(t) if t is not None else None
+                if found:
+                    hard[iid] = found
+                    changed = True
+                    break
+    for c in by_id.values():
+        fresh, seen = [], set()
+        for r in c["reasons"]:
+            if r["code"] == "dependency" and by_id.get(r["id"]) is not None:
+                r = lost(by_id[r["id"]]) or r
+            key = (r["code"], r.get("id"))
+            if key not in seen:                # two paths to one cancelled task are one reason
+                seen.add(key)
+                fresh.append(r)
+        c["reasons"] = fresh
+
+
+def plan_steps(d: dict, computed: list, cache: "PairCache | None" = None) -> list:
     """Group the live tasks into steps; tasks in one step may run at the same time."""
+    cache = cache or PairCache(d)
     items = {i["id"]: i for i in d["items"]}
     live = [c for c in computed if c["status"] not in ("done", "cancelled", "review")]
     placed, steps = {}, {}
@@ -750,8 +959,8 @@ def plan_steps(d: dict, computed: list) -> list:
             if c["status"] == "review":
                 placed[c["id"]] = 1  # waits for the person's acceptance: dependents come after
     for c in live:
-        if c["status"] in ACTIVE:
-            placed[c["id"]] = 1
+        if c["status"] == "running" or (c["status"] == "sent" and not c.get("waiting_on") and not c.get("begin_in")):
+            placed[c["id"]] = 1                # it runs, or can run now; a sent task that still waits is planned after what it waits for
             steps.setdefault(1, []).append(c["id"])
     pending = [c for c in live if c["id"] not in placed]
     liveids = {c["id"] for c in live} | set(placed)
@@ -765,7 +974,7 @@ def plan_steps(d: dict, computed: list) -> list:
                 continue
             earliest = 1 + max([placed[n] for n in unfinished], default=0)
             s = earliest
-            while any(conflict_reason(d, items[c["id"]], items[o]) for o in steps.get(s, [])):
+            while any(conflict_reason(d, items[c["id"]], items[o], cache) for o in steps.get(s, [])):
                 s += 1
             placed[c["id"]] = s
             steps.setdefault(s, []).append(c["id"])
@@ -881,7 +1090,7 @@ def op_add(d: dict, actor: Actor, f: dict) -> dict:
         "not_before": not_before, "timebox": timebox,
         "quiet": bool(f.get("quiet")), "noisy": bool(f.get("noisy")), "profile": profile, "lint_ok": lint_ok,
         "when": f.get("when") or "", "outline": f.get("outline") or "", "touches": split_list(f.get("touches")), "workdir": f.get("workdir") or "", "branch": f.get("branch") or "",
-        "text": text, "report": "", "notes": [], "created": now_iso(), "updated": now_iso(), "created_by": actor.name, "claim": None,
+        "text": text, "report": "", "notes": [], "created": now_iso(), "updated": item_stamp(), "created_by": actor.name, "claim": None,
     }
     d["items"].append(item)
     if has_cycle({i["id"]: i for i in d["items"]}):
@@ -898,6 +1107,9 @@ def op_edit(d: dict, actor: Actor, iid: str, f: dict) -> dict:
         raise RBError(f"you cannot edit {iid}: it is not your proposal (ask the person, or leave a note)")
     if it["status"] in ("done", "cancelled"):
         raise RBError(f"{iid} is {it['status']}; restore or recreate it instead of editing", "wrong_state", id=iid, status=it["status"])
+    # the panel sends the `updated` value it showed when its edit form opened: a save over a newer version is refused, nothing is written
+    if f.get("seen_updated") is not None and f["seen_updated"] != it.get("updated"):
+        raise RBError(f"{iid} was changed by someone else since it was opened: reload to see the current version", "changed", id=iid)
     if "lane" in f and f["lane"] is not None:
         check_refs(d, f["lane"], None, None)
         it["lane"] = f["lane"]
@@ -947,7 +1159,7 @@ def op_edit(d: dict, actor: Actor, iid: str, f: dict) -> dict:
         it["text"] = f["text"].strip()
     if it["status"] == "draft" and it["text"]:
         it["status"] = "queued" if direct_allowed(d, actor) else "proposed"
-    it["updated"] = now_iso()
+    it["updated"] = item_stamp()
     log_event(d, actor, "edit", iid)
     return it
 
@@ -966,7 +1178,7 @@ def op_set_status(d: dict, actor: Actor, iid: str, status: str, detail: str = ""
         # a task the person sets to "running" by hand still gets a claim, so that the panel shows who holds it, the lease works and nobody else can finish it
         hours = float(d.get("policy", {}).get("lease_hours", 12))
         it["claim"] = {"by": actor.name, "at": now_iso(), "lease_until": (now_dt() + dt.timedelta(hours=hours)).isoformat()}
-    it["updated"] = now_iso()
+    it["updated"] = item_stamp()
     log_event(d, actor, "status", iid, f"{status} {detail}".strip())
     return it
 
@@ -977,7 +1189,7 @@ def op_approve(d: dict, actor: Actor, iid: str) -> dict:
     if it["status"] != "proposed":
         raise RBError(f"{iid} is {it['status']}, not a proposal", "wrong_state", id=iid, status=it["status"])
     it["status"] = "queued" if it["text"].strip() else "draft"
-    it["updated"] = now_iso()
+    it["updated"] = item_stamp()
     log_event(d, actor, "approve", iid)
     return it
 
@@ -988,7 +1200,7 @@ def op_reject(d: dict, actor: Actor, iid: str, reason: str = "") -> dict:
     if it["status"] != "proposed":
         raise RBError(f"{iid} is {it['status']}, not a proposal", "wrong_state", id=iid, status=it["status"])
     it["status"] = "cancelled"
-    it["updated"] = now_iso()
+    it["updated"] = item_stamp()
     if reason:
         it["notes"].append({"t": now_iso(), "by": actor.name, "text": f"rejected: {reason}"})
     log_event(d, actor, "reject", iid, reason)
@@ -1006,7 +1218,7 @@ def op_cancel(d: dict, actor: Actor, iid: str, reason: str = "") -> dict:
         raise RBError(f"{iid} is running: its owner must `release` or `finish` it first")
     it["status"] = "cancelled"
     it["claim"] = None
-    it["updated"] = now_iso()
+    it["updated"] = item_stamp()
     if reason:
         it["notes"].append({"t": now_iso(), "by": actor.name, "text": f"cancelled: {reason}"})
     log_event(d, actor, "cancel", iid, reason)
@@ -1019,7 +1231,7 @@ def op_restore(d: dict, actor: Actor, iid: str) -> dict:
     if it["status"] != "cancelled":
         raise RBError(f"{iid} is {it['status']}, not cancelled", "wrong_state", id=iid, status=it["status"])
     it["status"] = "queued" if it["text"].strip() else "draft"
-    it["updated"] = now_iso()
+    it["updated"] = item_stamp()
     log_event(d, actor, "restore", iid)
     return it
 
@@ -1032,7 +1244,7 @@ def op_sent(d: dict, actor: Actor, iid: str) -> dict:
     if not it["text"].strip():
         raise RBError(f"{iid} has no prompt text yet (generate it first)", "no_text", id=iid)
     it["status"] = "sent"
-    it["updated"] = now_iso()
+    it["updated"] = item_stamp()
     log_event(d, actor, "sent", iid)
     return it
 
@@ -1042,11 +1254,14 @@ def refusal_for(iid: str, reasons: list) -> RBError | None:
     waiting (for other tasks), conflict: the last three end by themselves, so `claim --wait` waits for them."""
     if not reasons:
         return None
-    hard = [r for r in reasons if r["code"] not in SELF_RESOLVING]
+    hard = [r for r in reasons if is_hard(r)]
     if hard:
         r = hard[0]
         what = {"decision": "needs the person to accept or write it", "never": "was cancelled or does not exist (change the dependency)"}.get(r["code"], r["code"])
-        return RBError(f"{iid} cannot start: {r.get('id', '')} {what}", "stuck", id=iid, reasons=reasons)
+        if r.get("stale"):
+            what = "has a lease that ran out: its session is most likely gone, the person should return it to the queue"
+        via = f" (it waits for {r['via']})" if r.get("via") else ""
+        return RBError(f"{iid} cannot start: {r.get('id', '')} {what}{via}", "stuck", id=iid, reasons=reasons)
     r = reasons[0]
     if r["code"] == "begin_time":
         return RBError(f"{iid} may not start before {local_time(r['at'])}", "begin_time", id=iid, at=r["at"], reasons=reasons)
@@ -1065,7 +1280,7 @@ def op_seen(d: dict, lane_id: str, by: str, state: str, task: str = "", reason: 
     lane["seen"] = {"at": now_iso(), "by": by, "state": state, "task": task, "reason": reason[:200]}
 
 
-def op_claim(d: dict, actor: Actor, iid: str, force: bool = False, lease_minutes: int = 0) -> list:
+def op_claim(d: dict, actor: Actor, iid: str, force: bool = False, lease_minutes: int = 0, snapshot: dict | None = None) -> list:
     it = get_item(d, iid)
     if it["status"] not in ("queued", "sent") and not force:
         who = ""
@@ -1076,7 +1291,7 @@ def op_claim(d: dict, actor: Actor, iid: str, force: bool = False, lease_minutes
     comp = {c["id"]: c for c in compute(d)}[iid]
     if not force:
         # a task the person already sent to a session (status `sent`) only warns about conflicts, as before; time and dependencies still count
-        refusal = refusal_for(iid, [r for r in comp["reasons"] if not (it["status"] == "sent" and r["code"] == "conflict")])
+        refusal = refusal_for(iid, [r for r in comp["reasons"] if not (it["status"] == "sent" and r["code"] == "conflict" and not r.get("via"))])
         if refusal:
             raise refusal
     warnings = []
@@ -1098,13 +1313,36 @@ def op_claim(d: dict, actor: Actor, iid: str, force: bool = False, lease_minutes
     it["claim"] = {"by": actor.name, "at": now_iso(), "lease_until": (now_dt() + lease).isoformat(), "signal": now_iso()}
     if timebox:
         it["claim"]["deadline"] = (now_dt() + dt.timedelta(minutes=timebox)).isoformat()
-    it["claim"].update(snapshot_for_claim(d, it))
+    it["claim"].update(snapshot if snapshot is not None else snapshot_for_claim(d, it))
     op_seen(d, it["lane"], actor.name, "working", iid)
     it.pop("violations", None)
     it.pop("changed", None)
-    it["updated"] = now_iso()
+    it["updated"] = item_stamp()
     log_event(d, actor, "claim", iid, "; ".join(warnings))
     return warnings
+
+
+def claim_task(board: Path, actor: Actor, iid: str, force: bool = False, lease_minutes: int = 0) -> list:
+    """op_claim, with the slow part (git, hashing the protected files) done before the lock is taken: a task that is claimed must
+    not make every other command wait for git. A refusal is found first, on a copy, without the lock."""
+    import copy
+    d = load(board)
+    op_claim(copy.deepcopy(d), actor, iid, force, lease_minutes, snapshot={})
+    snap = snapshot_for_claim(d, get_item(d, iid))
+    return mutate(board, lambda dd: op_claim(dd, actor, iid, force, lease_minutes, snapshot=snap))
+
+
+def finish_task(board: Path, actor: Actor, iid: str, report: str = "", note: str = "", force: bool = False, outcome: str = "") -> dict:
+    """op_finish, with the file check against the claim-time snapshot (git, hashing) done before the lock is taken."""
+    prepared = None
+    try:
+        d = load(board)
+        it = get_item(d, iid)
+        if it["status"] == "running" and it.get("claim"):
+            prepared = (it["claim"].get("at"), verify_at_finish(d, it))
+    except (RBError, OSError):
+        pass
+    return mutate(board, lambda dd: op_finish(dd, actor, iid, report, note, force, outcome, prepared))
 
 
 def _owner_check(it: dict, actor: Actor, force: bool, verb: str) -> None:
@@ -1114,7 +1352,7 @@ def _owner_check(it: dict, actor: Actor, force: bool, verb: str) -> None:
     raise RBError(f"{it['id']} is held by {claim.get('by')!r}, you ({actor.name!r}) cannot {verb} it")
 
 
-def op_finish(d: dict, actor: Actor, iid: str, report: str = "", note: str = "", force: bool = False, outcome: str = "") -> dict:
+def op_finish(d: dict, actor: Actor, iid: str, report: str = "", note: str = "", force: bool = False, outcome: str = "", prepared: tuple | None = None) -> dict:
     it = get_item(d, iid)
     if it["status"] != "running" and not force:
         raise RBError(f"{iid} is {it['status']}: claim it first", "wrong_state", id=iid, status=it["status"])
@@ -1123,7 +1361,10 @@ def op_finish(d: dict, actor: Actor, iid: str, report: str = "", note: str = "",
         raise RBError("a report path is required (use --report PATH, or --no-report if there is none)")
     if outcome and outcome not in OUTCOMES:
         raise RBError(f"outcome must be one of: {', '.join(OUTCOMES)}", "bad_outcome")
-    violations, changed = verify_at_finish(d, it)
+    if prepared and prepared[0] == (it.get("claim") or {}).get("at"):
+        violations, changed = prepared[1]      # worked out before the lock was taken (git and file hashing can be slow)
+    else:
+        violations, changed = verify_at_finish(d, it)
     it["violations"] = violations
     if changed is not None:
         it["changed"] = changed
@@ -1137,7 +1378,7 @@ def op_finish(d: dict, actor: Actor, iid: str, report: str = "", note: str = "",
     it["report"] = report or it.get("report", "")
     it["claim"] = None
     op_seen(d, it["lane"], actor.name, "idle", "", f"finished {iid}")
-    it["updated"] = now_iso()
+    it["updated"] = item_stamp()
     if note:
         it["notes"].append({"t": now_iso(), "by": actor.name, "text": note})
     log_event(d, actor, "finish", iid, f"{outcome or 'no outcome stated'}: {report}" + (f" ({len(violations)} file warnings)" if violations else "")
@@ -1155,7 +1396,7 @@ def op_outcome(d: dict, actor: Actor, iid: str, outcome: str) -> dict:
     if it["status"] not in ("review", "done"):
         raise RBError(f"{iid} is {it['status']}: only reported tasks have an outcome", "wrong_state", id=iid, status=it["status"])
     it["outcome"] = outcome
-    it["updated"] = now_iso()
+    it["updated"] = item_stamp()
     log_event(d, actor, "outcome", iid, outcome)
     return it
 
@@ -1183,7 +1424,7 @@ def op_release(d: dict, actor: Actor, iid: str, force: bool = False) -> dict:
     _close_run(it)
     it["status"] = "queued"
     it["claim"] = None
-    it["updated"] = now_iso()
+    it["updated"] = item_stamp()
     log_event(d, actor, "release", iid)
     return it
 
@@ -1194,9 +1435,68 @@ def op_accept(d: dict, actor: Actor, iid: str) -> dict:
     if it["status"] != "review":
         raise RBError(f"{iid} is {it['status']}, not waiting for review", "wrong_state", id=iid, status=it["status"])
     it["status"] = "done"
-    it["updated"] = now_iso()
+    it["updated"] = item_stamp()
     log_event(d, actor, "accept", iid)
     return it
+
+
+def is_clean_report(it: dict) -> bool:
+    """A finished task whose report can be accepted without reading it closely: it ended complete, left no file warning and did not
+    run next to something that disturbs a measurement. Anything else the person looks at."""
+    return it["status"] == "review" and it.get("outcome") == "complete" and not it.get("violations") and not it.get("disturbed_by")
+
+
+def op_accept_clean(d: dict, actor: Actor) -> list:
+    """Accept every clean report at once (see is_clean_report); returns the ids. A partial, failed or warned one stays for a person to read."""
+    require_human(actor, "accept reports")
+    ids = [i["id"] for i in d["items"] if is_clean_report(i)]
+    for iid in ids:
+        op_accept(d, actor, iid)
+    return ids
+
+
+def status_summary(d: dict, now=None) -> dict:
+    """One look at the whole board for a status line: what every session does, what it would start next, and what waits for the person."""
+    now = now or now_dt()
+    comp = compute(d, now)
+    steps = plan_steps(d, comp)               # once for every session, not once per session
+    lanes = []
+    for lane in d["lanes"]:
+        running = next((c for c in comp if c["lane"] == lane["id"] and c["status"] == "running"), None)
+        seen = lane.get("seen") or {}
+        at = parse_ts(seen.get("at"))
+        nxt = next_step(d, lane["id"], now, comp, steps)
+        row = {"id": lane["id"], "state": "working" if running else ("idle" if seen.get("state") in ("working", None, "") else seen["state"]), "task": running["id"] if running else "", "by": "", "for": None,
+               "stale": bool(running and running["stale"]), "signal_ago": int((now - at).total_seconds()) if at else None, "next": nxt["status"], "next_id": nxt.get("id")}
+        if running:
+            cl = running.get("claim") or {}
+            since = parse_ts(cl.get("at"))
+            row.update(by=cl.get("by", ""), **{"for": int((now - since).total_seconds()) if since else None})
+        lanes.append(row)
+    return {"lanes": lanes, "stuck": sum(1 for x in lanes if x["next"] == NEXT_STUCK or x["stale"]), "to_accept": sum(1 for c in comp if c["status"] == "review"), "clean": sum(1 for c in comp if is_clean_report(c)),
+            "proposals": sum(1 for c in comp if c["status"] == "proposed"), "ready": sum(1 for c in comp if c["state"] == "ready")}
+
+
+def status_text(g: dict, brief: bool = False) -> str:
+    def lane_brief(x):
+        return f"{x['id']}: " + (f"{x['task']}{' (lease expired)' if x['stale'] else ''}" if x["task"] else {"task": f"idle, next {x['next_id']}", "wait": "idle, waiting", "stuck": "STUCK"}.get(x["next"], "idle"))
+    tail = [f"{g['to_accept']} to accept"] if g["to_accept"] else []
+    if g["proposals"]:
+        tail.append(f"{g['proposals']} proposal(s)")
+    if g.get("stuck"):
+        tail.append(f"{g['stuck']} session(s) stuck")
+    if brief:
+        return " | ".join([lane_brief(x) for x in g["lanes"]] + tail)
+    out = []
+    for x in g["lanes"]:
+        if x["task"]:
+            what = f"{x['task']}  {x['by']}" + (f", {fmt_in(x['for'])}" if x["for"] is not None else "") + ("  LEASE EXPIRED" if x["stale"] else "")
+        else:
+            what = {"task": f"next: {x['next_id']}", "wait": "waits for something that ends by itself", "stuck": "STUCK: needs you", "none": "nothing queued"}[x["next"]]
+        sig = f"  (signal {fmt_in(x['signal_ago'])} ago)" if x["signal_ago"] is not None else ""
+        out.append(f"{x['id']:<10} {x['state']:<8} {what}{sig}")
+    out.append("Needs you: " + (", ".join(tail) if tail else "nothing") + (f"  ({g['clean']} clean: `accept-clean`)" if g["clean"] > 1 else ""))
+    return "\n".join(out)
 
 
 def op_note(d: dict, actor: Actor, iid: str, text: str) -> dict:
@@ -1205,7 +1505,7 @@ def op_note(d: dict, actor: Actor, iid: str, text: str) -> dict:
     if not text:
         raise RBError("empty note", "empty_note")
     it["notes"].append({"t": now_iso(), "by": actor.name, "text": text[:2000]})
-    it["updated"] = now_iso()
+    it["updated"] = item_stamp()
     if it["status"] == "running" and it.get("claim"):
         it["claim"]["signal"] = now_iso()
     log_event(d, actor, "note", iid)
@@ -1729,7 +2029,7 @@ def lane_focus(comp: list, lanes: list, steps=None) -> dict:
         if f["role"] == "running":
             continue
         other = lambda ids: [i for i in ids if i in near and near[i] != lid]
-        person = [r for r in c.get("reasons", []) if r["code"] in ("decision", "never")]
+        person = [r for r in c.get("reasons", []) if is_hard(r)]
         if person:
             f["hint"] = {"kind": "person", "ids": [r["id"] for r in person], "codes": [r["code"] for r in person]}
         elif c["waiting_on"]:
@@ -1812,13 +2112,19 @@ def digest(d: dict, since: dt.datetime, now=None) -> dict:
     now = now or now_dt()
     comp = compute(d, now)
     by_id = {c["id"]: c for c in comp}
-    ended = []
-    for e in d.get("events", []):
+    ended = {}
+    for c in comp:      # the task knows when it ended; the event log keeps only the last 500 events, which a chatty night easily fills
+        t = parse_ts((c.get("ran") or {}).get("to"))
+        if t and t >= since and c["status"] in ("review", "done"):
+            ended[c["id"]] = {"id": c["id"], "title": c["title"], "lane": c["lane"], "at": c["ran"]["to"], "outcome": c.get("outcome", ""), "status": c["status"],
+                              "report": c.get("report", ""), "violations": len(c.get("violations") or [])}
+    for e in d.get("events", []):       # boards from before `ran` was kept
         t = parse_ts(e.get("t"))
-        if e.get("action") == "finish" and t and t >= since and e.get("id") in by_id:
+        if e.get("action") == "finish" and t and t >= since and e.get("id") in by_id and e["id"] not in ended:
             c = by_id[e["id"]]
-            ended.append({"id": c["id"], "title": c["title"], "lane": c["lane"], "at": e["t"], "outcome": c.get("outcome", ""), "status": c["status"],
-                          "report": c.get("report", ""), "violations": len(c.get("violations") or [])})
+            ended[c["id"]] = {"id": c["id"], "title": c["title"], "lane": c["lane"], "at": e["t"], "outcome": c.get("outcome", ""), "status": c["status"],
+                              "report": c.get("report", ""), "violations": len(c.get("violations") or [])}
+    ended = sorted(ended.values(), key=lambda x: x["at"])
     sessions = []
     for lane in d["lanes"]:
         seen = lane.get("seen") or {}
@@ -1834,8 +2140,8 @@ def digest(d: dict, since: dt.datetime, now=None) -> dict:
     for c in comp:
         if c["status"] == "queued":
             for r in c["reasons"]:
-                if r["code"] in ("decision", "never"):
-                    needs_you.append({"id": c["id"], "title": c["title"], "kind": r["code"], "on": r["id"]})
+                if is_hard(r) and not any(n["id"] == c["id"] and n["on"] == r["id"] for n in needs_you if "on" in n):
+                    needs_you.append({"id": c["id"], "title": c["title"], "kind": "never" if r["code"] == "never" else "decision", "on": r["id"]})
     return {
         "since": since.isoformat(), "now": now.isoformat(), "sessions": sessions, "ended": ended,
         "running": [{"id": c["id"], "title": c["title"], "lane": c["lane"], "by": (c.get("claim") or {}).get("by", ""), "since": (c.get("claim") or {}).get("at", ""),
@@ -1903,25 +2209,30 @@ def fmt_reason(r: dict) -> str:
         return f"not before {local_time(r['at'])} (in {fmt_in(r['in'])})"
     if code == "dependency":
         return f"waits for {r['id']} ({r['status']})"
+    via = f" (through {r['via']})" if r.get("via") else ""
     if code == "conflict":
+        if r.get("stale"):
+            return f"cannot run next to {r['id']} ({r['why']}), whose lease ran out: the person should return it to the queue"
         return f"cannot run next to {r['id']} ({r['why']})"
     if code == "decision":
+        if r.get("stale"):
+            return f"needs you: {r['id']} holds it but its lease ran out (return it to the queue){via}"
         what = "accept its report" if r.get("outcome") is not None and "status" not in r else f"approve or write it ({r.get('status', '')})"
-        return f"needs you to {what}: {r['id']}"
+        return f"needs you to {what}: {r['id']}{via}"
     if code == "never":
-        return f"waits for {r['id']}, which is {r['status']}: it can never finish, change the dependency"
+        return f"waits for {r['id']}, which is {r['status']}: it can never finish, change the dependency{via}"
     return code
 
 
-def next_step(d: dict, lane: str | None = None, now=None) -> dict:
+def next_step(d: dict, lane: str | None = None, now=None, comp: list | None = None, steps: list | None = None) -> dict:
     """What `next` should answer for a lane (or for every lane): the first ready task in plan order; otherwise why nothing is ready.
 
     status: task (a task is ready: `id`), none (the lane has no queued task at all: it is done), wait (queued tasks exist and
     every one of them is held by something that ends by itself: a start time, other tasks, a conflict), stuck (nothing will
     change without the person: a report to accept, a draft to write, a dependency that was cancelled). `waiting` lists the queued
     tasks with their reasons; `retry_in` is a sensible number of seconds to look again."""
-    comp = compute(d, now)
-    steps = plan_steps(d, comp)
+    comp = comp if comp is not None else compute(d, now)
+    steps = steps if steps is not None else plan_steps(d, comp)
     order = {iid: (n, pos) for n, step in enumerate(steps) for pos, iid in enumerate(step)}
     mine = [c for c in comp if c["status"] == "queued" and (not lane or c["lane"] == lane)]
     mine.sort(key=lambda c: order.get(c["id"], (10 ** 6, 0)))
@@ -1931,7 +2242,7 @@ def next_step(d: dict, lane: str | None = None, now=None) -> dict:
     waiting = [{"id": c["id"], "title": c["title"], "lane": c["lane"], "reasons": c["reasons"]} for c in mine]
     if not waiting:
         return {"status": NEXT_NONE, "id": None, "waiting": [], "retry_in": 0}
-    soft = [w for w in waiting if w["reasons"] and all(r["code"] in SELF_RESOLVING for r in w["reasons"])]
+    soft = [w for w in waiting if w["reasons"] and not any(is_hard(r) for r in w["reasons"])]
     begins = [r["in"] for w in soft for r in w["reasons"] if r["code"] == "begin_time"]
     retry = min(begins) if begins and len(begins) == len(soft) else 60
     return {"status": NEXT_WAIT if soft else NEXT_STUCK, "id": None, "waiting": waiting, "retry_in": max(5, min(retry, 300))}
@@ -1968,7 +2279,7 @@ def note_presence(board: Path, lane: str | None, by: str, state: str, task: str 
 def fmt_line(c: dict) -> str:
     extra = ""
     if c["state"] == "waiting":
-        extra = " (after " + ", ".join(c["waiting_on"]) + ")"
+        extra = " (after " + ", ".join(c["waiting_on"]) + ")" if c["waiting_on"] else f" (not before {local_time(c['not_before'])})"
     elif c["state"] == "blocked":
         extra = " (blocked by " + ", ".join(f"{x['id']}:{x['why']}" for x in c["conflicts"]) + ")"
     elif c.get("stale"):
@@ -1985,6 +2296,15 @@ def host_ok(host: str) -> bool:
     else:
         h = h.split(":")[0]
     return h in ("localhost", "127.0.0.1", "[::1]") or h.endswith(".localhost")
+
+
+def panel_stamp() -> str:
+    """Changes when panel.html is replaced: an open tab runs the old code until it is reloaded, so it is told to (the page compares this)."""
+    try:
+        st = (HERE / "panel.html").stat()
+        return f"{st.st_mtime_ns}-{st.st_size}"
+    except OSError:
+        return ""
 
 
 def server_file(board: Path) -> Path:
@@ -2027,7 +2347,7 @@ def make_handler(board: Path, tracker: dict):
                         return self._send(500, "panel.html is missing next to barid.py", "text/plain; charset=utf-8")
                     return self._send(200, f.read_bytes(), "text/html; charset=utf-8")
                 if path == "/api/rev":
-                    return self._send(200, {"rev": load(board).get("rev", 0)})
+                    return self._send(200, {"rev": load(board).get("rev", 0), "panel": panel_stamp()})
                 if path == "/api/board":
                     return self._send(200, board_view(board))
                 if path == "/api/digest":
@@ -2093,6 +2413,8 @@ def check_args(args) -> dict:
     for k in ARG_BOOL:
         if k in args and args[k] is not None and not isinstance(args[k], bool):
             raise RBError(f"{k} must be true or false", "bad_input", field=k)
+    if args.get("seen_updated") is not None and not isinstance(args["seen_updated"], str):
+        raise RBError("seen_updated must be text", "bad_input", field="seen_updated")
     return args
 
 
@@ -2112,7 +2434,7 @@ def apply_action(board: Path, req: dict):
             return op_add(d, h, f)["id"]
         if a == "edit":
             f = {k: args.get(k) for k in ("title", "lane", "needs", "after", "uses", "quiet", "noisy", "profile", "lint_ok", "when", "outline", "text", "touches",
-                                          "workdir", "branch", "not_before", "timebox") if k in args}
+                                          "workdir", "branch", "not_before", "timebox", "seen_updated") if k in args}
             return op_edit(d, h, iid, f)["id"]
         if a == "status":
             return op_set_status(d, h, iid, str(args.get("status", "")))["status"]
@@ -2140,6 +2462,8 @@ def apply_action(board: Path, req: dict):
             return op_sent(d, h, iid)["status"]
         if a == "accept":
             return op_accept(d, h, iid)["status"]
+        if a == "accept_clean":
+            return op_accept_clean(d, h)
         if a == "release":
             return op_release(d, h, iid, force=True)["status"]
         if a == "note":
@@ -2277,7 +2601,8 @@ def cmd_init(args):
 
 
 def cmd_where(args):
-    print(find_board(getattr(args, "board", None)))
+    board = find_board(getattr(args, "board", None))
+    out(args, {"board": str(board), "project": str(board.resolve().parent.parent)}, str(board))
 
 
 def cmd_add(args):
@@ -2356,6 +2681,9 @@ def cmd_profile(args):
     actor = cli_actor(args)
     if args.action == "list":
         d = load(board)
+        if getattr(args, "json", False):
+            out(args, [{"name": k, **v} for k, v in all_profiles(d).items()])
+            return
         for k, v in all_profiles(d).items():
             marks = " ".join(filter(None, ["quiet" if v.get("quiet") else "", "noisy" if v.get("noisy") else "", ("uses " + ",".join(v["uses"])) if v.get("uses") else ""])) or "nothing special"
             print(f"{k:<10} {'(built in)' if v.get('builtin') else '          '} {marks:<28} {v.get('label', '')}")
@@ -2441,95 +2769,209 @@ def cmd_next(args):
         sys.exit({NEXT_NONE: EXIT_NONE, NEXT_WAIT: EXIT_WAIT, NEXT_STUCK: EXIT_STUCK}[res["status"]])
 
 
-WORKER_LEASE_MINUTES = 3      # a worker renews the lease every 30 seconds: a dead worker shows as a stale task within minutes
+WORKER_LEASE_MINUTES = 3      # a worker renews the lease once a minute (a third of it): a dead worker shows as a stale task within minutes
+WORKER_BEAT_SECONDS = 60
+
+
+def _group_alive(pgid: int) -> bool:
+    try:
+        os.killpg(pgid, 0)
+        return True
+    except PermissionError:
+        return True
+    except OSError:
+        return False
 
 
 def _kill_group(proc: subprocess.Popen, grace: float = 20.0) -> None:
     """Stop the agent process and everything it started (its own process group on POSIX, its own process tree on Windows); never
-    anything else."""
+    anything else. Also used after a normal exit: what the agent left running in the background (`cmd &`) must not outlive the task.
+    The group gets SIGTERM, and SIGKILL when it is still there after `grace` seconds, whether or not its leader is already gone."""
     import signal
-    if proc.poll() is not None:
-        return
     if os.name == "nt":
-        subprocess.run(["taskkill", "/PID", str(proc.pid), "/T", "/F"], capture_output=True, timeout=30)
-        try:
-            proc.wait(timeout=grace)
-        except subprocess.TimeoutExpired:
-            pass
+        if proc.poll() is None:
+            subprocess.run(["taskkill", "/PID", str(proc.pid), "/T", "/F"], capture_output=True, timeout=30)
+            try:
+                proc.wait(timeout=grace)
+            except subprocess.TimeoutExpired:
+                pass
         return
+    pgid = proc.pid                       # started with start_new_session: the group id is the pid of its leader
     try:
-        os.killpg(proc.pid, signal.SIGTERM)
-    except (OSError, ProcessLookupError):
+        os.killpg(pgid, signal.SIGTERM)
+    except OSError:
+        proc.poll()
         return
-    try:
-        proc.wait(timeout=grace)
-    except subprocess.TimeoutExpired:
+    end = time.monotonic() + grace
+    while time.monotonic() < end and (proc.poll() is None or _group_alive(pgid)):
+        time.sleep(0.2)
+    if proc.poll() is None or _group_alive(pgid):
         try:
-            os.killpg(proc.pid, signal.SIGKILL)
-        except (OSError, ProcessLookupError):
+            os.killpg(pgid, signal.SIGKILL)
+        except OSError:
             pass
+    try:
         proc.wait(timeout=10)
+    except subprocess.TimeoutExpired:
+        pass
+
+
+def _quote_path(path: str) -> str:
+    import shlex
+    return subprocess.list2cmdline([path]) if os.name == "nt" else shlex.quote(path)
+
+
+def fill_prompt_file(command: str, path: str) -> str:
+    """Put the prompt file's name where the command says {prompt_file}: quoted for the shell, except where the command already put it
+    in quotes itself (`cat "{prompt_file}"` worked before the quoting was added and must keep working)."""
+    def one(m):
+        before, after = command[m.start() - 1:m.start()], command[m.end():m.end() + 1]
+        return path if before in "\"'" and before and before == after else _quote_path(path)
+    return re.sub(r"\{prompt_file\}", one, command)
+
+
+def _feed(proc: subprocess.Popen, data: bytes) -> None:
+    """Write the prompt to the agent's stdin from a thread: an agent that does not read it (a big prompt fills the pipe) must not block the worker."""
+    try:
+        proc.stdin.write(data)
+    except (BrokenPipeError, OSError, ValueError):
+        pass                              # the command does not read stdin; it uses the prompt file
+    finally:
+        try:
+            proc.stdin.close()
+        except (OSError, ValueError):
+            pass
+
+
+def _board_stamp(board: Path):
+    try:
+        st = board.stat()
+        return (st.st_mtime_ns, st.st_size)
+    except OSError:
+        return None
+
+
+def _task_state(board: Path, iid: str, name: str) -> str:
+    """What became of the task this worker runs: `mine` (still running under it, or the board cannot be read right now), `reported` (the
+    agent finished it itself: not a reason to stop anything), `taken` (the person cancelled it, returned it to the queue, took it over or
+    deleted it: the agent must stop)."""
+    try:
+        it = get_item(load(board), iid)
+    except RBError as e:
+        return "taken" if getattr(e, "code", "") == "not_found" else "mine"
+    except (OSError, ValueError):
+        return "mine"
+    if it["status"] in ("review", "done"):
+        return "reported"
+    return "mine" if it["status"] == "running" and (it.get("claim") or {}).get("by") == name else "taken"
+
+
+def _still_mine(board: Path, iid: str, name: str) -> bool:
+    return _task_state(board, iid, name) != "taken"
+
+
+def _close_if_ours(board: Path, actor: Actor, iid: str, report: str, note: str, outcome: str) -> bool:
+    """Close the task with a report if it is still held by this worker. Best effort: this runs when something already went wrong."""
+    try:
+        if not _still_mine(board, iid, actor.name):
+            return False
+        finish_task(board, actor, iid, report, note, not report, outcome)
+        return True
+    except (RBError, OSError, ValueError):
+        return False
 
 
 def run_worker_task(board: Path, lane: str, iid: str, name: str, command: str, cwd: str | None, stop: threading.Event) -> str:
     """Claim a task, run the agent command on its prompt (stdin; also $BARID_PROMPT_FILE and {prompt_file} in the command), keep
-    the lease alive, enforce the timebox, and make sure the task ends in a report. Returns what happened: finished, stopped, claim-lost."""
+    the lease alive, enforce the timebox, and make sure the task ends in a report. Returns what happened: finished, stopped,
+    claim-lost, taken-away (the person cancelled it or returned it to the queue while it ran), error (it could not be run)."""
     actor = Actor("agent", name)
     try:
-        mutate(board, lambda d: op_claim(d, actor, iid, False, WORKER_LEASE_MINUTES))
+        claim_task(board, actor, iid, False, WORKER_LEASE_MINUTES)
     except RBError as e:
         print(f"[barid worker] could not claim {iid}: {e}", flush=True)
         return "claim-lost"
-    d = load(board)
-    it = get_item(d, iid)
-    prompt = prompt_for(d, it, board, worker=name)
-    runs = board.parent / "runs"
-    runs.mkdir(exist_ok=True)
-    stamp = dt.datetime.now().strftime("%Y%m%d-%H%M%S")
-    prompt_file, log_file = runs / f"{iid}-{stamp}.prompt.md", runs / f"{iid}-{stamp}.log"
-    prompt_file.write_text(prompt, "utf-8")
-    deadline = parse_ts((it.get("claim") or {}).get("deadline"))
-    env_ = dict(os.environ, BARID_AGENT=name, BARID_BOARD=str(board), BARID_TASK=iid, BARID_LANE=lane, BARID_PROMPT_FILE=str(prompt_file))
-    print(f"[barid worker] {iid}: started ({'deadline ' + local_time(deadline.isoformat()) if deadline else 'no timebox'}); log {log_file}", flush=True)
-    with open(log_file, "wb") as logf:
-        own_group = {"creationflags": subprocess.CREATE_NEW_PROCESS_GROUP} if os.name == "nt" else {"start_new_session": True}
-        proc = subprocess.Popen(command.replace("{prompt_file}", str(prompt_file)), shell=True, stdin=subprocess.PIPE, stdout=logf, stderr=subprocess.STDOUT,
-                                cwd=cwd or None, env=env_, **own_group)
-        try:
-            proc.stdin.write(prompt.encode("utf-8"))
-            proc.stdin.close()
-        except (BrokenPipeError, OSError):
-            pass                       # the command does not read stdin; it uses the prompt file
-        timed_out = stopped = False
-        last_beat = 0.0
-        while proc.poll() is None:
-            if stop.is_set():
-                stopped = True
-                _kill_group(proc)
-                break
-            if deadline and now_dt() > deadline:
-                timed_out = True
-                _kill_group(proc)
-                break
-            if time.monotonic() - last_beat >= 30:
-                last_beat = time.monotonic()
-                try:
-                    mutate(board, lambda dd: op_heartbeat(dd, actor, iid, WORKER_LEASE_MINUTES))
-                except RBError:
-                    pass               # e.g. the person released the task meanwhile; the check below handles it
-            time.sleep(1.0)
-    code = proc.returncode
-    d = load(board)
-    it = get_item(d, iid)
-    if it["status"] == "running" and (it.get("claim") or {}).get("by") == name:
-        why = ("the timebox ran out" if timed_out else "the worker was stopped" if stopped else
-               f"the agent ended with exit code {code} without reporting")
-        outcome = "partial" if (code == 0 and not timed_out and not stopped) else "failed"
-        mutate(board, lambda dd: op_finish(dd, actor, iid, str(log_file), f"Closed by the worker: {why}. Log: {log_file}", False, outcome))
-        print(f"[barid worker] {iid}: {why}; closed as {outcome}", flush=True)
-    else:
-        print(f"[barid worker] {iid}: reported by the agent ({it['status']}, {it.get('outcome') or 'no outcome'})", flush=True)
-    return "stopped" if stopped else "finished"
+    log_file = None
+    try:
+        d = load(board)
+        it = get_item(d, iid)
+        prompt = prompt_for(d, it, board, worker=name)
+        runs = board.parent / "runs"
+        runs.mkdir(exist_ok=True)
+        stamp = dt.datetime.now().strftime("%Y%m%d-%H%M%S")
+        prompt_file, log_file = runs / f"{iid}-{stamp}.prompt.md", runs / f"{iid}-{stamp}.log"
+        prompt_file.write_text(prompt, "utf-8")
+        deadline = parse_ts((it.get("claim") or {}).get("deadline"))
+        # the timebox is counted on the monotonic clock: a suspended computer or a clock that was set must not kill a healthy agent
+        left = (deadline - now_dt()).total_seconds() if deadline else None
+        deadline_mono = time.monotonic() + left if left is not None else None
+        env_ = dict(os.environ, BARID_AGENT=name, BARID_BOARD=str(board), BARID_TASK=iid, BARID_LANE=lane, BARID_PROMPT_FILE=str(prompt_file))
+        print(f"[barid worker] {iid}: started ({'deadline ' + local_time(deadline.isoformat()) if deadline else 'no timebox'}); log {log_file}", flush=True)
+        with open(log_file, "wb") as logf:
+            own_group = {"creationflags": subprocess.CREATE_NEW_PROCESS_GROUP} if os.name == "nt" else {"start_new_session": True}
+            proc = subprocess.Popen(fill_prompt_file(command, str(prompt_file)), shell=True, stdin=subprocess.PIPE, stdout=logf,
+                                    stderr=subprocess.STDOUT, cwd=cwd or None, env=env_, **own_group)
+            threading.Thread(target=_feed, args=(proc, prompt.encode("utf-8")), daemon=True).start()
+            timed_out = stopped = taken = False
+            last_beat, stamp_seen = 0.0, _board_stamp(board)
+            try:
+                while proc.poll() is None:
+                    if stop.is_set():
+                        stopped = True
+                        break
+                    if deadline_mono is not None and time.monotonic() > deadline_mono:
+                        timed_out = True
+                        break
+                    if time.monotonic() - last_beat >= WORKER_BEAT_SECONDS:
+                        last_beat = time.monotonic()
+                        try:
+                            mutate(board, lambda dd: op_heartbeat(dd, actor, iid, WORKER_LEASE_MINUTES))
+                        except (RBError, OSError):
+                            pass          # e.g. the person released the task meanwhile (seen below), or the disk is full for a moment
+                    now_stamp = _board_stamp(board)
+                    if now_stamp != stamp_seen:
+                        stamp_seen = now_stamp
+                        if _task_state(board, iid, name) == "taken":
+                            taken = True
+                            break
+                    time.sleep(1.0)
+            finally:
+                _kill_group(proc, 20.0 if (stopped or timed_out or taken) else 5.0)
+        code = proc.returncode
+        if taken:
+            print(f"[barid worker] {iid}: the person took the task away while it ran; the agent was stopped", flush=True)
+            return "taken-away"
+        it = get_item(load(board), iid)
+        if it["status"] == "running" and (it.get("claim") or {}).get("by") == name:
+            why = ("the timebox ran out" if timed_out else "the worker was stopped" if stopped else
+                   f"the agent ended with exit code {code} without reporting")
+            outcome = "partial" if (code == 0 and not timed_out and not stopped) else "failed"
+            finish_task(board, actor, iid, str(log_file), f"Closed by the worker: {why}. Log: {log_file}", False, outcome)
+            print(f"[barid worker] {iid}: {why}; closed as {outcome}", flush=True)
+        else:
+            print(f"[barid worker] {iid}: reported by the agent ({it['status']}, {it.get('outcome') or 'no outcome'})", flush=True)
+        return "stopped" if stopped else "finished"
+    except Exception as e:                # the agent could not be started (a folder that is gone, a full disk): never leave the task `running`
+        report = str(log_file) if log_file is not None and log_file.exists() else ""
+        closed = _close_if_ours(board, actor, iid, report, f"Closed by the worker: it could not run the agent ({type(e).__name__}: {e})", "failed")
+        print(f"[barid worker] {iid}: could not run the agent: {type(e).__name__}: {e}" + ("; closed as failed" if closed else ""), flush=True)
+        return "error"
+
+
+def give_up_on(board: Path, name: str, iid: str, tries: int) -> None:
+    """A task that came back to the queue again and again without a report (an agent that releases it, a command that returns it)
+    is closed as failed instead of being started for ever; the person sees it in the inbox."""
+    actor = Actor("agent", name)
+    note = f"Closed by the worker: it was started {tries} times and came back to the queue every time without a report."
+
+    def both(d):
+        op_claim(d, actor, iid, False, WORKER_LEASE_MINUTES)
+        op_finish(d, actor, iid, "", note, True, "failed")
+    try:
+        mutate(board, both)
+        print(f"[barid worker] {iid}: {note}", flush=True)
+    except (RBError, OSError) as e:
+        print(f"[barid worker] {iid}: could not close it: {e}", flush=True)
 
 
 def cmd_worker(args):
@@ -2543,17 +2985,35 @@ def cmd_worker(args):
     if not any(l["id"] == args.lane for l in d0["lanes"]):
         raise RBError(f"unknown lane {args.lane!r}", "unknown_lane", lane=args.lane)
     name = getattr(args, "by", None) or env("AGENT") or f"worker-{args.lane}"
+    if args.cwd and not os.path.isdir(os.path.expanduser(args.cwd)):
+        raise RBError(f"--cwd {args.cwd!r} is not a folder", "bad_cwd")      # found now, not after a task was claimed
+    args.cwd = os.path.expanduser(args.cwd) if args.cwd else None
     stop = threading.Event()
-    for sig in (signal.SIGINT, signal.SIGTERM):
+    for sig in (signal.SIGINT, signal.SIGTERM, getattr(signal, "SIGHUP", signal.SIGTERM)):     # a closed terminal or a dropped ssh session ends the agent too
         signal.signal(sig, lambda *_: stop.set())
     done = 0
     idle_since = time.monotonic()
+    tries, errors = {}, 0
     print(f"[barid worker] {name} serves lane {args.lane}; command: {args.cmd}", flush=True)
     while not stop.is_set():
         res = next_step(load(board), args.lane)
         if res["status"] == NEXT_TASK:
             idle_since = time.monotonic()
-            result = run_worker_task(board, args.lane, res["id"], name, args.cmd, args.cwd, stop)
+            iid = res["id"]
+            if tries.get(iid, 0) >= max(1, args.max_attempts):
+                give_up_on(board, name, iid, tries[iid])
+                continue
+            if tries.get(iid, 0) and stop.wait(min(60, float(os.environ.get("BARID_WORKER_BACKOFF", "5")) * (tries[iid] + 1))):      # a task that came back: not again at once
+                break
+            result = run_worker_task(board, args.lane, iid, name, args.cmd, args.cwd, stop)
+            if result == "claim-lost":                 # another session took it first: no attempt was made, and no busy loop either
+                stop.wait(min(args.poll, 5))
+                continue
+            tries[iid] = tries.get(iid, 0) + 1
+            errors = errors + 1 if result == "error" else 0
+            if errors >= 3:
+                print("[barid worker] three tasks in a row could not be run: stopping (fix the command or the folder)", flush=True)
+                sys.exit(1)
             done += result == "finished"
             if args.once or (args.max_tasks and done >= args.max_tasks):
                 break
@@ -2572,6 +3032,71 @@ def cmd_worker(args):
             sys.exit(EXIT_WAIT)
         stop.wait(min(args.poll, res["retry_in"]))
     sys.exit(0)
+
+
+POLICY_KEYS = {"dependents_wait_for_accept": (bool, False, "a report that ended complete unlocks its dependents only after the person accepts it"),
+               "lease_hours": (float, 12.0, "how long a claim lasts before it counts as expired (a task with a timebox gets at least timebox + 1 hour)"),
+               "footer": (bool, True, "put the 'how to finish' footer under every prompt"),
+               "handoff": (bool, True, "add the handoff lines to the prompts"),
+               "git_check": (bool, True, "snapshot git at claim and compare at finish (files outside the declared scope)")}
+
+
+def parse_policy_value(key: str, text: str):
+    kind = POLICY_KEYS[key][0]
+    if kind is bool:
+        t = str(text).strip().lower()
+        if t in ("true", "yes", "on", "1"):
+            return True
+        if t in ("false", "no", "off", "0"):
+            return False
+        raise RBError(f"{key} is true or false, not {text!r}", "bad_input", field=key)
+    try:
+        v = float(text)
+    except ValueError:
+        raise RBError(f"{key} is a number of hours, not {text!r}", "bad_input", field=key) from None
+    if not 0 < v <= 24 * 30:
+        raise RBError(f"{key} must be more than 0 and at most {24 * 30} hours", "bad_input", field=key)
+    return v
+
+
+def op_policy_set(d: dict, actor: Actor, key: str, text: str):
+    require_human(actor, "change the board policy")
+    if key not in POLICY_KEYS:
+        raise RBError(f"unknown policy {key!r}; one of: {', '.join(POLICY_KEYS)}", "bad_input", field="key")
+    value = parse_policy_value(key, text)
+    d.setdefault("policy", {})[key] = value
+    log_event(d, actor, "policy", key, str(value))
+    return value
+
+
+def cmd_policy(args):
+    """Show the board policy, or set one value as the person: `barid policy dependents_wait_for_accept true --human`."""
+    board = find_board(getattr(args, "board", None))
+    if args.key and args.value is not None:
+        actor = cli_actor(args)
+        v = mutate(board, lambda d: op_policy_set(d, actor, args.key, args.value))
+        out(args, {args.key: v}, f"{args.key} = {str(v).lower() if isinstance(v, bool) else v}")
+        return
+    pol = load(board).get("policy", {})
+    cur = {k: pol.get(k, spec[1]) for k, spec in POLICY_KEYS.items()}
+    if args.key:
+        if args.key not in POLICY_KEYS:
+            raise RBError(f"unknown policy {args.key!r}; one of: {', '.join(POLICY_KEYS)}", "bad_input", field="key")
+        cur = {args.key: cur[args.key]}
+    out(args, cur, "\n".join(f"{k:<28} {str(v).lower() if isinstance(v, bool) else v:<6} {POLICY_KEYS[k][2]}" for k, v in cur.items()))
+
+
+def cmd_overview(args):
+    board = find_board(getattr(args, "board", None))
+    g = status_summary(load(board))
+    out(args, g, status_text(g, getattr(args, "brief", False)))
+
+
+def cmd_accept_clean(args):
+    board = find_board(getattr(args, "board", None))
+    actor = cli_actor(args)
+    ids = mutate(board, lambda d: op_accept_clean(d, actor))
+    out(args, {"accepted": ids}, f"accepted {len(ids)} clean report(s)" + (": " + ", ".join(ids) if ids else "; nothing to accept without reading it (a partial, failed or warned report stays)"))
 
 
 def cmd_digest(args):
@@ -2612,7 +3137,7 @@ def cmd_claim(args):
     last_note = -60.0
     while True:
         try:
-            warnings = mutate(board, lambda d: op_claim(d, actor, args.id, args.force))
+            warnings = claim_task(board, actor, args.id, args.force)
             break
         except RBError as e:
             if e.code not in ("begin_time", "waiting", "conflict") or time.monotonic() - started >= wait:
@@ -2632,7 +3157,7 @@ def cmd_claim(args):
 
 def cmd_finish(args):
     board = find_board(getattr(args, "board", None))
-    it = mutate(board, lambda d: op_finish(d, cli_actor(args), args.id, "" if args.no_report else (args.report or ""), args.note or "", args.force or args.no_report, getattr(args, "outcome", "") or ""))
+    it = finish_task(board, cli_actor(args), args.id, "" if args.no_report else (args.report or ""), args.note or "", args.force or args.no_report, getattr(args, "outcome", "") or "")
     out(args, it, f"{args.id} finished: waiting for the person to review the report")
 
 
@@ -2696,7 +3221,7 @@ def cmd_protect(args):
     actor = cli_actor(args)
     action = args.words[0]
     if action == "list":
-        print("\n".join(load(board).get("protect", [])) or "(nothing is protected)")
+        out(args, {"protect": load(board).get("protect", [])}, "\n".join(load(board).get("protect", [])) or "(nothing is protected)")
         return
     if action not in ("add", "remove") or len(args.words) != 2:
         raise RBError("usage: barid protect add PATH  |  barid protect remove PATH  |  barid protect list")
@@ -2725,7 +3250,7 @@ def cmd_worktree(args):
     def fn(b):
         t = get_item(b, args.id)
         t["workdir"], t["branch"] = str(wt), branch
-        t["updated"] = now_iso()
+        t["updated"] = item_stamp()
         log_event(b, actor, "worktree", args.id, f"{wt} ({branch})")
     mutate(board, fn)
     print(f"worktree {wt} on branch {branch}; the task's footer now tells the session to work only there")
@@ -2759,7 +3284,8 @@ def cmd_lane(args):
     actor = cli_actor(args)
     lane_id = _add_word(args.words, "lane")
     if lane_id is None:
-        print("\n".join(f"{l['id']:<12} {l.get('title', ''):<24} {l.get('color', '') or '-':<8} {l.get('agent', '') or '-'}" for l in load(board)["lanes"]))
+        lanes = load(board)["lanes"]
+        out(args, lanes, "\n".join(f"{l['id']:<12} {l.get('title', ''):<24} {l.get('color', '') or '-':<8} {l.get('agent', '') or '-'}" for l in lanes))
         return
     args.lane_id = lane_id
     editing = args.words[0] == "edit"
@@ -2788,7 +3314,8 @@ def cmd_resource(args):
     actor = cli_actor(args)
     name = _add_word(args.words, "resource")
     if name is None:
-        print("\n".join(f"{k:<12} {v.get('label', k)}{'' if v.get('exclusive', True) else ' (shared)'}" for k, v in load(board).get("resources", {}).items()))
+        res = load(board).get("resources", {})
+        out(args, res, "\n".join(f"{k:<12} {v.get('label', k)}{'' if v.get('exclusive', True) else ' (shared)'}" for k, v in res.items()))
         return
     args.name = name
 
@@ -2852,11 +3379,12 @@ def cmd_template(args):
 
 def cmd_doctor(args):
     ok = True
+    checks = []
 
-    def line(good, msg):
+    def line(good, msg, kind=None):
         nonlocal ok
         ok = ok and good
-        print(("ok    " if good else "FAIL  ") + msg)
+        checks.append({"ok": good, "kind": kind or ("ok" if good else "fail"), "message": msg})
     line(sys.version_info >= (3, 9), f"python {sys.version.split()[0]} (needs 3.9+)")
     line((HERE / "panel.html").is_file(), "panel.html next to barid.py")
     try:
@@ -2868,9 +3396,14 @@ def cmd_doctor(args):
         line(True, "lock works")
         line(not has_cycle({i["id"]: i for i in d["items"]}), "no dependency cycles")
         info = server_alive(board)
-        print("info  panel server: " + (f"running on port {info['port']}" if info else "not running (starts on `barid open`)"))
+        line(True, "panel server: " + (f"running on port {info['port']}" if info else "not running (starts on `barid open`)"), "info")
     except RBError as e:
         line(False, str(e))
+    if getattr(args, "json", False):
+        print(json.dumps({"ok": ok, "checks": checks}, ensure_ascii=False, indent=1))
+    else:
+        for c in checks:
+            print((c["kind"] + " " * 6)[:6] + c["message"])
     sys.exit(0 if ok else 1)
 
 
@@ -2907,7 +3440,7 @@ def build_parser() -> argparse.ArgumentParser:
     s = add("init", cmd_init, "create a board in .barid/ of the current folder")
     s.add_argument("--project")
     s.add_argument("--lanes", default="main,second", help="comma list, id or id:Title (one lane per agent session)")
-    s.add_argument("--lang", default=None, choices=["en", "ru", "kk", "kz"], help="language of the texts written for agents (default: from your system language, else en)")
+    s.add_argument("--lang", default=None, choices=["en", "ru", "kk", "kz"], help="language of the texts written for agents (default: from your system language, else en; kk exists as an unreviewed draft)")
     s.add_argument("--force", action="store_true")
     add("where", cmd_where, "print the board file in use")
 
@@ -2974,9 +3507,16 @@ def build_parser() -> argparse.ArgumentParser:
     s.add_argument("--max-wait", type=int, default=14 * 3600, metavar="SECONDS", help="give up when nothing could start for this long (default 14 hours)")
     s.add_argument("--max-tasks", type=int, default=0, metavar="N", help="stop after N tasks (default: until the lane is empty)")
     s.add_argument("--once", action="store_true", help="run one task and exit")
+    s.add_argument("--max-attempts", type=int, default=3, metavar="N", help="a task that comes back to the queue without a report is started at most N times, then closed as failed (default 3)")
+    s = add("policy", cmd_policy, "show the board policy, or set one value as the person (e.g. dependents_wait_for_accept true)")
+    s.add_argument("key", nargs="?")
+    s.add_argument("value", nargs="?")
+    s = add("overview", cmd_overview, "one look at every session: what it does, what it would start next, what waits for you (for a status bar: --brief)")
+    s.add_argument("--brief", action="store_true", help="a single line")
+    s = add("accept-clean", cmd_accept_clean, "person: accept every report that ended complete with no file warnings, in one go (the rest stays for you to read)")
     s = add("digest", cmd_digest, "what happened while you were away: sessions, finished tasks and their reports, what needs you, what waits and why")
     s.add_argument("--since", default=None, metavar="WHEN", help="12h (default), 90m, 2d, or a time such as '2026-10-07 08:00'")
-    s = add("lang", cmd_lang, "show or set the language of the texts written for agents (en, ru, kk); the panel language is separate")
+    s = add("lang", cmd_lang, "show or set the language of the texts written for agents (en, ru; kk is an unreviewed draft); the panel language is separate")
     s.add_argument("value", nargs="?", choices=["en", "ru", "kk", "kz"])
     s = add("connect", cmd_connect, "print the message that connects an agent session to a lane (paste it as the session's first message)")
     s.add_argument("lane")
@@ -3093,6 +3633,9 @@ def main(argv=None) -> int:
         return {"begin_time": EXIT_WAIT, "waiting": EXIT_WAIT, "conflict": EXIT_WAIT, "stuck": EXIT_STUCK}.get(e.code, 1)
     except BrokenPipeError:
         return 0
+    except OSError as e:
+        print(f"rb: {e.strerror or e}" + (f": {e.filename}" if getattr(e, "filename", None) else ""), file=sys.stderr)
+        return 1
     return 0
 
 

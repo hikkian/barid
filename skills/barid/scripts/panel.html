@@ -25,7 +25,7 @@ html[data-pal="midnight"][data-theme="dark"]{--bg:#0d1320;--panel:#151d2e;--pane
 html[data-pal="midnight"][data-theme="light"]{--bg:#eef2f9;--panel:#fff;--panel2:#f5f8fd;--line:#d8e0ee;--tx:#14202f;--mute:#59687f;--ac:#1763cf;--acfg:#fff}
 html[data-theme="light"]{color-scheme:light}html[data-theme="dark"]{color-scheme:dark}
 *{box-sizing:border-box}
-body{margin:0;background:var(--bg);color:var(--tx);font:15px/1.5 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+body{margin:0;background:var(--bg);color:var(--tx);font:15px/1.5 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;overflow-wrap:anywhere}
 button,input,select,textarea{font:inherit;color:inherit}
 button{cursor:pointer}
 header{position:sticky;top:0;z-index:20;background:color-mix(in srgb,var(--bg) 92%,transparent);backdrop-filter:blur(8px);border-bottom:1px solid var(--line);
@@ -52,12 +52,21 @@ h2 small{font-weight:500;letter-spacing:0;text-transform:none}
 .banner{background:var(--bad);color:#fff;padding:8px 16px;text-align:center;font-weight:600}
 .card{background:var(--panel);border:1px solid var(--line);border-radius:14px;box-shadow:var(--shadow)}
 /* NOW */
-.now{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:12px}
-.lane-card{padding:14px;border-left:4px solid var(--lane,var(--ac))}
-.lane-card .lh{display:flex;align-items:center;flex-wrap:wrap;gap:6px 8px;font-weight:700;margin-bottom:8px}
-.lane-card .lh .btn,.lane-card .lh .tag{white-space:nowrap}
+/* one row per session, in the order of the lanes at any width: left = who the session is and whether it reports; right = what it does now, what is next and the buttons for it */
+.now{display:flex;flex-direction:column;gap:10px}
+.lane-card{padding:12px 14px;border-left:4px solid var(--lane,var(--ac));display:grid;grid-template-columns:minmax(170px,230px) minmax(0,1fr);gap:6px 18px;align-items:start}
+.lwho{min-width:0;display:flex;flex-direction:column;align-items:flex-start;gap:4px}
+.lname{display:flex;align-items:center;flex-wrap:wrap;gap:4px 8px;max-width:100%;min-width:0}
+.lname b{font-weight:700;overflow-wrap:anywhere}
+.lwhat{min-width:0}
+.lline{display:flex;flex-wrap:wrap;align-items:flex-start;gap:4px 8px;margin-bottom:2px}
+.ltitle{flex:1 1 180px;min-width:0;font-weight:700;overflow-wrap:anywhere}
+.lwhat .row{margin-top:8px}
+@media (max-width:600px){.lane-card{grid-template-columns:minmax(0,1fr);gap:8px}}
 .dot{width:10px;height:10px;border-radius:50%;background:var(--lane,var(--ac));display:inline-block}
 .big{font-size:16px;font-weight:700}
+body.stale #now,body.stale #flow,body.stale #inboxwrap{opacity:.55}
+#stalelabel{margin:0 0 8px;color:var(--warn)}
 .sub{color:var(--mute);font-size:13px}
 .row{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:10px}
 .together{margin-top:8px;padding:8px 14px;border-radius:12px;border:1px dashed var(--line);font-size:14px}
@@ -76,11 +85,19 @@ h2 small{font-weight:500;letter-spacing:0;text-transform:none}
 .tag{font-size:11px;border-radius:6px;padding:0 6px;background:var(--panel2);border:1px solid var(--line);color:var(--mute)}
 .tag.gpu,.tag.res{color:var(--warn);border-color:color-mix(in srgb,var(--warn) 50%,var(--line))}
 /* flow */
-.step{display:grid;grid-template-columns:110px 1fr;gap:12px;margin-bottom:12px}
-@media (max-width:760px){.step{grid-template-columns:1fr}}
+#flow{overflow-x:auto;--cols:1}
+.step{display:grid;grid-template-columns:110px minmax(0,1fr);gap:12px;margin-bottom:12px;min-width:calc(122px + var(--cols) * 200px)}
 .step .sh{padding-top:10px}
 .step .sh b{font-size:15px}
-.step .items{display:flex;flex-wrap:wrap;gap:10px;align-items:stretch}
+/* one column per session: a step has at most one task of a session, so every card stays under the name of its session, however narrow the window is */
+.step .items{display:grid;grid-template-columns:repeat(var(--cols),minmax(190px,1fr));grid-auto-flow:row dense;gap:10px;align-items:stretch}
+.step .item{min-width:0;max-width:none}
+.step .item .t{flex-wrap:wrap}
+.step .item .title{order:3;flex:1 1 100%;white-space:normal;overflow:visible;overflow-wrap:anywhere}
+.step .item .t>:last-child{margin-left:auto}
+.flowhead{margin-bottom:6px}
+.lanehead{display:flex;align-items:center;gap:6px;font-size:12px;font-weight:700;color:var(--mute);border-bottom:2px solid var(--lane,var(--ac));padding-bottom:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+@media (max-width:760px){#flow{--cols:1}.step{grid-template-columns:1fr;min-width:0}.step .items{grid-template-columns:1fr}.step .item{grid-column:auto!important}.flowhead{display:none}}
 .item{background:var(--panel);border:1px solid var(--line);border-top:3px solid var(--lane,var(--ac));border-radius:12px;padding:10px 12px;min-width:240px;flex:1 1 260px;max-width:420px;cursor:pointer;text-align:left}
 .item:hover{border-color:var(--ac)}
 .item.sel{outline:2px solid var(--ac)}
@@ -153,6 +170,7 @@ details>summary{cursor:pointer;color:var(--mute);margin:6px 0}
 </head>
 <body>
 <div id="banner" class="banner" hidden></div>
+<div id="updatebar" class="banner" style="background:var(--ac);color:#fff" hidden></div>
 <header>
   <div class="logo"><svg class="mark" viewBox="0 0 256 256" aria-hidden="true"><rect width="256" height="256" rx="58" fill="#005b5d"/>  <path d="M33.8 116Q33.8 95 49 100L122 162Q127.5 166.5 133 162L206 100Q220.2 95 220.2 116V188Q220.2 213.7 194.5 213.7H59.5Q33.8 213.7 33.8 188Z" fill="#fff"/>  <rect x="-39" y="-39" width="78" height="78" rx="12" fill="#feb83b" transform="translate(127.6 89.8) scale(1 .88) rotate(45)"/></svg>Barid</div>
   <span class="proj" id="proj"></span>
@@ -161,10 +179,12 @@ details>summary{cursor:pointer;color:var(--mute);margin:6px 0}
   <span id="lanefilters" style="display:flex;gap:6px;flex-wrap:wrap"></span>
   <input type="search" id="q" autocomplete="off">
   <button class="btn pri" id="addbtn"></button>
+  <button class="pill" id="notifybtn" hidden></button>
   <span class="themewrap"><button class="pill" id="langbtn" aria-haspopup="true" aria-expanded="false"></button><div id="langpop" hidden></div></span>
   <span class="themewrap"><button class="pill" id="themebtn" aria-haspopup="true" aria-expanded="false"></button><div id="themepop" hidden></div></span>
 </header>
 <main>
+  <div id="stalelabel" class="sub" hidden></div>
   <h2 id="h-now"></h2>
   <div id="digest"></div>
   <div id="now" class="now"></div>
@@ -197,7 +217,7 @@ var STR = {
   quiet:"needs a quiet machine", noisy:"creates load", id:"ID", text:"Prompt text", create:"Create", offline:"No connection to the board server. Retrying…",
   copy_path:"Copy report path", reopen:"Reopen", sessions:"Sessions", go_ok:"Can run together with: {list}", go_wait:"Wait, conflict: {list}", go_not:"Do not run together with: {list}", lane_new:"New session", lane_name_ph:"Session name (for example: Codex, tests)", agent_which:"Which agent will work in it?", lane_create:"Create session", lane_created:"Session “{name}” created", connect:"Connect", connect_help_short:"How to attach an agent window to this session", connect_title:"Connect “{name}”", connect_help:"Open that agent (Codex, Claude Code…) in the project folder and paste this text as its first message. After that it takes its tasks from the board by itself.", copy_connect:"Copy connection text", color_reset:"Reset color", agent_ph:"Agent (claude, codex…)", ag_claude:"Claude Code", ag_codex:"Codex", ag_opencode:"OpenCode", ag_gemini:"Gemini CLI", ag_cursor:"Cursor", ag_aider:"Aider", ag_local:"Local model", why_paths:"same files", touches_l:"Files and folders it may change (comma separated)", files:"Files", workdir:"Checkout", branch:"Branch", viol_chip:"files need a look", viol_protected:"changed a protected file", viol_outside:"changed a file outside its scope", viol_collision:"touched a file that {id} is working on", changed_n:"{n} files changed on {branch}", viol_warn:"Barid found file changes you should look at before accepting.", updated:"updated", theme:"Appearance", mode_auto:"Auto", mode_light:"Light", mode_dark:"Dark", palette:"Colors", pal_forest:"Forest", pal_teal:"Teal", pal_graphite:"Graphite", pal_midnight:"Midnight", out:"Outcome", out_complete:"complete", out_partial:"partial", out_failed:"failed", out_none:"outcome not stated", accept_asis:"Accept as is", partial_warn:"The session stopped early or did not finish everything. Dependent tasks wait for your decision.", turn:"its turn has come", empty_flow:"No tasks yet. Ask your agent to add some, or press “+ New task”.",
   go_begin:"Starts not before {time}", go_person:"Waits for you: {list}", sum_begin:"{id} starts not before {time}", sum_person:"{id} waits for your decision ({list})",
-  rs_begin_time:"not before {time}", rs_dependency:"waits for {id} ({status})", rs_decision_accept:"needs you to accept the report of {id}", rs_decision_write:"needs you to write or approve {id}", rs_never:"{id} was cancelled: it can never finish, change the dependency", rs_conflict:"cannot run next to {id} ({why})", reasons_l:"Why it waits",
+  rs_begin_time:"not before {time}", rs_dependency:"waits for {id} ({status})", rs_decision_accept:"needs you to accept the report of {id}", rs_decision_write:"needs you to write or approve {id}", rs_never:"{id} was cancelled: it can never finish, change the dependency", rs_conflict:"cannot run next to {id} ({why})", accept_all:"Accept {n} clean reports", accept_all_sure:"Sure? Accept {n}", ok_accept_all:"Reports accepted", notify_off:"Notify me when something needs me (only while this tab is in the background)", notify_on:"Notifications are on: click to turn them off", notify_denied:"Notifications are blocked in the browser settings", notify_title:"Barid: needs you", notify_body:"{n} waiting for you", panel_updated:"The panel was updated.", panel_reload:"Reload", rs_stale:"{id} is holding things up, but its lease ran out: the session is most likely gone. Return it to the queue", rs_via:"through {via}", reasons_l:"Why it waits",
   after_l:"After (any outcome; IDs, comma separated)", not_before_l:"Not before (23:00, 2026-10-07 23:00, +3h)", timebox_l:"Time limit (90m, 8h, 1d)", deadline_l:"Deadline", after_row:"After (any outcome)", begin_row:"Not before",
   pres_working:"works on {task}", pres_waiting:"waiting: {reason}", pres_idle:"idle", pres_none:"no signal yet", pres_ago:"signal {ago}", ago_now:"just now", ago_m:"{n} min ago", ago_h:"{n} h ago", ago_d:"{n} d ago",
   night_mode:"Night mode: wait for the turn, never stop to ask", night_help:"For a session that works unattended: it waits for start times, other tasks and the GPU, and keeps going until its lane is empty.",
@@ -206,7 +226,8 @@ var STR = {
   with_:"Can run with", not_with:"Cannot run with", wait_:"Depends on", conf_:"Waiting for", why:{lane:"same session",quiet:"quiet and load do not mix"}, rev:"rev", snapshot:"This is a read-only snapshot",
   ok_sent:"Marked as sent", ok_release:"Returned to the queue", ok_approve:"Approved", ok_reject:"Rejected", ok_accept:"Report accepted", ok_cancel:"Task cancelled", ok_restore:"Task restored",
   ok_status:"Status changed", ok_requeued:"Returned to the queue", ok_note:"Note added", ok_outcome:"Outcome changed", ok_saved:"Saved", ok_created:"Task created",
-  ERR:{bad_time:"Cannot read the time “{value}”: use 23:00, 2026-10-07 23:00 or +3h", bad_duration:"Cannot read the duration “{value}”: use 90m, 8h or 1d", begin_time:"{id} may not start yet", waiting:"{id} must wait for other tasks", conflict:"{id} conflicts with a task that runs now", stuck:"{id} waits for you to decide something", exists:"A task with ID {id} already exists", bad_id:"ID: letters, digits, “.”, “_” or “-”, up to 32 characters", unknown_lane:"Unknown session: {lane}", unknown_task:"Unknown task in the dependency list: {id}", unknown_profile:"Unknown profile: {name}", bad_input:"Wrong data in the request: {field}", bad_lint:"Unknown suggestion code: {name}", bad_lang:"Language must be en, ru or kk",
+  all_off:"All sessions are switched off in the bar. Switch one on to see its tasks.", id_hint:"Letters, digits, . _ - (up to 32 characters)",board_damaged:"The board file is damaged or empty. Copy the last good version (board.json.bak) over it, then reload this page.", stale_cards:"Shown from the last good read: may be out of date.", show_current:"Show the current version", discard_q:"Discard what you typed?", discard_yes:"Discard", discard_no:"Keep editing", nothing_found:"Nothing found for “{q}”. Clear the search to see all tasks.", lane_dup:"A session named “{name}” already exists. Choose another name.",
+  ERR:{changed:"This task was changed by someone else since you opened it. Your text is kept: show the current version, then save again.", offline:"No connection to the board server. Your text is kept; try again when it is back.", locked:"The board is busy: another program holds it. Try again in a moment",write_failed:"The board could not be saved (disk full or read-only folder); nothing was changed", damaged:"The board file is damaged; the previous version may be kept next to it as .bak", bad_cwd:"The folder for the agent does not exist: {value}", bad_time:"Cannot read the time “{value}”: use 23:00, 2026-10-07 23:00 or +3h", bad_duration:"Cannot read the duration “{value}”: use 90m, 8h or 1d", begin_time:"{id} may not start yet", waiting:"{id} must wait for other tasks", conflict:"{id} conflicts with a task that runs now", stuck:"{id} waits for you to decide something", exists:"A task with ID {id} already exists", bad_id:"ID: letters, digits, “.”, “_” or “-”, up to 32 characters", unknown_lane:"Unknown session: {lane}", unknown_task:"Unknown task in the dependency list: {id}", unknown_profile:"Unknown profile: {name}", bad_input:"Wrong data in the request: {field}", bad_lint:"Unknown suggestion code: {name}", bad_lang:"Language must be en, ru or kk",
    unknown_resource:"Unknown resource: {name}", cycle:"That would create a dependency loop", no_text:"{id} has no prompt text yet: generate or write it first", not_found:"No such task: {id}",
    wrong_state:"{id} is now “{status}”: this action is not possible", human_only:"Only you can do this", empty_note:"The note is empty", bad_status:"Unknown status", bad_outcome:"Unknown outcome", no_git:"This folder is not a git repository", bad_color:"Color must look like #feb83b", bad_agent:"Agent name: letters, digits, space, . _ + - (up to 24 characters)"}},
  ru: {now:"Что делать сейчас", flow:"Порядок работ и что можно запускать вместе", inbox_p:"Предложения агентов", inbox_r:"Отчёты на проверку", archive:"Архив", activity:"Журнал действий",
@@ -222,7 +243,7 @@ var STR = {
   quiet:"нужна тишина", noisy:"создаёт нагрузку", id:"ID", text:"Текст промпта", create:"Создать", offline:"Нет связи с сервером доски. Пробую снова…",
   copy_path:"Скопировать путь к отчёту", reopen:"Открыть заново", sessions:"Сессии", go_ok:"Можно запускать вместе с: {list}", go_wait:"Подождите, конфликт: {list}", go_not:"Нельзя запускать вместе с: {list}", lane_new:"Новая сессия", lane_name_ph:"Название сессии (например: Codex, тесты)", agent_which:"Какой агент в ней будет работать?", lane_create:"Создать сессию", lane_created:"Сессия «{name}» создана", connect:"Подключить", connect_help_short:"Как подключить окно агента к этой сессии", connect_title:"Подключить «{name}»", connect_help:"Откройте этого агента (Codex, Claude Code…) в папке проекта и вставьте этот текст первым сообщением. Дальше он сам берёт задачи с доски.", copy_connect:"Скопировать текст подключения", color_reset:"Сбросить цвет", agent_ph:"Агент (claude, codex…)", ag_claude:"Claude Code", ag_codex:"Codex", ag_opencode:"OpenCode", ag_gemini:"Gemini CLI", ag_cursor:"Cursor", ag_aider:"Aider", ag_local:"Локальная модель", why_paths:"те же файлы", touches_l:"Какие файлы и папки можно менять (через запятую)", files:"Файлы", workdir:"Рабочая копия", branch:"Ветка", viol_chip:"проверьте файлы", viol_protected:"изменён защищённый файл", viol_outside:"изменён файл вне своей области", viol_collision:"тронут файл, с которым работает {id}", changed_n:"изменено файлов: {n} (ветка {branch})", viol_warn:"Barid нашёл изменения файлов, которые стоит проверить перед принятием.", updated:"обновлено", theme:"Оформление", mode_auto:"Авто", mode_light:"Светлая", mode_dark:"Тёмная", palette:"Цвета", pal_forest:"Лес", pal_teal:"Бирюза", pal_graphite:"Графит", pal_midnight:"Полночь", out:"Итог", out_complete:"выполнено полностью", out_partial:"выполнено частично", out_failed:"не удалось", out_none:"итог не указан", accept_asis:"Принять как есть", partial_warn:"Сессия остановилась раньше или сделала не всё. Зависимые задачи ждут вашего решения.", turn:"подошла очередь", empty_flow:"Задач пока нет. Попросите агента добавить их или нажмите «+ Новая задача».",
   go_begin:"Старт не раньше {time}", go_person:"Ждёт вашего решения: {list}", sum_begin:"{id} стартует не раньше {time}", sum_person:"{id} ждёт вашего решения ({list})",
-  rs_begin_time:"не раньше {time}", rs_dependency:"ждёт {id} ({status})", rs_decision_accept:"ждёт, пока вы примете отчёт {id}", rs_decision_write:"ждёт, пока вы напишете или одобрите {id}", rs_never:"{id} отменена: она не завершится, измените зависимость", rs_conflict:"нельзя рядом с {id} ({why})", reasons_l:"Почему ждёт",
+  rs_begin_time:"не раньше {time}", rs_dependency:"ждёт {id} ({status})", rs_decision_accept:"ждёт, пока вы примете отчёт {id}", rs_decision_write:"ждёт, пока вы напишете или одобрите {id}", rs_never:"{id} отменена: она не завершится, измените зависимость", rs_conflict:"нельзя рядом с {id} ({why})", accept_all:"Принять {n} чистых отчётов", accept_all_sure:"Точно? Принять {n}", ok_accept_all:"Отчёты приняты", notify_off:"Уведомлять, когда что-то нужно от меня (только пока вкладка в фоне)", notify_on:"Уведомления включены: нажмите, чтобы выключить", notify_denied:"Уведомления заблокированы в настройках браузера", notify_title:"Барид: нужны вы", notify_body:"Ждут вас: {n}", panel_updated:"Панель обновилась.", panel_reload:"Перезагрузить", rs_stale:"{id} задерживает работу, но срок её аренды вышел: сессия, скорее всего, ушла. Верните её в очередь", rs_via:"через {via}", reasons_l:"Почему ждёт",
   after_l:"После (любой исход; ID через запятую)", not_before_l:"Не раньше (23:00, 2026-10-07 23:00, +3h)", timebox_l:"Лимит времени (90m, 8h, 1d)", deadline_l:"Срок", after_row:"После (любой исход)", begin_row:"Не раньше",
   pres_working:"работает над {task}", pres_waiting:"ждёт: {reason}", pres_idle:"свободна", pres_none:"сигнала ещё не было", pres_ago:"сигнал {ago}", ago_now:"только что", ago_m:"{n} мин назад", ago_h:"{n} ч назад", ago_d:"{n} дн назад",
   night_mode:"Ночной режим: ждать очереди и не останавливаться с вопросами", night_help:"Для сессии, которая работает без присмотра: она ждёт время старта, другие задачи и видеокарту и идёт дальше, пока её линия не опустеет.",
@@ -231,7 +252,8 @@ var STR = {
   with_:"Можно вместе с", not_with:"Нельзя вместе с", wait_:"Ждёт задачи", conf_:"Ждёт завершения", why:{lane:"та же сессия",quiet:"тишина и нагрузка несовместимы"}, rev:"версия", snapshot:"Это снимок только для чтения",
   ok_sent:"Отмечено как отправленное", ok_release:"Возвращено в очередь", ok_approve:"Одобрено", ok_reject:"Отклонено", ok_accept:"Отчёт принят", ok_cancel:"Задача отменена", ok_restore:"Задача восстановлена",
   ok_status:"Статус изменён", ok_requeued:"Возвращено в очередь", ok_note:"Заметка добавлена", ok_outcome:"Итог изменён", ok_saved:"Сохранено", ok_created:"Задача создана",
-  ERR:{bad_time:"Не удаётся прочитать время «{value}»: используйте 23:00, 2026-10-07 23:00 или +3h", bad_duration:"Не удаётся прочитать срок «{value}»: используйте 90m, 8h или 1d", begin_time:"{id} ещё нельзя начинать", waiting:"{id} должна дождаться других задач", conflict:"{id} конфликтует с задачей, которая идёт сейчас", stuck:"{id} ждёт вашего решения", exists:"Задача с ID {id} уже существует", bad_id:"ID: латинские буквы, цифры, «.», «_» или «-», до 32 символов", unknown_lane:"Нет такой сессии: {lane}", unknown_task:"Нет такой задачи в зависимостях: {id}", unknown_profile:"Нет такого профиля: {name}", bad_input:"Неверные данные в запросе: {field}", bad_lint:"Неизвестный код подсказки: {name}", bad_lang:"Язык: en, ru или kk",
+  all_off:"Все сессии выключены в полосе фильтров. Включите одну, чтобы увидеть её задачи.", id_hint:"Латинские буквы, цифры, «.», «_», «-»; до 32 знаков",board_damaged:"Файл доски повреждён или пуст. Скопируйте поверх него последнюю рабочую копию (board.json.bak) и обновите страницу.", stale_cards:"Показано по последнему удачному чтению: может быть устаревшим.", show_current:"Показать текущую версию", discard_q:"Отбросить то, что вы ввели?", discard_yes:"Отбросить", discard_no:"Продолжить редактирование", nothing_found:"По запросу «{q}» ничего не найдено. Очистите поиск, чтобы увидеть все задачи.", lane_dup:"Сессия «{name}» уже есть. Выберите другое название.",
+  ERR:{changed:"Задачу уже изменили в другом месте. Ваш текст сохранён: посмотрите текущую версию и сохраните снова.", offline:"Нет связи с сервером доски. Текст сохранён: повторите, когда связь вернётся.", locked:"Доска занята: её держит другая программа. Повторите через секунду",write_failed:"Доску не удалось сохранить (диск заполнен или папка только для чтения); ничего не изменено", damaged:"Файл доски повреждён; рядом может лежать предыдущая версия с расширением .bak", bad_cwd:"Папки для агента не существует: {value}", bad_time:"Не удаётся прочитать время «{value}»: используйте 23:00, 2026-10-07 23:00 или +3h", bad_duration:"Не удаётся прочитать срок «{value}»: используйте 90m, 8h или 1d", begin_time:"{id} ещё нельзя начинать", waiting:"{id} должна дождаться других задач", conflict:"{id} конфликтует с задачей, которая идёт сейчас", stuck:"{id} ждёт вашего решения", exists:"Задача с ID {id} уже существует", bad_id:"ID: латинские буквы, цифры, «.», «_» или «-», до 32 символов", unknown_lane:"Нет такой сессии: {lane}", unknown_task:"Нет такой задачи в зависимостях: {id}", unknown_profile:"Нет такого профиля: {name}", bad_input:"Неверные данные в запросе: {field}", bad_lint:"Неизвестный код подсказки: {name}", bad_lang:"Язык: en, ru или kk",
    unknown_resource:"Нет такого ресурса: {name}", cycle:"Получился бы цикл зависимостей", no_text:"У {id} ещё нет текста промпта: сначала сгенерируйте или напишите его", not_found:"Задачи {id} нет",
    wrong_state:"Задача {id} сейчас «{status}»: это действие невозможно", human_only:"Это может сделать только человек", empty_note:"Заметка пустая", bad_status:"Неизвестный статус", bad_outcome:"Неизвестный итог", no_git:"Эта папка не является git-репозиторием", bad_color:"Цвет в формате #feb83b", bad_agent:"Имя агента: буквы, цифры, пробел, . _ + - (до 24 знаков)"}},
  kk: {now:"Қазір не істеу керек", flow:"Жұмыс реті және қайсысын бірге іске қосуға болады", inbox_p:"Агенттердің ұсыныстары", inbox_r:"Тексеруге арналған есептер", archive:"Архив", activity:"Әрекеттер журналы",
@@ -247,7 +269,7 @@ var STR = {
   quiet:"тыныштық керек", noisy:"жүктеме жасайды", id:"ID", text:"Промпт мәтіні", create:"Жасау", offline:"Тақта серверімен байланыс жоқ. Қайта көріп жатырмыз…",
   copy_path:"Есеп жолын көшіру", reopen:"Қайта ашу", sessions:"Сессиялар", go_ok:"Бірге іске қосуға болады: {list}", go_wait:"Күтіңіз, қайшылық: {list}", go_not:"Бірге іске қоспаңыз: {list}", lane_new:"Жаңа сессия", lane_name_ph:"Сессия атауы (мысалы: Codex, тесттер)", agent_which:"Онда қай агент жұмыс істейді?", lane_create:"Сессия жасау", lane_created:"«{name}» сессиясы жасалды", connect:"Қосу", connect_help_short:"Агент терезесін осы сессияға қалай қосуға болады", connect_title:"«{name}» сессиясын қосу", connect_help:"Сол агентті (Codex, Claude Code…) жоба қалтасында ашып, осы мәтінді бірінші хабарлама ретінде қойыңыз. Содан кейін ол тапсырмаларды тақтадан өзі алады.", copy_connect:"Қосу мәтінін көшіру", color_reset:"Түсті бастапқыға қайтару", agent_ph:"Агент (claude, codex…)", ag_claude:"Claude Code", ag_codex:"Codex", ag_opencode:"OpenCode", ag_gemini:"Gemini CLI", ag_cursor:"Cursor", ag_aider:"Aider", ag_local:"Жергілікті модель", why_paths:"сол файлдар", touches_l:"Өзгерте алатын файлдар мен қалталар (үтір арқылы)", files:"Файлдар", workdir:"Жұмыс көшірмесі", branch:"Тармақ", viol_chip:"файлдарды қараңыз", viol_protected:"қорғалған файлды өзгертті", viol_outside:"өз аймағынан тыс файлды өзгертті", viol_collision:"{id} жұмыс істеп жатқан файлға тиді", changed_n:"өзгерген файл: {n} ({branch} тармағы)", viol_warn:"Barid қабылдамас бұрын қарап шығу керек файл өзгерістерін тапты.", updated:"жаңартылды", theme:"Көрініс", mode_auto:"Авто", mode_light:"Ашық", mode_dark:"Қараңғы", palette:"Түстер", pal_forest:"Орман", pal_teal:"Көгілдір", pal_graphite:"Графит", pal_midnight:"Түн жарымы", out:"Нәтиже", out_complete:"толық орындалды", out_partial:"ішінара орындалды", out_failed:"орындалмады", out_none:"нәтиже көрсетілмеген", accept_asis:"Қалай болса солай қабылдау", partial_warn:"Сессия ерте тоқтады немесе бәрін аяқтамады. Тәуелді тапсырмалар сіздің шешіміңізді күтеді.", turn:"оның кезегі келді", empty_flow:"Тапсырма әзірге жоқ. Агентіңізден қосуды сұраңыз немесе «+ Жаңа тапсырма» түймесін басыңыз.",
   go_begin:"{time} дейін басталмайды", go_person:"Сіздің шешіміңізді күтеді: {list}", sum_begin:"{id} {time} дейін басталмайды", sum_person:"{id} сіздің шешіміңізді күтеді ({list})",
-  rs_begin_time:"{time} дейін емес", rs_dependency:"{id} күтеді ({status})", rs_decision_accept:"{id} есебін қабылдауыңызды күтеді", rs_decision_write:"{id} жазуыңызды немесе мақұлдауыңызды күтеді", rs_never:"{id} болдырылмады: ол аяқталмайды, тәуелділікті өзгертіңіз", rs_conflict:"{id} жанында болмайды ({why})", reasons_l:"Неге күтеді",
+  rs_begin_time:"{time} дейін емес", rs_dependency:"{id} күтеді ({status})", rs_decision_accept:"{id} есебін қабылдауыңызды күтеді", rs_decision_write:"{id} жазуыңызды немесе мақұлдауыңызды күтеді", rs_never:"{id} болдырылмады: ол аяқталмайды, тәуелділікті өзгертіңіз", rs_conflict:"{id} жанында болмайды ({why})", accept_all:"{n} ескертусіз есепті қабылдау", accept_all_sure:"Сенімдісіз бе? {n} қабылдау", ok_accept_all:"Есептер қабылданды", notify_off:"Сізден бірдеңе керек болғанда хабарлау (қойынды фонда тұрғанда ғана)", notify_on:"Хабарламалар қосулы: өшіру үшін басыңыз", notify_denied:"Хабарламалар браузер баптауларында бұғатталған", notify_title:"Барид: сізден керек", notify_body:"Сізді күтуде: {n}", panel_updated:"Панель жаңартылды.", panel_reload:"Қайта жүктеу", rs_stale:"{id} жұмысты тоқтатып тұр, бірақ жалдау мерзімі өтті: сессия, сірә, кетті. Оны кезекке қайтарыңыз", rs_via:"{via} арқылы", reasons_l:"Неге күтеді",
   after_l:"Кейін (кез келген нәтиже; ID үтір арқылы)", not_before_l:"Бұдан ерте емес (23:00, 2026-10-07 23:00, +3h)", timebox_l:"Уақыт шегі (90m, 8h, 1d)", deadline_l:"Мерзім", after_row:"Кейін (кез келген нәтиже)", begin_row:"Бұдан ерте емес",
   pres_working:"{task} үстінде жұмыс істеп жатыр", pres_waiting:"күтіп тұр: {reason}", pres_idle:"бос", pres_none:"сигнал әлі жоқ", pres_ago:"сигнал {ago}", ago_now:"жаңа ғана", ago_m:"{n} мин бұрын", ago_h:"{n} сағ бұрын", ago_d:"{n} күн бұрын",
   night_mode:"Түнгі режим: кезегін күту, сұрақ қойып тоқтамау", night_help:"Қараусыз жұмыс істейтін сессия үшін: ол бастау уақытын, басқа тапсырмаларды және бейнекартаны күтеді және жолы бос болғанша жалғастырады.",
@@ -256,13 +278,18 @@ var STR = {
   with_:"Бірге орындалады", not_with:"Бірге орындалмайды", wait_:"Тәуелді", conf_:"Күтуде", why:{lane:"сол сессия",quiet:"тыныштық пен жүктеме сыймайды"}, rev:"нұсқа", snapshot:"Бұл тек оқуға арналған көшірме",
   ok_sent:"Жіберілді деп белгіленді", ok_release:"Кезекке қайтарылды", ok_approve:"Мақұлданды", ok_reject:"Қабылданбады", ok_accept:"Есеп қабылданды", ok_cancel:"Тапсырма болдырылмады", ok_restore:"Тапсырма қалпына келтірілді",
   ok_status:"Күйі өзгертілді", ok_requeued:"Кезекке қайтарылды", ok_note:"Жазба қосылды", ok_outcome:"Нәтиже өзгертілді", ok_saved:"Сақталды", ok_created:"Тапсырма жасалды",
-  ERR:{bad_time:"«{value}» уақытын оқу мүмкін емес: 23:00, 2026-10-07 23:00 немесе +3h қолданыңыз", bad_duration:"«{value}» мерзімін оқу мүмкін емес: 90m, 8h немесе 1d қолданыңыз", begin_time:"{id} әлі басталмайды", waiting:"{id} басқа тапсырмаларды күтуі керек", conflict:"{id} қазір жүріп жатқан тапсырмамен қақтығысады", stuck:"{id} сіздің шешіміңізді күтеді", exists:"ID {id} бар тапсырма әлдеқашан бар", bad_id:"ID: әріптер, цифрлар, «.», «_» немесе «-», 32 таңбаға дейін", unknown_lane:"Белгісіз сессия: {lane}", unknown_task:"Тәуелділік тізіміндегі белгісіз тапсырма: {id}", unknown_profile:"Белгісіз профиль: {name}", bad_input:"Сұраудағы деректер дұрыс емес: {field}", bad_lint:"Белгісіз кеңес коды: {name}", bad_lang:"Тіл: en, ru немесе kk",
+  // FIXSCN1 strings below: unreviewed draft, not offered until a native reader has checked it (docs/drafts/README.md)
+  all_off:"Барлық сессия жолақтағы сүзгіде өшірілген. Оның тапсырмаларын көру үшін бірін қосыңыз.", id_hint:"Латын әріптері, цифрлар, «.», «_», «-»; 32 таңбаға дейін",board_damaged:"Тақта файлы бүлінген немесе бос. Соңғы жарамды көшірмені (board.json.bak) үстіне көшіріп, бетті жаңартыңыз.", stale_cards:"Соңғы сәтті оқудан көрсетілген: ескірген болуы мүмкін.", show_current:"Ағымдағы нұсқаны көрсету", discard_q:"Теріп қойғаныңызды тастайсыз ба?", discard_yes:"Тастау", discard_no:"Өңдеуді жалғастыру", nothing_found:"«{q}» бойынша ештеңе табылмады. Барлық тапсырманы көру үшін іздеуді тазалаңыз.", lane_dup:"«{name}» атты сессия бар. Басқа атау таңдаңыз.",
+  ERR:{changed:"Тапсырманы басқа біреу өзгертіп үлгерген. Сіздің мәтініңіз сақталды: ағымдағы нұсқаны қараңыз да, қайта сақтаңыз.", offline:"Тақта серверімен байланыс жоқ. Мәтін сақталды: байланыс қайта келгенде қайталаңыз.", locked:"Тақтаны қазір басқа бағдарлама пайдаланып жатыр. Бір сәттен кейін қайталаңыз",write_failed:"Тақтаны сақтау мүмкін болмады (диск толы немесе қалта тек оқуға арналған); ештеңе өзгерген жоқ", damaged:"Тақта файлы бүлінген; қасында алдыңғы нұсқасы .bak болып тұруы мүмкін", bad_cwd:"Агент үшін қалта жоқ: {value}", bad_time:"«{value}» уақытын оқу мүмкін емес: 23:00, 2026-10-07 23:00 немесе +3h қолданыңыз", bad_duration:"«{value}» мерзімін оқу мүмкін емес: 90m, 8h немесе 1d қолданыңыз", begin_time:"{id} әлі басталмайды", waiting:"{id} басқа тапсырмаларды күтуі керек", conflict:"{id} қазір жүріп жатқан тапсырмамен қақтығысады", stuck:"{id} сіздің шешіміңізді күтеді", exists:"ID {id} бар тапсырма әлдеқашан бар", bad_id:"ID: әріптер, цифрлар, «.», «_» немесе «-», 32 таңбаға дейін", unknown_lane:"Белгісіз сессия: {lane}", unknown_task:"Тәуелділік тізіміндегі белгісіз тапсырма: {id}", unknown_profile:"Белгісіз профиль: {name}", bad_input:"Сұраудағы деректер дұрыс емес: {field}", bad_lint:"Белгісіз кеңес коды: {name}", bad_lang:"Тіл: en, ru немесе kk",
    unknown_resource:"Белгісіз ресурс: {name}", cycle:"Бұл тәуелділік циклін тудырар еді", no_text:"{id} тапсырмасында промпт мәтіні әлі жоқ: алдымен оны жасатыңыз немесе жазыңыз", not_found:"Мұндай тапсырма жоқ: {id}",
    wrong_state:"{id} тапсырмасы қазір «{status}» күйінде: бұл әрекет мүмкін емес", human_only:"Мұны тек сіз істей аласыз", empty_note:"Жазба бос", bad_status:"Белгісіз күй", bad_outcome:"Белгісіз нәтиже", no_git:"Бұл қалта git репозиторийі емес", bad_color:"Түс #feb83b сияқты болуы керек", bad_agent:"Агент атауы: әріптер, цифрлар, бос орын, . _ + - (24 таңбаға дейін)"}}
 };
 var LANGNAME = {en: "English", ru: "Русский", kk: "Қазақша"};
+// Kazakh stays in STR but is not offered, not picked by itself and not kept from an earlier visit until a native reader has reviewed it (docs/drafts/README.md); ?lang=kk still opens it.
+var LANGS_SHOWN = ["en", "ru"];
 var S = {board:null, lang:"en", lanes:{}, sel:null, q:"", laneOff:{}, arch:false, act:false, editing:false, rev:-1, offline:false};
 try { S.lang = localStorage.getItem("rb.lang") || ""; S.arch = localStorage.getItem("rb.arch") === "1"; S.act = localStorage.getItem("rb.act") === "1"; } catch (e) {}
+try { JSON.parse(localStorage.getItem("rb.laneoff") || "[]").forEach(function (id) { S.laneOff[id] = true; }); } catch (e) {}   // sessions switched off in the bar stay off after a reload
 function t(k) { var d = STR[S.lang] || STR.en; return d[k] != null ? d[k] : (STR.en[k] != null ? STR.en[k] : k); }
 function fmt(str, vars) { return String(str).replace(/\{(\w+)\}/g, function (m, k) { return vars && vars[k] != null ? vars[k] : m; }); }
 function errText(e) {
@@ -272,12 +299,66 @@ function errText(e) {
   var info = Object.assign({}, e.info || {}); if (info.status) info.status = st(info.status);
   return fmt(tpl, info);
 }
-var ACT_OK = {laneadd: "ok_saved", boardlang: "ok_saved", sent: "ok_sent", approve: "ok_approve", reject: "ok_reject", accept: "ok_accept", cancel: "ok_cancel", restore: "ok_restore", release: "ok_release", note: "ok_note", outcome: "ok_outcome", lane: "ok_saved", edit: "ok_saved", add: "ok_created"};
+var ACT_OK = {laneadd: "ok_saved", boardlang: "ok_saved", sent: "ok_sent", approve: "ok_approve", reject: "ok_reject", accept: "ok_accept", accept_clean: "ok_accept_all", cancel: "ok_cancel", restore: "ok_restore", release: "ok_release", note: "ok_note", outcome: "ok_outcome", lane: "ok_saved", edit: "ok_saved", add: "ok_created"};
 function st(s) { return (STR[S.lang] || STR.en).s[s] || s; }
 function $(id) { return document.getElementById(id); }
 var PALS = ["forest", "teal", "graphite", "midnight"], SWATCH = {forest: "#34d399", teal: "#feb83b", graphite: "#6ee7b7", midnight: "#5aa9ff"};
 function lsGet(k) { try { return localStorage.getItem(k) || ""; } catch (e) { return ""; } }
 function lsSet(k, v) { try { localStorage.setItem(k, v); } catch (e) {} }
+function saveLaneOff() { lsSet("rb.laneoff", JSON.stringify(Object.keys(S.laneOff).filter(function (k) { return S.laneOff[k]; }))); }
+// search and names: case does not matter, and ё is the same letter as е
+function fold(s) { return String(s).toLowerCase().replace(/ё/g, "е"); }
+
+// Keyboard (FIXSCN1): a dialog or the drawer takes focus when it opens, Tab stays inside it, and closing it gives focus back to what opened it.
+var FOCUSABLE = "button:not([disabled]),input:not([disabled]),select:not([disabled]),textarea:not([disabled]),a[href],[tabindex]:not([tabindex='-1'])";
+function focusables(box) { return [].slice.call(box.querySelectorAll(FOCUSABLE)).filter(function (x) { return x.offsetParent !== null; }); }
+function trapTab(e, box) {
+  var f = focusables(box), forward = !e.shiftKey, at = f.indexOf(document.activeElement);
+  if (!f.length) return;
+  if (!box.contains(document.activeElement)) { e.preventDefault(); (forward ? f[0] : f[f.length - 1]).focus(); return; }
+  if (forward && at === f.length - 1) { e.preventDefault(); f[0].focus(); }
+  else if (!forward && at <= 0) { e.preventDefault(); f[f.length - 1].focus(); }
+}
+function restoreFocus() {
+  var o = S.opener, back = o && o.isConnected ? o : (S.openerTask ? document.querySelector("[data-task='" + S.openerTask + "']") : null);
+  S.opener = null; S.openerTask = null;
+  if (back && back.offsetParent !== null) back.focus();
+}
+function showModal() {
+  var box = $("modalbox");
+  if (!$("modal").classList.contains("open")) S.opener = document.activeElement;
+  box.setAttribute("role", "dialog"); box.setAttribute("aria-modal", "true"); box.setAttribute("aria-labelledby", "modaltitle"); box.tabIndex = -1;
+  $("modal").classList.add("open"); box.focus();
+}
+function closeModal() {
+  if (!$("modal").classList.contains("open")) return;
+  $("modal").classList.remove("open"); S.modalDirty = null; restoreFocus();
+}
+// Escape with typed text asks first: a small bar in the dialog or the drawer, "Keep editing" is the default
+function askDiscard(host, onDiscard) {
+  var old = $("discardask"); if (old) old.parentNode.removeChild(old);
+  var keep = h("button", {class: "btn sm", text: t("discard_no"), onclick: function () { bar.parentNode.removeChild(bar); }});
+  var drop = h("button", {class: "btn bad sm", text: t("discard_yes"), onclick: function () { bar.parentNode.removeChild(bar); onDiscard(); }});
+  var bar = h("div", {class: "note", id: "discardask", style: "border-color:var(--warn);margin-top:12px"}, h("div", {text: t("discard_q")}), h("div", {class: "row"}, drop, keep));
+  host.appendChild(bar); keep.focus();
+}
+// the edit of a task: what it was opened on (for the save) and what was typed (kept over a redraw, e.g. a language change)
+function endEdit() { S.editing = false; S.draft = null; S.editBase = null; S.drawerDirty = null; }
+function setFormValues(f, v) {
+  ["title", "needs", "after", "not_before", "timebox", "uses", "touches", "when", "outline", "text"].forEach(function (k) { if (v[k] != null) f[k].value = v[k]; });
+  f.lane.value = v.lane; f.profile.value = v.profile; f.quiet.checked = !!v.quiet; f.noisy.checked = !!v.noisy;
+}
+// the server could not be reached, or the board file is damaged (the server answers, but cannot read the board)
+function serverDown(e) {
+  var damaged = !!(e && e.code === "damaged");
+  if (!S.offline || S.damaged !== damaged) { S.offline = true; S.damaged = damaged; $("banner").textContent = damaged ? t("board_damaged") : t("offline"); $("banner").hidden = false; }
+  document.body.classList.toggle("stale", damaged);
+  $("stalelabel").hidden = !damaged; $("stalelabel").textContent = damaged ? t("stale_cards") : "";
+}
+function serverUp() {
+  if (S.offline) { S.offline = false; S.damaged = false; $("banner").hidden = true; }
+  document.body.classList.remove("stale"); $("stalelabel").hidden = true;
+}
 var QS = new URLSearchParams(location.search);
 if (QS.get("lang") && STR[QS.get("lang")]) S.lang = QS.get("lang");  // ?lang=en|ru|kk: a link in a given language, also used by the browser tests
 S.mode = QS.get("mode") || lsGet("rb.mode") || "auto"; S.pal = QS.get("pal") || lsGet("rb.pal") || "forest";
@@ -302,13 +383,16 @@ function copy(text, msg) {
 }
 function api(path, opts) {
   if (window.__RB_BOARD__) { var se = new Error("snapshot"); se.code = "snapshot"; return Promise.reject(se); }
-  return fetch(path, Object.assign({cache: "no-store"}, opts || {})).then(function (r) {
+  return fetch(path, Object.assign({cache: "no-store"}, opts || {})).catch(function () { var e = new Error("offline"); e.code = "offline"; throw e; }).then(function (r) {
     return r.json().then(function (j) { if (!r.ok) { var e = new Error(j.error || r.status); e.code = j.code; e.info = j.info; throw e; } return j; });
   });
 }
-function act(action, id, args, ok) {
+// btn (optional): disabled until the action has finished, so a second click cannot send the same action again
+function act(action, id, args, ok, btn) {
+  if (btn) btn.disabled = true;
   return api("/api/act", {method: "POST", headers: {"Content-Type": "application/json", "X-Barid-Edit": "1"}, body: JSON.stringify({action: action, id: id, args: args || {}})})
-    .then(function () { var key = action === "status" ? (args && args.status === "queued" ? "ok_requeued" : "ok_status") : ACT_OK[action]; if (key) toast(t(key)); return load(); }).catch(function (e) { toast(errText(e), true); });
+    .then(function () { var key = action === "status" ? (args && args.status === "queued" ? "ok_requeued" : "ok_status") : ACT_OK[action]; if (key) toast(t(key)); return load(); })
+    .catch(function (e) { toast(errText(e), true); }).then(function () { if (btn) btn.disabled = false; });
 }
 function laneIndex(id) { var L = S.board.lanes; for (var i = 0; i < L.length; i++) if (L[i].id === id) return i; return 0; }
 function laneTitle(id) { var L = S.board.lanes; for (var i = 0; i < L.length; i++) if (L[i].id === id) return L[i].title || id; return id; }
@@ -334,8 +418,7 @@ function byId(id) { var a = S.board.items; for (var i = 0; i < a.length; i++) if
 function match(c) {
   if (S.laneOff[c.lane]) return false;
   if (!S.q) return true;
-  var q = S.q.toLowerCase();
-  return (c.id + " " + c.title + " " + (c.outline || "") + " " + (c.text || "")).toLowerCase().indexOf(q) >= 0;
+  return fold(c.id + " " + c.title + " " + (c.outline || "") + " " + (c.text || "") + " " + laneTitle(c.lane)).indexOf(fold(S.q)) >= 0;
 }
 function fmtTime(s) { if (!s) return ""; var d = new Date(s); return isNaN(d) ? s : d.toLocaleString(S.lang === "ru" ? "ru-RU" : S.lang === "kk" ? "kk-KZ" : "en-US", {month: "short", day: "numeric", hour: "2-digit", minute: "2-digit"}); }
 function fmtWhen(s) { return fmtTime(s); }
@@ -344,6 +427,11 @@ function agoText(sec) {
   if (sec < 172800) return fmt(t("ago_h"), {n: Math.round(sec / 3600)}); return fmt(t("ago_d"), {n: Math.round(sec / 86400)});
 }
 function reasonText(r) {
+  var text = reasonCore(r);
+  return r.via ? text + " (" + fmt(t("rs_via"), {via: r.via}) + ")" : text;
+}
+function reasonCore(r) {
+  if (r.stale) return fmt(t("rs_stale"), {id: r.id});
   if (r.code === "begin_time") return fmt(t("rs_begin_time"), {time: fmtWhen(r.at)});
   if (r.code === "dependency") return fmt(t("rs_dependency"), {id: r.id, status: st(r.status)});
   if (r.code === "decision") return fmt(t(r.status ? "rs_decision_write" : "rs_decision_accept"), {id: r.id});
@@ -424,17 +512,35 @@ function setStatic() {
   $("h-now").textContent = t("now"); $("h-flow").textContent = t("flow"); $("q").placeholder = t("search"); $("addbtn").textContent = t("add"); $("langbtn").textContent = LANGNAME[S.lang] + " ▾";
   $("themebtn").textContent = "◐ " + t("theme"); $("themebtn").title = t("theme"); $("archbtn").textContent = (S.arch ? "▾ " : "▸ ") + t("archive"); $("actbtn").textContent = (S.act ? "▾ " : "▸ ") + t("activity");
   $("archive").hidden = !S.arch; $("activity").hidden = !S.act;
+  var nb = $("notifybtn"); nb.hidden = !("Notification" in window); nb.textContent = notifyOn() ? "🔔" : "🔕"; nb.title = notifyOn() ? t("notify_on") : t("notify_off"); nb.setAttribute("aria-pressed", notifyOn() ? "true" : "false");
+}
+function notifyOn() { return lsGet("barid.notify") === "1" && "Notification" in window && Notification.permission === "granted"; }
+function toggleNotify() {
+  if (!("Notification" in window)) return;
+  if (lsGet("barid.notify") === "1") { lsSet("barid.notify", "0"); setStatic(); return; }
+  var done = function (p) { if (p === "granted") lsSet("barid.notify", "1"); else toast(t("notify_denied"), true); setStatic(); };
+  if (Notification.permission !== "default") return done(Notification.permission);
+  var r = Notification.requestPermission();
+  if (r && r.then) r.then(done); else done(Notification.permission);
+}
+// A reminder only when the number of things waiting for the person grows and this tab is not the one in front: never a sound, never repeated
+function checkNotify(B) {
+  var n = B.items.filter(function (c) { return c.state === "review" || c.state === "proposed"; }).length;
+  var was = S.needsSeen; S.needsSeen = n;
+  if (was === undefined || n <= was || !notifyOn() || document.hasFocus()) return;
+  try { new Notification(t("notify_title"), {body: fmt(t("notify_body"), {n: n}), tag: "barid-needs"}); } catch (e) {}
 }
 
 function render() {
   var B = S.board; if (!B) return;
-  if (!STR[S.lang]) { var nl = (navigator.language || "en").slice(0, 2); S.lang = STR[B.lang] && B.lang !== "en" ? B.lang : (B.lang === "kz" ? "kk" : (nl === "kz" ? "kk" : STR[nl] ? nl : "en")); }
-  setStatic();
+  if (S.lang === "kk" && QS.get("lang") !== "kk") S.lang = "";          // an earlier visit remembered Kazakh: it is not offered now
+  if (!STR[S.lang]) { var nl = (navigator.language || "en").slice(0, 2); var bl = B.lang === "kz" ? "kk" : B.lang; S.lang = (STR[bl] && bl !== "en" && bl !== "kk") ? bl : ((bl === "kk" || nl === "kk" || nl === "kz") ? "ru" : STR[nl] ? nl : "en"); }
+  setStatic(); checkNotify(B); noteFinished(B);
   $("proj").textContent = B.project + " · " + t("rev") + " " + B.rev;
   document.title = "Barid · " + B.project;
   // lane filter chips
   var lf = clear($("lanefilters"));
-  B.lanes.forEach(function (l) { lf.appendChild(h("button", {class: "pill" + (S.laneOff[l.id] ? "" : " on"), style: S.laneOff[l.id] ? "" : "background:" + laneColor(l.id) + ";border-color:" + laneColor(l.id) + ";color:" + fgFor(laneColor(l.id)), title: agentLabel(l.agent), text: l.title || l.id, onclick: function () { S.laneOff[l.id] = !S.laneOff[l.id]; render(); }})); });
+  B.lanes.forEach(function (l) { lf.appendChild(h("button", {class: "pill" + (S.laneOff[l.id] ? "" : " on"), style: S.laneOff[l.id] ? "" : "background:" + laneColor(l.id) + ";border-color:" + laneColor(l.id) + ";color:" + fgFor(laneColor(l.id)), title: agentLabel(l.agent), text: l.title || l.id, onclick: function () { S.laneOff[l.id] = !S.laneOff[l.id]; saveLaneOff(); render(); }})); });
   lf.appendChild(h("button", {class: "pill add", title: t("lane_new"), text: "+", onclick: function () { openLaneAdd(); }}));
   renderNow(); renderInbox(); renderFlow(); renderArchive(); renderActivity(); loadDigest();
   if (S.sel && byId(S.sel)) renderDrawer(); else if (!S.editing) closeDrawer(true);
@@ -447,41 +553,42 @@ function renderNow() {
     var mine = B.items.filter(function (c) { return c.lane === l.id; });
     var running = mine.filter(function (c) { return c.state === "running" || c.state === "sent"; });
     var fo = B.focus && B.focus[l.id], fc = fo && byId(fo.id);
-    var card = h("div", {class: "card lane-card", style: "--lane:" + laneColor(l.id)}, h("div", {class: "lh"}, h("span", {class: "dot"}), l.title || l.id, l.agent ? h("span", {class: "tag", style: "margin-left:auto", text: agentLabel(l.agent)}) : h("span", {style: "margin-left:auto"}), h("button", {class: "btn sm", style: "margin-left:8px", title: t("connect_help_short"), text: "⇄ " + t("connect"), onclick: function () { openConnect(l.id); }})));
-    var pl = presenceLine(l); if (pl) card.appendChild(pl);
+    var what = h("div", {class: "lwhat"});
+    var who = h("div", {class: "lwho"}, h("div", {class: "lname"}, h("span", {class: "dot"}), h("b", {text: l.title || l.id}), l.agent ? h("span", {class: "tag", text: agentLabel(l.agent)}) : null),
+      h("button", {class: "btn sm", title: t("connect_help_short"), text: "⇄ " + t("connect"), onclick: function () { openConnect(l.id); }}));
+    var pl = presenceLine(l); if (pl) who.appendChild(pl);
+    var card = h("div", {class: "card lane-card", style: "--lane:" + laneColor(l.id)}, who, what);
     running.forEach(function (c) {
       var cl = c.claim;
-      card.appendChild(h("div", {style: "margin-bottom:8px"}, h("div", {class: "sub", text: t("running")}), h("div", {class: "big", text: c.id + " · " + c.title}),
-        h("div", {class: "sub", text: (cl ? fmt(t("held_by"), {name: cl.by, time: fmtTime(cl.at)}) : st(c.state)) + (c.stale ? " · ⚠ " + t("stale") : "")}),
-        h("div", {class: "row"}, h("button", {class: "btn sm", text: t("copy"), onclick: function () { copyPrompt(c.id); }}), h("button", {class: "btn sm", text: t("release"), onclick: function () { act("release", c.id); }}),
-          h("button", {class: "btn sm", text: "…", onclick: function () { openDrawer(c.id); }}))));
+      what.appendChild(h("div", {class: "lline"}, h("span", {class: "chip s-running", text: t("running")}), h("span", {class: "ltitle", text: c.id + " · " + c.title})));
+      what.appendChild(h("div", {class: "sub", text: (cl ? fmt(t("held_by"), {name: cl.by, time: fmtTime(cl.at)}) : st(c.state)) + (c.stale ? " · ⚠ " + t("stale") : "")}));
+      what.appendChild(h("div", {class: "row"}, h("button", {class: "btn sm", text: t("copy"), onclick: function () { copyPrompt(c.id); }}), h("button", {class: "btn sm", text: t("release"), onclick: function (ev) { act("release", c.id, {}, null, ev.currentTarget); }}),
+        h("button", {class: "btn sm", text: "…", onclick: function () { openDrawer(c.id); }})));
     });
     if (!running.length && fc) {
-      var hl = hintLine(fo);
+      var hl = hintLine(fo), ll = lintLine(fc);
       if (fo.role === "ready") {
         picks.push(fc);
-        card.appendChild(h("div", {class: "sub", text: t("next")}));
-        card.appendChild(h("div", {class: "big", text: fc.id + " · " + fc.title}));
-        if (hl) card.appendChild(hl);
-        var ll = lintLine(fc); if (ll) card.appendChild(ll);
-        card.appendChild(h("div", {class: "row"}, h("button", {class: "btn pri", text: t("copy"), onclick: function () { copyPrompt(fc.id); }}),
-          h("button", {class: "btn", text: t("sent"), onclick: function () { act("sent", fc.id, {}, t("sent")); }}), h("button", {class: "btn sm", text: "…", onclick: function () { openDrawer(fc.id); }})));
+        what.appendChild(h("div", {class: "lline"}, h("span", {class: "chip s-ready", text: t("next")}), h("span", {class: "ltitle", text: fc.id + " · " + fc.title})));
+        if (hl) what.appendChild(hl);
+        if (ll) what.appendChild(ll);
+        what.appendChild(h("div", {class: "row"}, h("button", {class: "btn pri", text: t("copy"), onclick: function () { copyPrompt(fc.id); }}),
+          h("button", {class: "btn", text: t("sent"), onclick: function (ev) { act("sent", fc.id, {}, t("sent"), ev.currentTarget); }}), h("button", {class: "btn sm", text: "…", onclick: function () { openDrawer(fc.id); }})));
       } else if (fo.role === "turn") {
-        card.appendChild(h("div", {class: "sub", text: t("turn")}));
-        card.appendChild(h("div", {class: "big", text: fc.id + " · " + fc.title}));
-        if (hl) card.appendChild(hl);
-        var ll2 = lintLine(fc); if (ll2) card.appendChild(ll2);
-        card.appendChild(h("div", {class: "row"}, h("button", {class: "btn pri", title: t("genhint"), text: t("gen"), onclick: function () { copyGen(fc.id); }}), h("button", {class: "btn sm", text: t("edit"), onclick: function () { openDrawer(fc.id, true); }})));
+        what.appendChild(h("div", {class: "lline"}, h("span", {class: "chip s-draft", text: t("turn")}), h("span", {class: "ltitle", text: fc.id + " · " + fc.title})));
+        if (hl) what.appendChild(hl);
+        if (ll) what.appendChild(ll);
+        what.appendChild(h("div", {class: "row"}, h("button", {class: "btn pri", title: t("genhint"), text: t("gen"), onclick: function () { copyGen(fc.id); }}), h("button", {class: "btn sm", text: t("edit"), onclick: function () { openDrawer(fc.id, true); }})));
       } else {
         // blocked (conflict) or waiting (dependencies): say why, with the same line as everywhere
         var why2 = (fc.reasons || []).filter(function (r) { return r.code !== "conflict"; }).map(reasonText).join("; ");
-        card.appendChild(h("div", {class: "sub", text: fo.role === "waiting" ? t("nothing_ready") + (why2 || waitText(fc)) : t("nothing_ready_now")}));
-        card.appendChild(h("div", {class: "big", style: "margin-top:6px", text: fc.id + " · " + fc.title}));
-        if (hl && fo.role !== "waiting") card.appendChild(hl);
-        var ll3 = lintLine(fc); if (ll3) card.appendChild(ll3);
-        card.appendChild(h("div", {class: "row"}, h("button", {class: "btn sm", text: "…", onclick: function () { openDrawer(fc.id); }})));
+        what.appendChild(h("div", {class: "lline"}, chip(fc), h("span", {class: "ltitle", text: fc.id + " · " + fc.title})));
+        what.appendChild(h("div", {class: "sub", text: fo.role === "waiting" ? t("nothing_ready") + (why2 || waitText(fc)) : t("nothing_ready_now")}));
+        if (hl && fo.role !== "waiting") what.appendChild(hl);
+        if (ll) what.appendChild(ll);
+        what.appendChild(h("div", {class: "row"}, h("button", {class: "btn sm", text: "…", onclick: function () { openDrawer(fc.id); }})));
       }
-    } else if (!running.length) card.appendChild(h("div", {class: "empty", text: t("idle")}));
+    } else if (!running.length) what.appendChild(h("div", {class: "empty", text: t("idle")}));
     box.appendChild(card);
   });
   // one summary for the whole section, from the same server data as the cards
@@ -497,15 +604,30 @@ function renderNow() {
   (sm.person || []).forEach(function (d) { line("warn", "👤", fmt(t("sum_person"), {id: d.id, list: d.ids.join(", ")})); });
 }
 
+// What the person has already seen is not news: a report they accepted, or a task that finished while this tab was open and in front.
+function seenIds() { try { return JSON.parse(lsGet("barid.seen") || "[]"); } catch (e) { return []; } }
+function markSeen(ids) { var s = seenIds(), changed = false; ids.forEach(function (i) { if (s.indexOf(i) < 0) { s.push(i); changed = true; } }); if (changed) lsSet("barid.seen", JSON.stringify(s.slice(-300))); }
+function noteFinished(B) {
+  var now = {}, fresh = [];
+  B.items.forEach(function (c) { now[c.id] = c.status; });
+  if (S.prevStatus && document.visibilityState === "visible") B.items.forEach(function (c) { var was = S.prevStatus[c.id]; if (was && was !== c.status && (c.status === "review" || c.status === "done")) fresh.push(c.id); });
+  S.prevStatus = now;
+  if (fresh.length) { markSeen(fresh); S.digestAt = 0; }
+}
 function renderDigest(g) {
   var box = clear($("digest")); if (!g) return;
   var stale = (g.running || []).filter(function (r) { return r.stale; });
   // reports to accept and proposals to approve already have their own section; the card is for what happened and what is stuck
   var stuck = g.needs_you.filter(function (n) { return n.kind === "decision" || n.kind === "never"; });
+  // "Got it" must also quiet what is stuck: that is a state, not news, so it would never leave the card otherwise. The card stays hidden until the set changes.
+  var stuckKey = JSON.stringify([stuck.map(function (n) { return [n.kind, n.id]; }), stale.map(function (r) { return r.id; })]);
+  if (stuckKey !== "[[],[]]" && lsGet("barid.stuckack") === stuckKey) { stuck = []; stale = []; }
+  var seen = seenIds();
+  g = Object.assign({}, g, {ended: g.ended.filter(function (e) { var c = byId(e.id); return seen.indexOf(e.id) < 0 && !(c && c.status === "done"); })});
   if (!g.ended.length && !stuck.length && !stale.length) return;
   var card = h("div", {class: "card", style: "padding:12px 14px;margin-bottom:12px;border-left:4px solid var(--ac)"});
   card.appendChild(h("div", {class: "lh", style: "display:flex;align-items:center;gap:8px;font-weight:700;margin-bottom:6px"}, h("span", {text: "☾ " + t("digest_title")}),
-    h("button", {class: "btn sm", style: "margin-left:auto", text: t("digest_ok"), onclick: function () { lsSet("barid.visit", new Date().toISOString()); S.digestAt = 0; loadDigest(); }})));
+    h("button", {class: "btn sm", style: "margin-left:auto", text: t("digest_ok"), onclick: function () { lsSet("barid.visit", new Date().toISOString()); lsSet("barid.stuckack", stuckKey); S.digestAt = 0; loadDigest(); }})));
   if (g.ended.length) {
     card.appendChild(h("div", {class: "sub", text: t("digest_ended")}));
     g.ended.forEach(function (e) {
@@ -513,7 +635,7 @@ function renderDigest(g) {
         h("b", {text: e.id}), " · " + e.title + " · " + outLabel(e.outcome) + (e.report ? " · " + t("digest_report") + ": " + e.report : "")));
     });
   }
-  var need = stuck.concat(g.ended.length ? g.needs_you.filter(function (n) { return n.kind === "accept" || n.kind === "approve"; }) : []).map(function (n) { return n.kind === "accept" ? fmt(t("digest_accept"), {id: n.id}) : n.kind === "approve" ? fmt(t("digest_approve"), {id: n.id}) : n.kind === "never" ? fmt(t("digest_never"), {id: n.id, on: n.on}) : fmt(t("digest_decision"), {id: n.id, on: n.on}); });
+  var need = stuck.concat(g.ended.length ? g.needs_you.filter(function (n) { return (n.kind === "accept" || n.kind === "approve") && seen.indexOf(n.id) < 0; }) : []).map(function (n) { return n.kind === "accept" ? fmt(t("digest_accept"), {id: n.id}) : n.kind === "approve" ? fmt(t("digest_approve"), {id: n.id}) : n.kind === "never" ? fmt(t("digest_never"), {id: n.id, on: n.on}) : fmt(t("digest_decision"), {id: n.id, on: n.on}); });
   stale.forEach(function (r) { need.push(fmt(t("digest_stale"), {id: r.id})); });
   if (need.length) { card.appendChild(h("div", {class: "sub", style: "margin-top:6px", text: t("digest_needs")})); need.forEach(function (x) { card.appendChild(h("div", {class: "together warn", text: "👤 " + x})); }); }
   box.appendChild(card);
@@ -539,14 +661,20 @@ function renderInbox() {
     wrap.appendChild(l);
   }
   if (revs.length) {
-    wrap.appendChild(h("h2", null, t("inbox_r") + " ", h("small", {text: "(" + revs.length + ")"})));
+    var clean = revs.filter(function (c) { return !badOutcome(c) && !(c.disturbed_by || []).length; });
+    wrap.appendChild(h("h2", null, t("inbox_r") + " ", h("small", {text: "(" + revs.length + ")"}),
+      clean.length > 1 ? h("button", {class: "btn ok sm", id: "acceptall", style: "margin-left:12px", text: fmt(t("accept_all"), {n: clean.length}), onclick: function (ev) {
+        var b = ev.currentTarget;
+        if (!b.dataset.sure) { b.dataset.sure = "1"; b.textContent = fmt(t("accept_all_sure"), {n: clean.length}); setTimeout(function () { delete b.dataset.sure; b.textContent = fmt(t("accept_all"), {n: clean.length}); }, 5000); return; }
+        act("accept_clean", "", {}, t("accept"));
+      }}) : null));
     var l2 = h("div", {class: "inbox"});
     revs.forEach(function (c) {
       var lastNote = (c.notes || []).slice(-1)[0];
       var bad = badOutcome(c);
       l2.appendChild(h("div", {class: "card ib", style: "border-left:4px solid " + (bad ? (c.outcome === "failed" ? "var(--bad)" : "var(--warn)") : "var(--ok)")},
         h("div", {class: "body"}, h("div", null, h("b", {text: c.id}), " · " + c.title + " ", chip(c)), h("div", {class: "sub", text: t("report") + ": " + (c.report || "—")}), distLine(c), bad && c.outcome !== "complete" ? h("div", {class: "note", style: "border-color:var(--warn)"}, "⚠ " + t("partial_warn")) : null, hasViol(c) ? violBox(c) : null, c.changed ? h("div", {class: "sub", text: changedText(c)}) : null, lastNote ? h("div", {class: "note"}, h("small", {text: lastNote.by + ": "}), lastNote.text) : null),
-        h("div", {class: "row"}, h("button", {class: bad ? "btn" : "btn ok", text: bad ? t("accept_asis") : t("accept"), onclick: function () { act("accept", c.id, {}, t("accept")); }}), c.report ? h("button", {class: "btn", text: t("copy_path"), onclick: function () { copy(c.report); }}) : null,
+        h("div", {class: "row"}, h("button", {class: bad ? "btn" : "btn ok", text: bad ? t("accept_asis") : t("accept"), onclick: function (ev) { act("accept", c.id, {}, t("accept"), ev.currentTarget); }}), c.report ? h("button", {class: "btn", text: t("copy_path"), onclick: function () { copy(c.report); }}) : null,
           h("button", {class: "btn", text: t("sendback"), onclick: function () { act("status", c.id, {status: "queued"}); }}), h("button", {class: "btn sm", text: "…", onclick: function () { openDrawer(c.id); }}))));
     });
     wrap.appendChild(l2);
@@ -554,7 +682,7 @@ function renderInbox() {
 }
 
 function itemCard(c, step1) {
-  var el = h("button", {class: "item" + (S.sel === c.id ? " sel" : "") + (c.state === "draft" || c.state === "proposed" ? " dim" : ""), style: "--lane:" + laneColor(c.lane), onclick: function () { openDrawer(c.id); }});
+  var el = h("button", {class: "item" + (S.sel === c.id ? " sel" : "") + (c.state === "draft" || c.state === "proposed" ? " dim" : ""), style: "--lane:" + laneColor(c.lane), "data-task": c.id, onclick: function () { openDrawer(c.id); }});
   el.appendChild(h("div", {class: "t"}, h("span", {class: "id", text: c.id}), h("span", {class: "title", text: c.title}), chip(c)));
   var m = h("div", {class: "m"}, h("span", {text: laneTitle(c.lane)}));
   tags(c).forEach(function (x) { m.appendChild(x); });
@@ -567,16 +695,30 @@ function itemCard(c, step1) {
 
 function renderFlow() {
   var B = S.board, box = clear($("flow")), any = false;
+  var cols = B.lanes.filter(function (l) { return !S.laneOff[l.id]; }), col = {};
+  cols.forEach(function (l, i) { col[l.id] = i + 1; });
+  box.style.setProperty("--cols", String(Math.max(1, cols.length)));
+  var head = null;
+  if (cols.length > 1) {
+    head = h("div", {class: "step flowhead"}, h("div", {class: "sh"}), h("div", {class: "items"}));
+    cols.forEach(function (l) { var lh = h("div", {class: "lanehead", style: "--lane:" + laneColor(l.id), title: l.title || l.id}, h("span", {class: "dot"}), " " + (l.title || l.id)); lh.dataset.lane = l.id; head.lastChild.appendChild(lh); });
+  }
   B.steps.forEach(function (ids, n) {
     var cs = ids.map(byId).filter(function (c) { return c && match(c); });
     if (!cs.length) return;
+    if (!any && head) box.appendChild(head);
     any = true;
     var sh = h("div", {class: "sh"}, h("b", {text: t("step") + " " + (n + 1)}), cs.length > 1 ? h("div", {class: "sub", text: "∥ " + t("together")}) : null);
     var items = h("div", {class: "items"});
-    cs.forEach(function (c, i) { if (i) items.appendChild(h("span", {class: "par", text: "∥"})); items.appendChild(itemCard(c, n === 0)); });
+    cs.sort(function (a, b) { return (col[a.lane] || 1) - (col[b.lane] || 1); });
+    cs.forEach(function (c) { var el = itemCard(c, n === 0); el.style.gridColumn = String(col[c.lane] || 1); el.dataset.lane = c.lane; items.appendChild(el); });
     box.appendChild(h("div", {class: "step"}, sh, items));
   });
-  if (!any) box.appendChild(h("div", {class: "empty", text: t("empty_flow")}));
+  if (!any) {
+    // every session switched off in the bar is not the same as a board without tasks (FIXSCN3)
+    var allOff = B.lanes.length > 0 && B.lanes.every(function (l) { return S.laneOff[l.id]; });
+    box.appendChild(h("div", {class: "empty", text: allOff ? t("all_off") : S.q ? fmt(t("nothing_found"), {q: S.q}) : t("empty_flow")}));
+  }
 }
 
 function renderArchive() {
@@ -595,17 +737,35 @@ function renderActivity() {
 function copyPrompt(id) { api("/api/prompt/" + encodeURIComponent(id)).then(function (j) { if (!j.text) { toast(t("noprompt"), true); return; } copy(j.text); }).catch(function (e) { toast(errText(e), true); }); }
 function copyGen(id) { api("/api/gen/" + encodeURIComponent(id)).then(function (j) { copy(j.text, t("copied_gen")); }).catch(function (e) { toast(errText(e), true); }); }
 
-function openDrawer(id, edit) { S.sel = id; S.editing = !!edit; renderDrawer(); $("drawer").classList.add("open"); renderFlow(); }
-function closeDrawer(silent) { S.sel = null; S.editing = false; $("drawer").classList.remove("open"); if (!silent) { renderFlow(); } }
+function openDrawer(id, edit) {
+  var d = $("drawer");
+  // an edit with typed text is not dropped by opening another task (here or the same one): the same question as the close buttons (FIXSCN3)
+  if (drawerDirtyNow()) return askDiscard($("db"), function () { endEdit(); openDrawer(id, edit); });
+  if (!d.classList.contains("open")) { S.opener = document.activeElement; S.openerTask = id; }
+  S.sel = id; S.editing = !!edit; renderDrawer();
+  d.setAttribute("role", "dialog"); d.setAttribute("aria-modal", "true"); d.tabIndex = -1;
+  d.classList.add("open");
+  var first = edit ? focusables($("db"))[0] : null;
+  (first || d).focus();
+  renderFlow();
+}
+function closeDrawer(silent) {
+  endEdit(); S.sel = null; $("drawer").classList.remove("open");
+  if (!silent) { restoreFocus(); renderFlow(); }
+}
 function field(label, input, full) { return h("div", {class: full ? "full" : ""}, h("label", {text: label}), input); }
 
 function renderDrawer() {
   var c = byId(S.sel); if (!c) return;
+  // a redraw while the edit form is open (language, theme) keeps what was typed
+  var oldForm = $("db").querySelector(".formgrid");
+  if (S.editing && oldForm && oldForm._f && S.editBase && S.editBase.id === c.id) S.draft = {id: c.id, values: formArgs(oldForm._f)};
   var dh = clear($("dh")), db = clear($("db"));
   dh.appendChild(h("span", {class: "id item", style: "padding:0 9px;min-width:0;flex:none;cursor:default", text: c.id}));
   dh.appendChild(h("div", {class: "big", style: "flex:1", text: c.title})); dh.appendChild(chip(c));
-  dh.appendChild(h("button", {class: "btn sm", text: "✕", title: t("close"), onclick: function () { closeDrawer(); }}));
+  dh.appendChild(h("button", {class: "btn sm", text: "✕", title: t("close"), onclick: function () { closeChecked("drawer"); }}));
   if (S.editing) { renderEdit(c, db); return; }
+  S.drawerDirty = null;
   var kv = h("dl", {class: "kv"});
   function row(k, v) { if (v == null || v === "" || (Array.isArray(v) && !v.length)) return; kv.appendChild(h("dt", {text: k})); kv.appendChild(h("dd", null, v)); }
   row(t("lane"), laneTitle(c.lane)); row(t("profile"), profLabel(c.profile)); row(t("needs"), c.needs.join(", ")); row(t("uses"), (c.uses || []).join(", ") + (c.quiet ? " 🔇" : "") + (c.noisy ? " 🔊" : ""));
@@ -632,11 +792,11 @@ function renderDrawer() {
   function b(label, cls, fn) { bar.appendChild(h("button", {class: "btn " + cls, text: label, onclick: fn})); }
   var s = c.state;
   if (s === "ready" || s === "blocked" || s === "waiting" || s === "queued") b(t("copy"), "pri", function () { copyPrompt(c.id); });
-  if (s === "ready" || s === "blocked" || s === "waiting" || s === "queued") b(t("sent"), "", function () { act("sent", c.id, {}, t("sent")); });
+  if (s === "ready" || s === "blocked" || s === "waiting" || s === "queued") b(t("sent"), "", function (ev) { act("sent", c.id, {}, t("sent"), ev.currentTarget); });
   if (s === "draft") b(t("gen"), turnOf(c) ? "pri" : "", function () { copyGen(c.id); });
   if (s === "proposed") { b(t("approve"), "ok", function () { act("approve", c.id, {}, t("approve")); }); b(t("reject"), "bad", function () { act("reject", c.id); }); }
-  if (s === "sent" || s === "running") { b(t("copy"), "pri", function () { copyPrompt(c.id); }); b(t("release"), "", function () { act("release", c.id); }); }
-  if (s === "review") { b(badOutcome(c) ? t("accept_asis") : t("accept"), badOutcome(c) ? "" : "ok", function () { act("accept", c.id, {}, t("accept")); }); b(t("sendback"), "", function () { act("status", c.id, {status: "queued"}); }); if (c.report) b(t("copy_path"), "", function () { copy(c.report); }); }
+  if (s === "sent" || s === "running") { b(t("copy"), "pri", function () { copyPrompt(c.id); }); b(t("release"), "", function (ev) { act("release", c.id, {}, null, ev.currentTarget); }); }
+  if (s === "review") { b(badOutcome(c) ? t("accept_asis") : t("accept"), badOutcome(c) ? "" : "ok", function (ev) { act("accept", c.id, {}, t("accept"), ev.currentTarget); }); b(t("sendback"), "", function () { act("status", c.id, {status: "queued"}); }); if (c.report) b(t("copy_path"), "", function () { copy(c.report); }); }
   if (s === "done") b(t("reopen"), "", function () { act("status", c.id, {status: "queued"}); });
   if (s === "cancelled") b(t("restore"), "", function () { act("restore", c.id); });
   if (s !== "done" && s !== "cancelled") b(t("edit"), "", function () { S.editing = true; renderDrawer(); });
@@ -666,7 +826,7 @@ function renderDrawer() {
 function laneSelect(v) { var s = h("select"); S.board.lanes.forEach(function (l) { var o = h("option", {value: l.id, text: l.title || l.id}); if (l.id === v) o.selected = true; s.appendChild(o); }); return s; }
 function editForm(c, isNew) {
   var f = {};
-  f.id = h("input", {type: "text", value: c.id || "", disabled: isNew ? null : "disabled", placeholder: "T1"});
+  f.id = h("input", {type: "text", value: c.id || "", disabled: isNew ? null : "disabled", placeholder: isNew ? t("id_hint") : "", required: isNew ? "required" : null, "aria-required": isNew ? "true" : null});
   f.title = h("input", {type: "text", value: c.title || ""});
   f.lane = laneSelect(c.lane);
   f.needs = h("input", {type: "text", value: (c.needs || []).join(", ")});
@@ -682,7 +842,7 @@ function editForm(c, isNew) {
   f.quiet = h("input", {type: "checkbox"}); f.quiet.checked = !!c.quiet;
   f.noisy = h("input", {type: "checkbox"}); f.noisy.checked = !!c.noisy;
   f.text = h("textarea"); f.text.value = c.text || "";
-  var g = h("div", {class: "formgrid"}, field(t("id"), f.id), field(t("lane"), f.lane), field(t("title"), f.title, true), field(t("needs_l"), f.needs), field(t("after_l"), f.after), field(t("not_before_l"), f.not_before), field(t("timebox_l"), f.timebox), field(t("profile"), f.profile), field(t("uses_l"), f.uses), field(t("touches_l"), f.touches, true),
+  var g = h("div", {class: "formgrid"}, field(isNew ? t("id") + " *" : t("id"), f.id), isNew ? h("div", {class: "sub", text: t("id_hint")}) : null, field(t("lane"), f.lane), field(t("title"), f.title, true), field(t("needs_l"), f.needs), field(t("after_l"), f.after), field(t("not_before_l"), f.not_before), field(t("timebox_l"), f.timebox), field(t("profile"), f.profile), field(t("uses_l"), f.uses), field(t("touches_l"), f.touches, true),
     field(t("when"), f.when, true), field(t("outline"), f.outline, true),
     h("div", null, h("label", null, f.quiet, " " + t("quiet"))), h("div", null, h("label", null, f.noisy, " " + t("noisy"))), field(t("text"), f.text, true));
   g._f = f; return g;
@@ -690,23 +850,59 @@ function editForm(c, isNew) {
 function localInput(iso) { var d = new Date(iso), z = function (n) { return (n < 10 ? "0" : "") + n; }; return isNaN(d) ? "" : d.getFullYear() + "-" + z(d.getMonth() + 1) + "-" + z(d.getDate()) + " " + z(d.getHours()) + ":" + z(d.getMinutes()); }
 function formArgs(f) { return {title: f.title.value, lane: f.lane.value, needs: f.needs.value, after: f.after.value, not_before: f.not_before.value, timebox: f.timebox.value, uses: f.uses.value, touches: f.touches.value, when: f.when.value, outline: f.outline.value, quiet: f.quiet.checked, noisy: f.noisy.checked, profile: f.profile.value, text: f.text.value}; }
 function renderEdit(c, db) {
-  var g = editForm(c, false); db.appendChild(g);
-  db.appendChild(h("div", {class: "row", style: "margin-top:14px"}, h("button", {class: "btn pri", text: t("save"), onclick: function () { S.editing = false; act("edit", c.id, formArgs(g._f), t("saved")); }}),
-    h("button", {class: "btn", text: t("close"), onclick: function () { S.editing = false; renderDrawer(); }})));
+  var g = editForm(c, false);
+  var base = JSON.stringify(formArgs(g._f));                      // the saved task, before anything was typed
+  if (!S.editBase || S.editBase.id !== c.id) S.editBase = {id: c.id, updated: c.updated};   // the version this form was opened on
+  if (S.draft && S.draft.id === c.id) setFormValues(g._f, S.draft.values);
+  S.drawerDirty = function () { return JSON.stringify(formArgs(g._f)) !== base; };
+  db.appendChild(g);
+  db.appendChild(h("div", {class: "row", style: "margin-top:14px"}, h("button", {class: "btn pri", text: t("save"), onclick: function (ev) { saveEdit(c, g, ev.currentTarget); }}),
+    h("button", {class: "btn", text: t("close"), onclick: function () { closeChecked("edit"); }})));
+}
+// A save names the version the form was opened on. If someone saved the task since, the server refuses: the text stays in the form,
+// the person sees why, and can look at the current version beside it before saving again.
+function saveEdit(c, g, btn) {
+  var args = formArgs(g._f);
+  if (S.editBase && S.editBase.id === c.id && S.editBase.updated) args.seen_updated = S.editBase.updated;
+  btn.disabled = true;
+  api("/api/act", {method: "POST", headers: {"Content-Type": "application/json", "X-Barid-Edit": "1"}, body: JSON.stringify({action: "edit", id: c.id, args: args})})
+    .then(function () { endEdit(); toast(t("saved")); return load(); })
+    .catch(function (e) {
+      toast(errText(e), true);
+      if (e.code === "changed") {
+        var old = $("conflict"); if (old) old.parentNode.removeChild(old);
+        $("db").appendChild(h("div", {class: "note", id: "conflict", style: "border-color:var(--warn);margin-top:12px"}, h("div", {text: errText(e)}),
+          h("button", {class: "btn sm", text: t("show_current"), onclick: function () { showCurrent(c); }})));
+      }
+    }).then(function () { btn.disabled = false; });
+}
+function showCurrent(c) {
+  api("/api/board").then(function (b) {
+    var cur = (b.items || []).filter(function (x) { return x.id === c.id; })[0];
+    if (!cur) { toast(errText({code: "not_found", info: {id: c.id}}), true); return; }
+    S.editBase = {id: c.id, updated: cur.updated};              // seen now: the next save is made on top of this version
+    var old = $("curbox"); if (old) old.parentNode.removeChild(old);
+    $("db").appendChild(h("div", {class: "note", id: "curbox", style: "margin-top:12px"}, h("b", {text: cur.title}), h("pre", {text: cur.text || ""})));
+  }).catch(function (e) { toast(errText(e), true); });
 }
 function openAdd() {
   var g = editForm({}, true), box = clear($("modalbox"));
-  box.appendChild(h("div", {class: "big", style: "margin-bottom:12px", text: t("add")})); box.appendChild(g);
-  box.appendChild(h("div", {class: "row", style: "margin-top:14px"}, h("button", {class: "btn pri", text: t("create"), onclick: function () {
+  box.appendChild(h("div", {class: "big", id: "modaltitle", style: "margin-bottom:12px", text: t("add")})); box.appendChild(g);
+  var base = JSON.stringify(formArgs(g._f));
+  S.modalDirty = function () { return JSON.stringify(formArgs(g._f)) !== base; };
+  function create() {
     var a = formArgs(g._f); a.draft = !a.text.trim();
     api("/api/act", {method: "POST", headers: {"Content-Type": "application/json", "X-Barid-Edit": "1"}, body: JSON.stringify({action: "add", id: g._f.id.value.trim(), args: a})})
-      .then(function () { $("modal").classList.remove("open"); toast(t("ok_created")); return load(); }).catch(function (e) { toast(errText(e), true); });
-  }}), h("button", {class: "btn", text: t("close"), onclick: function () { $("modal").classList.remove("open"); }})));
-  $("modal").classList.add("open");
+      .then(function () { closeModal(); toast(t("ok_created")); return load(); }).catch(function (e) { toast(errText(e), true); });
+  }
+  g._f.title.addEventListener("keydown", function (e) { if (e.key === "Enter") { e.preventDefault(); create(); } });   // as in the session dialog
+  box.appendChild(h("div", {class: "row", style: "margin-top:14px"}, h("button", {class: "btn pri", text: t("create"), onclick: create}), h("button", {class: "btn", text: t("close"), onclick: function () { closeChecked("modal"); }})));
+  showModal();
 }
 
 function connectView(box, laneId) {
-  box.appendChild(h("div", {class: "big", style: "margin-bottom:6px", text: fmt(t("connect_title"), {name: laneTitle(laneId)})}));
+  S.modalDirty = null;
+  box.appendChild(h("div", {class: "big", id: "modaltitle", style: "margin-bottom:6px", text: fmt(t("connect_title"), {name: laneTitle(laneId)})}));
   box.appendChild(h("p", {class: "sub", text: t("connect_help")}));
   var pre = h("pre", {class: "connectbox", text: "…"});
   var text = "";
@@ -721,20 +917,23 @@ function connectView(box, laneId) {
   box.appendChild(pre);
   loadText();
   box.appendChild(h("div", {class: "row", style: "margin-top:14px"}, h("button", {class: "btn pri", text: t("copy_connect"), onclick: function () { if (text) copy(text); }}),
-    h("button", {class: "btn", text: t("close"), onclick: function () { $("modal").classList.remove("open"); }})));
+    h("button", {class: "btn", text: t("close"), onclick: function () { closeChecked("modal"); }})));
 }
-function openConnect(laneId) { var box = clear($("modalbox")); connectView(box, laneId); $("modal").classList.add("open"); }
+function openConnect(laneId) { var box = clear($("modalbox")); connectView(box, laneId); showModal(); }
 function openLaneAdd() {
   var box = clear($("modalbox")), agent = "";
-  box.appendChild(h("div", {class: "big", style: "margin-bottom:12px", text: t("lane_new")}));
+  box.appendChild(h("div", {class: "big", id: "modaltitle", style: "margin-bottom:12px", text: t("lane_new")}));
   var nameIn = h("input", {type: "text", placeholder: t("lane_name_ph"), maxlength: "60"});
   box.appendChild(nameIn);
   box.appendChild(h("div", {class: "sub", style: "margin:12px 0 6px", text: t("agent_which")}));
   var chips = h("div", {class: "chips"}), chipEls = {};
   AGENTS.forEach(function (a) { var b = h("button", {class: "agchip", text: agentLabel(a), onclick: function () { agent = agent === a ? "" : a; AGENTS.forEach(function (x) { chipEls[x].classList.toggle("on", x === agent); }); }}); chipEls[a] = b; chips.appendChild(b); });
   box.appendChild(chips);
+  S.modalDirty = function () { return nameIn.value.trim() !== "" || agent !== ""; };
   function create() {
     var name = nameIn.value.trim(); if (!name) { nameIn.focus(); return; }
+    var same = fold(name).replace(/\s+/g, "");     // the same name, ignoring case, spaces and ё/е
+    if (S.board.lanes.some(function (l) { return fold(l.title || l.id).replace(/\s+/g, "") === same; })) { toast(fmt(t("lane_dup"), {name: name}), true); return; }
     var id = name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 24), n = S.board.lanes.length + 1, taken = function (x) { return !!laneObj(x); };
     if (!id || taken(id)) id = "s" + n; while (taken(id)) id = "s" + (++n);
     var args = {title: name}; if (agent) args.agent = agent;
@@ -742,8 +941,8 @@ function openLaneAdd() {
       .then(function () { toast(fmt(t("lane_created"), {name: name})); return load(); }).then(function () { var b2 = clear($("modalbox")); connectView(b2, id); }).catch(function (e) { toast(errText(e), true); });
   }
   nameIn.addEventListener("keydown", function (e) { if (e.key === "Enter") create(); });
-  box.appendChild(h("div", {class: "row", style: "margin-top:14px"}, h("button", {class: "btn pri", text: t("lane_create"), onclick: create}), h("button", {class: "btn", text: t("close"), onclick: function () { $("modal").classList.remove("open"); }})));
-  $("modal").classList.add("open"); nameIn.focus();
+  box.appendChild(h("div", {class: "row", style: "margin-top:14px"}, h("button", {class: "btn pri", text: t("lane_create"), onclick: create}), h("button", {class: "btn", text: t("close"), onclick: function () { closeChecked("modal"); }})));
+  showModal(); nameIn.focus();
 }
 
 function stamp() {
@@ -760,13 +959,18 @@ function applyHash() {
 }
 function load() {
   if (window.__RB_BOARD__) { S.board = window.__RB_BOARD__; S.rev = S.board.rev; render(); applyHash(); return Promise.resolve(); }
-  return api("/api/board").then(function (b) { stamp(); S.board = b; S.rev = b.rev; if (S.offline) { S.offline = false; $("banner").hidden = true; } render(); if (!S.hashDone) { S.hashDone = true; applyHash(); } })
-    .catch(function () { if (!S.offline) { S.offline = true; $("banner").textContent = t("offline"); $("banner").hidden = false; } });
+  return api("/api/board").then(function (b) { stamp(); S.board = b; S.rev = b.rev; serverUp(); render(); if (!S.hashDone) { S.hashDone = true; applyHash(); } })
+    .catch(serverDown);
+}
+// the panel file was replaced while this tab was open: the data keeps refreshing but the page still runs the old code
+function showUpdate() {
+  var bar = $("updatebar"); if (!bar.hidden) return;
+  clear(bar); bar.appendChild(document.createTextNode(t("panel_updated") + " ")); bar.appendChild(h("button", {class: "btn sm", id: "reloadbtn", text: t("panel_reload"), onclick: function () { location.reload(); }})); bar.hidden = false;
 }
 function poll() {
   if (document.hidden || window.__RB_BOARD__) return;
-  api("/api/rev").then(function (r) { stamp(); if (S.offline) { S.offline = false; $("banner").hidden = true; } if (r.rev !== S.rev && !S.editing && !$("modal").classList.contains("open")) load(); })
-    .catch(function () { if (!S.offline) { S.offline = true; $("banner").textContent = t("offline"); $("banner").hidden = false; } });
+  api("/api/rev").then(function (r) { stamp(); if (r.panel) { if (S.panelStamp === undefined) S.panelStamp = r.panel; else if (r.panel !== S.panelStamp) showUpdate(); } serverUp(); if (r.rev !== S.rev && !S.editing && !$("modal").classList.contains("open")) load(); })
+    .catch(serverDown);
 }
 
 $("q").addEventListener("input", function () { S.q = $("q").value; render(); });
@@ -775,7 +979,7 @@ function toggleLangPop(open) {
   var pop = $("langpop"), show = open === undefined ? pop.hidden : open;
   if (show) {
     toggleThemePop(false); clear(pop);
-    Object.keys(LANGNAME).forEach(function (k) {
+    Object.keys(LANGNAME).filter(function (k) { return LANGS_SHOWN.indexOf(k) >= 0 || S.lang === k; }).forEach(function (k) {
       pop.appendChild(h("button", {class: S.lang === k ? "on" : "", onclick: function () { S.lang = k; try { localStorage.setItem("rb.lang", k); } catch (e) {} toggleLangPop(false); render(); }}, h("span", {text: LANGNAME[k]}), h("span", {text: S.lang === k ? "✓" : ""})));
     });
   }
@@ -783,6 +987,7 @@ function toggleLangPop(open) {
   if (show) { var r = $("langbtn").getBoundingClientRect(), w = pop.offsetWidth || 170; pop.style.left = Math.max(8, Math.min(r.left, window.innerWidth - w - 8)) + "px"; pop.style.top = (r.bottom + 8) + "px"; }
 }
 $("langbtn").addEventListener("click", function (e) { e.stopPropagation(); toggleLangPop(); });
+$("notifybtn").addEventListener("click", toggleNotify);
 $("archbtn").addEventListener("click", function () { S.arch = !S.arch; try { localStorage.setItem("rb.arch", S.arch ? "1" : "0"); } catch (e) {} setStatic(); });
 $("actbtn").addEventListener("click", function () { S.act = !S.act; try { localStorage.setItem("rb.act", S.act ? "1" : "0"); } catch (e) {} setStatic(); });
 function renderThemePop() {
@@ -840,9 +1045,29 @@ window.addEventListener("resize", function () { if (!$("themepop").hidden) place
 window.addEventListener("scroll", function () { if (!$("themepop").hidden) placeThemePop(); }, true);
 $("themebtn").addEventListener("click", function (e) { e.stopPropagation(); toggleThemePop(); });
 document.addEventListener("click", function (e) { if (!$("langpop").hidden && e.target.isConnected && !$("langpop").contains(e.target)) toggleLangPop(false); var pop = $("themepop"); if (!pop.hidden && e.target.isConnected && !pop.contains(e.target) && e.target !== $("themebtn") && !$("themebtn").contains(e.target)) toggleThemePop(false); });
-$("modal").addEventListener("click", function (e) { if (e.target === $("modal")) $("modal").classList.remove("open"); });
+function modalDirtyNow() { return $("modal").classList.contains("open") && !!S.modalDirty && S.modalDirty(); }
+function drawerDirtyNow() { return $("drawer").classList.contains("open") && S.editing && !!S.drawerDirty && S.drawerDirty(); }
+// The one check for every way of closing a dialog or the drawer (Escape, the dimmed background, ✕, Close). With typed text the question
+// "Discard what you typed?" comes first: "Keep editing" keeps everything, "Discard" runs the close. With nothing typed it closes at once.
+// what: "modal" (a dialog), "drawer" (the task drawer), "edit" (the edit form of the drawer; the drawer stays open)
+function closeChecked(what) {
+  var modal = what === "modal", host = modal ? $("modalbox") : $("db");
+  var dirty = modal ? modalDirtyNow() : drawerDirtyNow();
+  var close = modal ? closeModal : what === "edit" ? function () { endEdit(); renderDrawer(); } : function () { closeDrawer(); };
+  if (dirty) return askDiscard(host, close);
+  close();
+}
+$("modal").addEventListener("click", function (e) { if (e.target === $("modal")) closeChecked("modal"); });
 document.addEventListener("keydown", function (e) {
-  if (e.key === "Escape") { toggleThemePop(false); toggleLangPop(false); $("modal").classList.remove("open"); closeDrawer(); }
+  if (e.key === "Escape") {
+    toggleThemePop(false); toggleLangPop(false);
+    if ($("modal").classList.contains("open")) return closeChecked("modal");
+    if ($("drawer").classList.contains("open")) closeChecked("drawer");
+  }
+  else if (e.key === "Tab") {
+    if ($("modal").classList.contains("open")) trapTab(e, $("modalbox"));
+    else if ($("drawer").classList.contains("open")) trapTab(e, $("drawer"));
+  }
   else if (e.key === "/" && document.activeElement.tagName !== "INPUT" && document.activeElement.tagName !== "TEXTAREA") { e.preventDefault(); $("q").focus(); }
 });
 document.addEventListener("visibilitychange", function () { if (!document.hidden) poll(); });

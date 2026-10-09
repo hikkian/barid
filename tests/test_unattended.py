@@ -388,8 +388,8 @@ class Worker(Base):
             import sys, importlib.util
             spec = importlib.util.spec_from_file_location("rb", {str(RB_PATH)!r}); rb = importlib.util.module_from_spec(spec); sys.modules["rb"] = rb; spec.loader.exec_module(rb)
             orig = rb.op_claim
-            def claim(d, actor, iid, force=False, lease_minutes=0):
-                r = orig(d, actor, iid, force, lease_minutes)
+            def claim(d, actor, iid, force=False, lease_minutes=0, snapshot=None):
+                r = orig(d, actor, iid, force, lease_minutes, snapshot)
                 it = rb.get_item(d, iid)
                 if it["claim"].get("deadline"):
                     it["claim"]["deadline"] = (rb.now_dt() + rb.dt.timedelta(seconds=3)).isoformat()
@@ -421,7 +421,9 @@ class Worker(Base):
     def test_it_never_signals_anything_but_its_own_process_group(self):
         src = RB_PATH.read_text("utf-8")
         self.assertNotIn("pkill", src)
-        self.assertIn("os.killpg(proc.pid", src)
+        self.assertIn("pgid = proc.pid", src)                       # the group id is the pid of the agent's own session leader
+        import re
+        self.assertEqual(set(re.findall(r"os\.killpg\((\w+)", src)), {"pgid"})   # and every signal goes to that id, nothing else
 
 
 class Digest(Base):

@@ -1,5 +1,59 @@
 # Changelog
 
+## 1.0.0-rc.1 (2026-10-07)
+
+**The 1.0 release candidate.** What stays the same inside 1.x is written down in [docs/COMPATIBILITY.md](docs/COMPATIBILITY.md) (also in Russian and Kazakh) and checked by `tests/test_contract.py`. 1.0.0 is tagged after a real unattended night on this version.
+
+Found by a red-team review of 0.6.0 (twelve processes writing for a minute, a killed writer, clock changes, a stuck lock holder, a worker driven by hostile commands), each with a test that fails on 0.6.0:
+
+- **A wait that cannot end is no longer called a wait.** A task below a cancelled one, or below a holder whose lease ran out, got exit `3` ("it will start by itself") and `--wait` could sit for 14 hours; now it is `4` at once, with `via` naming the task it waits for. A task marked `sent` kept no order (it could be claimed before the task it needs, and two tasks could wait for each other); now `claim` refuses it, and a sent task that waits does not hold back the task it waits for.
+- **`worker`:** stops the agent when its task is cancelled or returned; no longer blocks on a prompt that does not fit the pipe (it ignored SIGTERM until the agent ended); closes the task as failed when the agent cannot start, instead of leaving it `running`; gives up on a task that keeps coming back (`--max-attempts`) instead of starting it every second for ever; stops what the agent left running in the background; quotes the prompt path (a board in a folder with a space); counts the timebox on the monotonic clock; renews the lease once a minute instead of twice (half the board writes); refuses a `--cwd` that is not a folder before claiming anything.
+- **Names with non-ASCII letters or spaces** (Russian, Kazakh) were read from git in quoted octal form, matched no scope and made a finished task look as if it had left its scope, so its dependents stalled. Read with `-z` now.
+- **The digest** lost a finished task after about 500 events (the event log is capped); "Ended" is built from the tasks themselves now.
+- **A time of day** (`23:00`) was an hour off on the evening before a clock change; absurd times (`+99999999d`) and a time without an offset in a hand-edited board raised tracebacks.
+- **The board file:** a lock that is held by a stopped process gave every other command an endless wait; now they refuse clearly after `BARID_LOCK_WAIT` seconds (60). `claim` and `finish` ran git and hashed files inside the lock (a note waited 5 s behind a slow git); now they do it before. A symlinked `board.json` was replaced by a regular file and its two paths had separate locks. Saves are flushed to the disk, the version before the last change is kept as `board.json.bak` (a hard link: no extra data written), old temp files are removed, and a damaged file, a full disk or a read-only folder give a message instead of a traceback.
+- **Speed:** `compute()` found the marks and the normalised scopes of a task again for every pair of tasks; with file scopes a board of 500 tasks took 4 s, now about 0.25 s. The cost of each command is kept in check by a budget test.
+- **Fix in the release itself:** `.claude-plugin/plugin.json` was an empty file in 0.6.0 (the plugin could not be read); a test now checks that the manifests are valid and carry the version of the program.
+
+Panel: the order of work ("Order, and what can run together") is a grid with one column per session and a coloured header over each column, so a card always stays under its own session however narrow the window is (before, cards wrapped like text and the third session dropped below the others); titles wrap instead of being cut; on a phone the cards stack. A browser test checks the alignment.
+
+A documentation check of 134 claims against the code (done by an AI agent, spot-checked by hand; 13 mismatches, 4 stale) led to: `barid policy` (show the board policy, or set `dependents_wait_for_accept`, `lease_hours`, `footer`, `handoff`, `git_check` as the person: the README promised a "policy switch" that no command could set); `--json` now works for `where`, `doctor`, `lane list`, `resource list`, `profile list` and `protect list` (the documents said every command accepted it); a task that waits only for its start time no longer prints `(after )`; and corrected wording about the event log (it keeps the last 500 entries), the worker lease (renewed once a minute), person-only commands in the examples (`--human`), trusted planners, the footer languages, `GET /api/digest` and `BARID_ACTOR`.
+
+The "While you were away" card no longer lists what you have already seen: a report you accepted, or a task that finished while the panel was open in front of you. It lists what ended while you were really away (a browser test checks it).
+
+**Kazakh is hidden for now.** The panel does not offer it, a Kazakh locale gets Russian, and the README and the compatibility promise in Kazakh moved to `docs/drafts/` (nothing links to them) until a native reader has reviewed them; boards that already say `kk` still open, and `?lang=kk` still shows the panel in Kazakh. The Kazakh texts of this release were checked by two independent AI passes (a blind back-translation into English, then a comparison with the originals) because no native reader was at hand: it found and fixed an ambiguous notification title ("you are needed" / "you are not needed"), a README sentence that said bug reports were "pleasant" instead of "welcome", the informal form in one panel label, cancelled tasks called deleted, and mixed terms (folder, release, flag, lease). The remaining risk is unnatural phrasing that only a native speaker would notice.
+
+README: the "How it works" diagram is a real picture (`docs/img/how-it-works.svg`, readable on GitHub's light and dark themes) instead of a hand-drawn text box.
+
+An open panel tab now notices when `panel.html` was replaced (an update of Barid) and shows a bar "The panel was updated. Reload": before, the data kept refreshing but the page ran the old code until you reloaded by hand, which made fixed behaviour look unfixed. (`/api/rev` carries a stamp of the panel file.)
+
+A scenario sweep of the panel (`tests/scenario_sweep.py`: odd boards from 1 to 10 sessions, very long names and unbroken strings, every status, 300 tasks, other alphabets, x eight window widths x light and dark x English and Russian, each page audited for sideways scrolling, cards outside the window or on top of each other, cut-off text and cards not under their own session) found and fixed a long unbroken string (a report path, a link in a title) that made the whole page scroll sideways; a small subset runs as a test.
+
+New, small and meant for the morning:
+
+- `barid overview` (and `--brief` for a status bar) shows every session on one line: what it does, what it would start next, what waits for you.
+- `barid accept-clean` and one button in the panel (after a second click) accept the reports that ended `complete` with no file warnings and no disturbed measurement; anything else stays for you to read.
+- An optional bell in the panel: a browser notification when more things wait for you, only while the tab is in the background, never a sound.
+
+Found by two independent reviews of the first candidate and fixed before release: a sent task below a dead holder could still be claimed; a chain of several hundred tasks listed in reverse order raised a RecursionError in `compute()`; the digest listed a task twice when two paths led to one cancelled task; a worker killed an agent that had already reported its task itself, and a deleted task was not stopped; lost claim races counted as attempts; `cat "{prompt_file}"` broke in a folder with a space; SIGHUP left the agent running; a `.bak<pid>` file could be left behind; a typo in `BARID_LOCK_WAIT` raised at start; a board with a byte order mark was refused; and a lease that had just run out (a computer that slept) was taken as lost at once (there is a five-minute grace now).
+
+Panel fixes from the SCN1 exploration (FIXSCN1): the New-task dialog, the session dialog and the task drawer take keyboard focus when they open, Tab stays inside them,
+and closing them returns focus to what opened them; two tabs editing the same task no longer overwrite each other silently (the second save is refused with a message,
+the typed text stays, and "Show the current version" displays the saved text beside it; the edit names the version it was opened on with the optional field
+`seen_updated`, see docs/PROTOCOL.md); Escape with typed text asks "Discard what you typed?" first; a save while the server is unreachable says "No connection to the
+board server. Your text is kept"; a damaged or empty board file is named as such and the cards are dimmed as possibly out of date; a search with no match says "Nothing
+found" and matches the session name, and ё and е are the same letter for search; Enter in the title of the New-task dialog saves the task; the ID field is marked
+required and shows a hint; a session with the name of another one is refused; the switched-off sessions stay off after a reload; "Mark as sent", "Return to queue" and
+"Accept report" are disabled while they run. The task's `updated` time is stored with microseconds (still ISO 8601).
+
+An open edit form is no longer dropped silently when another task is clicked: with typed, unsaved text the panel asks "Discard what you typed?" first. When every session is switched off in the bar, the flow says so ("All sessions are switched off in the bar. Switch one on to see its tasks.") instead of "No tasks yet".
+
+"Got it" on the "While you were away" card now also quiets the tasks that wait for a decision: that is a state, not news, so the card used to come back at once; it stays hidden until the set of stuck tasks changes.
+
+Known limitation (kept on purpose for 1.0): while the task drawer is open it covers the language, theme and notification buttons; close the drawer first.
+
+Tests: 189 plus the contract tests (frozen commands, exit codes, reason codes, board and `--json` fields, text and time budgets, manifests, documents in three languages), and a board written by 0.6.0 among the old-release fixtures.
+
 ## 0.6.0 (2026-10-06)
 
 **Nights and unattended runs.** The full description, with the reasons behind each choice, is in [docs/UNATTENDED.md](docs/UNATTENDED.md).
