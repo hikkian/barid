@@ -796,7 +796,8 @@ class PanelI18nTests(unittest.TestCase):
         if not node:
             raise unittest.SkipTest("node is not available")
         block = cls.html[cls.html.index("var STR = {"): cls.html.index("var S = {board:null")]
-        out = subprocess.run([node, "-e", block + "\nconsole.log(JSON.stringify(STR))"], capture_output=True, encoding="utf-8", check=True).stdout
+        # the script goes through stdin: as an argument it is longer than the Windows command line allows (WinError 206)
+        out = subprocess.run([node, "-"], input=block + "\nconsole.log(JSON.stringify(STR))", capture_output=True, encoding="utf-8", check=True).stdout
         cls.STR = json.loads(out)
 
     def flat(self, d, prefix=""):
