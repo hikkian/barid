@@ -9,6 +9,7 @@ import unittest
 import urllib.error
 import urllib.request
 from pathlib import Path
+from unittest import mock
 
 ROOT = Path(__file__).resolve().parent.parent
 RB_PATH = ROOT / "skills" / "barid" / "scripts" / "barid.py"
@@ -466,6 +467,73 @@ class ScopeTests(unittest.TestCase):
         self.assertEqual(comp["C"]["state"], "ready")  # a different folder runs in parallel
         with self.assertRaises(rb.RBError):
             rb.mutate(self.path, lambda d: rb.op_claim(d, AGENT, "B"))
+
+    @unittest.skipUnless(hasattr(os, "symlink"), "symlinks are not available")
+    def test_a_symlink_and_its_target_are_one_file(self):
+        """Two names for one file (a link to a file, a file inside a linked folder) are one scope before either task starts."""
+        (self.root / "src").mkdir()
+        (self.root / "src" / "real.py").write_text("1")
+        try:
+            os.symlink(self.root / "src" / "real.py", self.root / "alias.py")
+            os.symlink(self.root / "src", self.root / "lib", target_is_directory=True)
+        except (OSError, NotImplementedError):
+            self.skipTest("cannot create symlinks here")
+        for via in ("alias.py", "lib/real.py", "lib"):
+            with self.subTest(via=via):
+                self.assertTrue(rb.scopes_overlap(rb.norm_scope(self.d, via), rb.norm_scope(self.d, "src/real.py")))
+        add(self.path, PLANNER, "A", lane="main", touches="alias.py")
+        add(self.path, PLANNER, "B", lane="second", touches="src/real.py")
+        add(self.path, PLANNER, "C", lane="third", touches="lib/real.py")
+        rb.mutate(self.path, lambda d: rb.op_claim(d, AGENT, "A"))
+        comp = {c["id"]: c for c in rb.compute(rb.load(self.path))}
+        for iid in ("B", "C"):
+            self.assertEqual(comp[iid]["state"], "blocked", iid)
+            self.assertEqual(comp[iid]["conflicts"], [{"id": "A", "why": "paths:src/real.py"}], iid)
+            with self.assertRaises(rb.RBError):
+                rb.mutate(self.path, lambda d: rb.op_claim(d, AGENT, iid))
+
+    @unittest.skipUnless(hasattr(os, "link"), "hard links are not available")
+    def test_a_hard_link_and_its_original_are_one_file(self):
+        """A hard link has no target to resolve: the two names are matched by file identity."""
+        (self.root / "src").mkdir()
+        (self.root / "src" / "real.py").write_text("1")
+        (self.root / "src" / "other.py").write_text("1")
+        try:
+            os.link(self.root / "src" / "real.py", self.root / "copy.py")
+        except (OSError, NotImplementedError):
+            self.skipTest("cannot create hard links here")
+        add(self.path, PLANNER, "A", lane="main", touches="copy.py")
+        add(self.path, PLANNER, "B", lane="second", touches="src/real.py")
+        add(self.path, PLANNER, "C", lane="third", touches="src/other.py")
+        d = rb.load(self.path)
+        a, b, c = d["items"]
+        self.assertEqual(rb.conflicts_between(d, a, b), [{"rule": "paths", "why": "paths:copy.py"}])
+        self.assertEqual(rb.conflicts_between(d, b, a), rb.conflicts_between(d, a, b))
+        self.assertEqual(rb.conflicts_between(d, a, c), [])
+        rb.mutate(self.path, lambda d: rb.op_claim(d, AGENT, "A"))
+        with self.assertRaises(rb.RBError):
+            rb.mutate(self.path, lambda d: rb.op_claim(d, AGENT, "B"))
+        rb.mutate(self.path, lambda d: rb.op_claim(d, AGENT, "C"))  # an unrelated file still runs in parallel
+        p = subprocess.run([sys.executable, str(RB_PATH), "--board", str(self.path), "check", "B"], capture_output=True, encoding="utf-8", errors="replace")
+        self.assertIn("hard link", p.stdout)
+
+    def test_case_only_differences_are_one_file_where_the_file_system_ignores_case(self):
+        """Windows and macOS do not tell Src/a.py from src/a.py; Linux does."""
+        d = self.d
+        for insensitive in (True, False):
+            with self.subTest(insensitive=insensitive), mock.patch.object(rb, "CASE_INSENSITIVE", insensitive):
+                self.assertEqual(rb.scopes_overlap(rb.norm_scope(d, "Src/A.py"), rb.norm_scope(d, "src/a.py")), insensitive)
+                self.assertEqual(rb.scopes_overlap(rb.norm_scope(d, "SRC"), rb.norm_scope(d, "src/*.py")), insensitive)
+        self.assertEqual(rb.CASE_INSENSITIVE, os.name == "nt" or sys.platform == "darwin")
+
+    def test_protected_globs_keep_their_case(self):
+        """glob compares names case-sensitively on macOS, so a protected pattern must reach it as written."""
+        (self.root / "Config").mkdir()
+        (self.root / "Config" / "Keys.JSON").write_text("{}")
+        rb.mutate(self.path, lambda d: d.update(protect=["Config/*.JSON"]))
+        with mock.patch.object(rb, "CASE_INSENSITIVE", True):
+            found = rb.expand_protected(rb.load(self.path))
+        self.assertEqual([p.name for p in found], ["Keys.JSON"])
 
     def test_changing_a_protected_file_is_flagged_and_blocks_dependents(self):
         live = self.root / "live.json"

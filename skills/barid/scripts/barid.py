@@ -28,7 +28,7 @@ import webbrowser
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
-__version__ = "1.0.0"
+__version__ = "1.0.1"
 SCHEMA = 1
 HERE = Path(__file__).resolve().parent
 STATUSES = ("draft", "proposed", "queued", "sent", "running", "review", "done", "cancelled")
@@ -415,8 +415,13 @@ def project_root(d: dict) -> Path:
     return Path(d.get("_root") or Path.cwd())
 
 
+# Windows and macOS (APFS and HFS+ by default) do not tell Src/a.py from src/a.py, so paths are compared lower-cased there.
+# On a case-sensitive macOS volume this can only add a conflict, never hide one.
+CASE_INSENSITIVE = os.name == "nt" or sys.platform == "darwin"
+
+
 def _case(p: str) -> str:
-    return p.lower() if os.name == "nt" else p
+    return p.lower() if CASE_INSENSITIVE else p
 
 
 def task_root(d: dict, it: dict) -> Path:
@@ -424,12 +429,17 @@ def task_root(d: dict, it: dict) -> Path:
     return Path(os.path.realpath(os.path.expanduser(it["workdir"]))) if it.get("workdir") else project_root(d)
 
 
-def norm_scope(d: dict, s: str, root=None) -> str:
+def real_scope(d: dict, s: str, root=None) -> str:
     """A scope is a file, a folder or a glob; relative ones are relative to the task's checkout (default: the project folder)."""
     s = os.path.expanduser(str(s).strip())
     p = s if os.path.isabs(s) else str(Path(root) / s if root else project_root(d) / s)
-    # real path: /var is /private/var on macOS and git reports the real one; Windows short names collapse too
-    return _case(os.path.realpath(os.path.normpath(p)).replace("\\", "/"))
+    # real path: /var is /private/var on macOS and git reports the real one; a symlink and its target are one file; Windows short names collapse too
+    return os.path.realpath(os.path.normpath(p)).replace("\\", "/")
+
+
+def norm_scope(d: dict, s: str, root=None) -> str:
+    """The scope as conflicts compare it (real path, lower-cased where the file system ignores case)."""
+    return _case(real_scope(d, s, root))
 
 
 def show_scope(d: dict, p: str, root=None) -> str:
@@ -464,6 +474,22 @@ def scopes_overlap(a: str, b: str) -> bool:
         return fnmatch.fnmatchcase(lit, pat) or _contains(lit, _static_prefix(pat))
     pa, pb = _static_prefix(a), _static_prefix(b)
     return not pa or not pb or _contains(pa, pb) or _contains(pb, pa)
+
+
+def hard_links(scopes) -> dict:
+    """Files with more than one name (hard links), by file identity: no comparison of paths can see that two names are one file.
+    Only literal scopes that are existing files are looked at; a folder scope does not find a link to one of its files elsewhere."""
+    out = {}
+    for s in scopes:
+        if GLOB_CHARS.search(s):
+            continue
+        try:
+            st = os.stat(s)
+        except OSError:
+            continue
+        if st.st_nlink > 1 and not os.path.isdir(s):
+            out.setdefault((st.st_dev, st.st_ino), s)
+    return out
 
 
 def path_in_scope(path: str, scope: str) -> bool:
@@ -504,7 +530,7 @@ def hash_paths(paths, limit: int = 800) -> dict:
 def expand_protected(d: dict) -> list:
     out = []
     for pat in d.get("protect", []):
-        n = norm_scope(d, pat)
+        n = real_scope(d, pat)  # glob matches names case-sensitively on macOS: keep the case as written
         out += [Path(x) for x in sorted(glob.glob(n, recursive=True))] if GLOB_CHARS.search(n) else [Path(n)]
     return out
 
@@ -633,7 +659,7 @@ class PairCache:
     its relative scopes live in and its normalised scopes (real paths: every one of them is a few system calls)."""
 
     def __init__(self, d: dict):
-        self.d, self._eff, self._root, self._scopes = d, {}, {}, {}
+        self.d, self._eff, self._root, self._scopes, self._links = d, {}, {}, {}, {}
 
     def eff(self, it):
         if it["id"] not in self._eff:
@@ -649,6 +675,11 @@ class PairCache:
         if it["id"] not in self._scopes:
             self._scopes[it["id"]] = [norm_scope(self.d, x, self.root(it)) for x in it.get("touches", [])]
         return self._scopes[it["id"]]
+
+    def links(self, it):
+        if it["id"] not in self._links:
+            self._links[it["id"]] = hard_links(self.scopes(it))
+        return self._links[it["id"]]
 
 
 def conflicts_between(d: dict, a: dict, b: dict, cache: "PairCache | None" = None) -> list:
@@ -675,6 +706,11 @@ def conflicts_between(d: dict, a: dict, b: dict, cache: "PairCache | None" = Non
                 if not done and scopes_overlap(x, y):
                     out.append({"rule": "paths", "why": "paths:" + show_scope(d, x if len(x) >= len(y) else y, cache.root(a))})
                     done = True
+        if not done:
+            la, lb = cache.links(a), cache.links(b)
+            same = sorted(min(la[k], lb[k]) for k in la.keys() & lb.keys())
+            if same:
+                out.append({"rule": "paths", "why": "paths:" + show_scope(d, same[0], cache.root(a))})
     return out
 
 
@@ -3274,6 +3310,11 @@ def cmd_check(args):
                 if scopes_overlap(x, y):
                     print(f"  overlaps with {o['id']} ({o['status']}): {show_scope(d, x, task_root(d, it))} <-> {show_scope(d, y, task_root(d, o))}")
                     found += 1
+        theirs = hard_links(own_scopes(d, o))
+        for k, x in hard_links(mine).items():
+            if k in theirs and not scopes_overlap(x, theirs[k]):  # the same name was already reported above
+                print(f"  overlaps with {o['id']} ({o['status']}): {show_scope(d, x, task_root(d, it))} <-> {show_scope(d, theirs[k], task_root(d, o))} (one file, hard link)")
+                found += 1
     if not found:
         print("  no overlap with other open tasks")
     print("protected: " + (", ".join(d.get("protect", [])) or "(nothing)"))
