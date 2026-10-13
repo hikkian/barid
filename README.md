@@ -8,7 +8,7 @@
 <img src="https://img.shields.io/badge/agent-skill-005b5d" alt="agent skill">
 </p>
 
-<p align="center">English · <a href="README.ru.md">Русский</a> · <a href="README.kz.md">Қазақша</a></p>
+<p align="center">English · <a href="README.ru.md">Русский</a></p>
 
 **A prompt board for people who run several AI agent sessions at once.**
 Your planner agent writes the prompts, you copy them into the other sessions, and the board keeps track of the order, what depends on what, what may run in parallel, and what could collide: a shared GPU or test server, the same files, or the same session. It ships as an **agent skill** (so your agent can run it for you) plus a small **browser panel** (so you can see and click).
@@ -17,7 +17,7 @@ Your planner agent writes the prompts, you copy them into the other sessions, an
 
 - **No more "which prompt next?"** The panel shows what to send now, and which tasks may run together or must wait ("blocked by T1: GPU", "same files: src/api").
 - **Agents manage the board themselves.** Install the skill; your agent adds tasks, writes missing prompts, records reports. Other sessions claim their task and finish it with a report.
-- **Safe by construction.** Exclusive resources (a GPU, a test server, "user present") are leased, and file scopes with a git check catch sessions that edit the same files, so sessions do not step on each other. Agent-added tasks wait for your approval. Nothing is ever deleted, only cancelled. Every change is logged.
+- **Safe by construction.** Exclusive resources (a GPU, a test server, "user present") are leased, and file scopes with a git check catch sessions that edit the same files, so sessions do not step on each other. Agent-added tasks wait for your approval. Nothing is ever deleted, only cancelled. Every change is logged (the board keeps the last 500 entries).
 - **Zero dependencies, tiny, local.** One Python file (3.9+), one JSON file, a local panel that starts on demand and exits when idle. No account, no cloud, no telemetry.
 
 ## 60-second start
@@ -67,20 +67,13 @@ https://github.com/hikkian/barid and use `python3 <path>/barid.py` as described 
 
 ## How it works
 
-```
-        you                         planner agent                  worker sessions
-         |  barid open (panel)              |  barid add / barid edit              |  barid next / claim / finish
-         v                               v                                v
-   +----------------------------------------------------------------------------+
-   |   .barid/board.json   (one file, locked + atomic writes, event log)    |
-   +----------------------------------------------------------------------------+
-```
+![How Barid works: you, a planner agent and worker sessions all use one file, .barid/board.json](docs/img/how-it-works.svg)
 
 - **Lanes** are your sessions. A lane runs one task at a time. Add one with the "+" button in the panel or `barid lane add`; the *Connect* button (or `barid connect LANE`) gives you the first message to paste into that agent's window, after which it takes its tasks from the board by itself.
 - **Tasks** have a prompt, dependencies (`--needs`), exclusive resources (`--uses gpu`) and two flags: `--quiet` (needs a quiet machine) and `--noisy` (loads the CPU or the desktop). The board computes from them what is *ready*, *waiting* or *blocked*, and plans *steps*: tasks in one step may run at the same time.
 - **Prompts carry their own instructions.** When you press *Copy prompt*, the board appends a short footer with the exact commands (`claim`, `finish`, `note`) and the path of `barid.py`, so even a session without the skill knows how to report.
 - **Draft tasks** hold only an outline. When their turn comes the panel offers *Generate prompt*: it copies a request (outline, the reports of finished dependencies, context files, a prompt skeleton) for your agent, which writes the prompt and stores it with `barid edit`.
-- **Reports** end up in a review inbox. *Accept report* unlocks dependents (or they unlock as soon as the report is written; a policy switch decides).
+- **Reports** end up in a review inbox. *Accept report* unlocks dependents. A report that ended complete unlocks them as soon as it is written; to make them wait for your accept, run `barid policy dependents_wait_for_accept true --human`.
 
 ```
 draft -> queued -> sent -> running -> review -> done        (proposed -> queued on approval; cancelled anywhere before done)
@@ -109,9 +102,11 @@ Several tools already help with more than one agent. Barid is a small one with a
 | | What it mainly does | How it differs from Barid |
 |---|---|---|
 | [Claude Squad](https://github.com/smtg-ai/claude-squad) | A terminal UI that runs several agents, each in its own git worktree | It launches and hosts the sessions; Barid does not launch anything, it plans the work and hands you the prompts |
-| [Vibe Kanban](https://github.com/BloopAI/vibe-kanban) | A kanban app that starts coding agents on cards and reviews the results | It orchestrates the agents itself; with Barid you stay in the middle and use the windows you already have |
+| [Vibe Kanban](https://github.com/BloopAI/vibe-kanban) | A kanban app that starts coding agents on cards and reviews the results (the company behind it closed in April 2026; the open-source project continues, community maintained) | It orchestrates the agents itself; with Barid you stay in the middle and use the windows you already have |
 | [MCP Agent Mail](https://github.com/Dicklesworthstone/mcp_agent_mail) | Messaging between agents, with identities, inboxes and advisory file leases | Agents talk to each other through an MCP server; Barid has no agent-to-agent chat and needs no MCP |
-| [Aqua](https://github.com/vignesh07/aqua) | A shared task queue with atomic claiming and file locking for CLI agents | Closest in spirit. Aqua lets agents pick tasks from a queue; Barid also stores the prompt text, plans the order and the parallel steps, and records an honest outcome |
+| [Aqua](https://github.com/vignesh07/aqua) | A shared task queue for CLI agents: priorities, dependencies, atomic claiming, file locking, heartbeats and leader election | Closest in spirit. Aqua lets agents pick tasks from a queue themselves; Barid keeps you in the loop: it stores the prompt text, shows the plan and the parallel steps, checks declared conflicts, and records an honest outcome that you accept |
+| [herdr](https://herdr.dev) | A terminal multiplexer that keeps agents running in panes and shows which one is working, blocked or idle | It hosts the terminals; Barid holds the plan. They are complements: Barid's prompts are plain text, so you can paste its connect message into a herdr pane |
+| [T3 Code](https://github.com/pingdotgg/t3code) | A desktop and web front end for coding agents, with threads and permission modes | It is the window an agent works in; Barid decides what each window runs next. Also complements: connect a T3 Code thread to a Barid lane like any other session |
 | Claude Code agent teams | A lead agent that spawns and directs teammates inside Claude Code | Works inside one product; Barid works across products (Claude Code, Codex, OpenCode, a local model) |
 
 What Barid adds, in one line each:
@@ -121,7 +116,7 @@ What Barid adds, in one line each:
 - **Honest endings.** A stopped, partial or failed run never unlocks the tasks that depend on it by itself; you decide.
 - **One file, no daemon.** Python only, a JSON board, optional panel. No MCP server, no database, no API keys.
 
-Who it is not for: if you want agents to run unattended, split a goal into subtasks on their own and merge branches, use an orchestrator from the table. Barid is for people who prefer to keep the steering wheel.
+Who it is not for: if you want a system that splits a goal into subtasks on its own and merges branches, use an orchestrator from the table (Barid can run a chain you planned while you sleep, see below, but the plan is yours). Barid is for people who prefer to keep the steering wheel.
 
 ## Can these run together? How Barid decides
 
@@ -157,6 +152,9 @@ For work that runs while nobody watches (an overnight benchmark chain, a long qu
 - **A connection text for the night.** `barid lane edit LANE --unattended` (or the "Night mode" box in the Connect window) makes `barid connect LANE` print a text that tells the session to loop: ask for the next task, wait on exit code 3, never ask whether to continue, stop only when its lane is empty or you are needed.
 - **A loop outside the model.** `barid worker --lane night --cmd 'codex exec -'` runs the lane without a chat session that has to stay patient: for every task it starts your agent command with a fresh context and the prompt on stdin, keeps the lease alive, stops it at the timebox (its own process group only), closes a task whose agent died without a report, then takes the next. It ends when the lane is empty (exit 0), needs you (4), or nothing could start for `--max-wait` (3).
 - **A morning summary.** `barid digest --since 12h` (and the card "While you were away" in the panel) lists what ended with which outcome and where the report is, what runs, what stalled and what needs you.
+- **A wait that cannot end is not called a wait.** If a task waits for one that waits for a cancelled one, or for a holder whose lease ran out (its session is most likely gone), `next` says `4` (needs you) at once, not `3` for hours. A task you marked as sent still keeps its order: `claim` refuses it before what it needs.
+- **A worker that survives trouble.** `barid worker` stops its agent when you cancel or return the task, never blocks on a big prompt, stops what the agent left running in the background, closes the task as failed when the agent cannot even start, and gives up on a task that keeps coming back (`--max-attempts`).
+- **A short morning.** `barid overview` shows every session on one line, `barid accept-clean` (and one button in the panel, after a second click) accepts the reports that ended complete with no file warnings and leaves the rest for you to read, and a bell in the panel can remind you, only while the tab is in the background, when more things wait for you.
 
 More in [docs/UNATTENDED.md](docs/UNATTENDED.md).
 
@@ -170,16 +168,17 @@ More in [docs/UNATTENDED.md](docs/UNATTENDED.md).
 | **Details** | prompt text, notes, history, edit form, any status |
 | **Archive / Activity** | finished and cancelled tasks, the event log |
 
-English, Russian and Kazakh built in (auto-detected, pick one from the language list in the header; the texts written for your agents have their own language, taken from your system language when the board is created, changeable with `barid lang en|ru|kk`), light, dark or automatic mode and four colour palettes (Forest, Teal, Graphite, Midnight) from the *Appearance* button, works on a phone. The same menu lets you **name and colour each session** and say which **agent** runs in it (Claude Code, Codex, OpenCode, Gemini CLI, Cursor, Aider, a local model, or any name); the agent shows as a badge on the session. The panel polls only while its tab is visible and costs nothing when closed: the server exits after 30 idle minutes (`barid open --idle-exit 0` keeps it).
+English and Russian built in (auto-detected, pick one from the language list in the header; the texts written for your agents have their own language, taken from your system language when the board is created, changeable with `barid lang en|ru`), light, dark or automatic mode and four colour palettes (Forest, Teal, Graphite, Midnight) from the *Appearance* button, works on a phone. The same menu lets you **name and colour each session** and say which **agent** runs in it (Claude Code, Codex, OpenCode, Gemini CLI, Cursor, Aider, a local model, or any name); the agent shows as a badge on the session. The panel polls only while its tab is visible and costs nothing when closed: the server exits after 30 idle minutes (`barid open --idle-exit 0` keeps it).
 
 ![Details drawer](docs/img/panel-light-drawer.png)
 
 ## Command line
 
-Every command accepts `--json`. `barid --help` lists them all.
+Every command that reports data accepts `--json`; `template`, `check`, `gen` and `export` print plain text (read their exit codes). `barid --help` lists them all.
 
 ```bash
 barid init --lanes main,helper               # create .barid/board.json here
+# tasks added by an agent wait as proposals unless the planner is trusted (barid trust add planner --human)
 barid add T1 --lane main --title "Build" --text-file p.md --uses gpu --by planner
 barid add T2 --lane helper --title "Analyse" --outline "summarise T1's results" --needs T1 --by planner
 barid plan                                   # steps and what can run together
@@ -189,6 +188,9 @@ barid next --lane night --wait 300           # wait up to 5 minutes for a task t
 barid add T5 --lane night --after T4 --not-before 23:00 --timebox 8h --text-file p.md   # after T4 whatever its outcome, not before 23:00
 barid worker --lane night --cmd 'codex exec -'   # run a lane unattended: a fresh agent per task, lease kept, timebox enforced
 barid digest --since 12h                     # what happened while you were away
+barid overview                               # every session on one line (--brief for a status bar)
+barid accept-clean                           # person: accept every report that ended complete with no file warnings
+barid worker --lane night --cmd '...' --max-attempts 3   # a task that keeps coming back is closed as failed after 3 starts
 barid finish T1 --report reports/t1.md --by worker-a
 barid gen T2                                 # request that makes an agent write T2's prompt
 barid move T3 1                              # priority: earlier in the list = earlier slot in the plan
@@ -199,13 +201,13 @@ barid check T3                            # what could collide with it
 barid lint                                   # which tasks say too little to be checked against others
 barid explain T1 T2                           # why two tasks can or cannot run together
 barid add T4 --lane a --profile bench --uses gpu --text-file p.md   # profiles: light, dev, bench, attended (or `barid profile add`)
-barid lane edit a --title Builder --color "#7c5cff" --agent codex   # name, colour and agent of a session
-barid lane add tests --title Tests --agent codex       # a new session (or the "+" button in the panel)
+barid lane edit a --title Builder --color "#7c5cff" --agent codex --human   # name, colour and agent of a session
+barid lane add tests --title Tests --agent codex --human       # a new session (or the "+" button in the panel)
 barid connect tests                          # the first message to paste into that agent's window
 barid open                                   # panel;  barid export board.html  = read-only snapshot
 ```
 
-Person-only actions (`approve`, `accept`, `sent`, `status`, `restore`, `purge`, `trust`) need `--human` (or `BARID_ACTOR=human`); the panel does them for you. See [docs/PROTOCOL.md](docs/PROTOCOL.md) for every rule and the file format.
+Person-only actions (`approve`, `reject`, `accept`, `accept-clean`, `sent`, `status`, `restore`, `purge`, `trust`, `policy` when it sets a value) need `--human` (or `BARID_ACTOR=human`); the panel does them for you. See [docs/PROTOCOL.md](docs/PROTOCOL.md) for every rule and the file format.
 
 ## Safety model
 
@@ -214,7 +216,7 @@ Barid prevents accidents, not malice. Identities are self-declared (`--by`), so 
 - all writes are atomic and serialised by a file lock; two agents racing for one GPU cannot both win (tested with threads and processes);
 - agents cannot approve, accept, set arbitrary statuses, purge, or finish a task another agent holds;
 - file changes outside a task's declared scope, in another running task's scope or in protected paths are detected at the end of the task and keep dependents locked until you decide;
-- tasks are never deleted by agents, only cancelled; the event log is append-only;
+- tasks are never deleted by agents, only cancelled; the event log is only added to, and keeps the last 500 entries;
 - the panel server binds to loopback only, rejects foreign `Host` and `Origin` headers and writes only through one guarded endpoint (a custom header, so another website cannot post to it);
 - the panel never reads files named in tasks (report paths are shown, not opened).
 
@@ -224,7 +226,7 @@ Keep secrets out of prompts and notes: the board is plain JSON in your project f
 
 I built Barid for myself, to stop losing track of my own agent windows. If it is useful to you, please use it; ideas and bug reports are welcome, but it is a one-person project and I cannot promise fast answers.
 
-Version 0.4, used every day by its author to run two agent sessions. Linux is the tested home; macOS and Windows are covered by CI but have had little real-world use, and nothing here has been tried on AMD or Intel GPUs (Barid itself does not care about the GPU: it only tracks who holds a shared resource). Bug reports with the output of `barid doctor` are very welcome.
+Version 1.0. Used every day by its author to run two agent sessions, including long unattended nights. What is promised to stay the same is in [docs/COMPATIBILITY.md](docs/COMPATIBILITY.md): the board format, the exit codes and the command names will not break inside 1.x, and boards of every earlier release open. Linux is the tested home; macOS and Windows are covered by CI but have had little real-world use, and nothing here has been tried on AMD or Intel GPUs (Barid itself does not care about the GPU: it only tracks who holds a shared resource). Bug reports with the output of `barid doctor` are very welcome.
 
 ## Requirements and platforms
 

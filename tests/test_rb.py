@@ -337,7 +337,7 @@ class CoreTests(unittest.TestCase):
     def test_system_language_picks_the_default_board_language(self):
         old = {k: os.environ.get(k) for k in ("LC_ALL", "LC_MESSAGES", "LANG")}
         try:
-            for var, val, want in (("LANG", "ru_RU.UTF-8", "ru"), ("LANG", "kk_KZ.UTF-8", "kk"), ("LANG", "de_DE.UTF-8", "en")):
+            for var, val, want in (("LANG", "ru_RU.UTF-8", "ru"), ("LANG", "kk_KZ.UTF-8", "ru"), ("LANG", "de_DE.UTF-8", "en")):
                 for k in old:
                     os.environ.pop(k, None)
                 os.environ[var] = val
@@ -796,7 +796,8 @@ class PanelI18nTests(unittest.TestCase):
         if not node:
             raise unittest.SkipTest("node is not available")
         block = cls.html[cls.html.index("var STR = {"): cls.html.index("var S = {board:null")]
-        out = subprocess.run([node, "-e", block + "\nconsole.log(JSON.stringify(STR))"], capture_output=True, encoding="utf-8", check=True).stdout
+        # the script goes through stdin: as an argument it is longer than the Windows command line allows (WinError 206)
+        out = subprocess.run([node, "-"], input=block + "\nconsole.log(JSON.stringify(STR))", capture_output=True, encoding="utf-8", check=True).stdout
         cls.STR = json.loads(out)
 
     def flat(self, d, prefix=""):

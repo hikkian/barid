@@ -109,4 +109,4 @@ Touch only your own task. Never edit, cancel or delete other tasks. If the promp
 | panel | `barid open`, `barid serve`, `barid export FILE` |
 | health check | `barid doctor` |
 
-Every command accepts `--json` for machine-readable output. Full rules and the data format: `docs/PROTOCOL.md` in the repository.
+Every command that reports data accepts `--json` for machine-readable output (`template`, `check`, `gen` and `export` print plain text; read their exit codes). Full rules and the data format: `docs/PROTOCOL.md` in the repository.

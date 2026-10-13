@@ -1,0 +1,3 @@
+# Drafts
+
+Kazakh translations of the README and of the compatibility promise. They are **not published**: no link points here and the panel does not offer Kazakh. They were checked only by two AI passes (a blind back-translation and a comparison with the English), never by a native reader, and the person who owns the project decided to keep Kazakh out until one has reviewed them. When that has happened: move `README.kk.md` back to the project root as `README.kz.md` (or `README.kk.md`), `COMPATIBILITY.kk.md` to `docs/`, add the language back to the links at the top of the English and Russian versions, and show it in the panel (`LANGS_SHOWN` in `skills/barid/scripts/panel.html`).
