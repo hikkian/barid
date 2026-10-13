@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.0.0 (2026-10-13)
+
+**The 1.0 release.** The compatibility promise from 1.0.0-rc.1 stands unchanged: the board format, the exit codes and the command names do not break inside 1.x ([docs/COMPATIBILITY.md](docs/COMPATIBILITY.md), checked by `tests/test_contract.py`). Since the release candidate:
+
+- **Panel.** Focus stays inside dialogs; an edit saved from two tabs no longer overwrites the other one; typed text is never dropped silently; clear messages for a lost server, a damaged board, an empty search and switched-off sessions. "What to do now" is one row per session, a long unbroken string no longer makes the page scroll sideways, an open tab is told when `panel.html` was replaced, and "Got it" on the "While you were away" card also quiets the tasks that wait for your decision until that set changes.
+- **Documentation** was checked against the code (134 claims), the comparison table in the README against the other tools' own pages, and the how-it-works diagram is an SVG. Kazakh stays hidden until a native reader has reviewed it.
+- **Tests.** The panel i18n test passes its script through stdin, so it runs on Windows (a command-line argument was over the Windows length limit). CI is green on Linux, macOS and Windows with Python 3.9, 3.12 and 3.13.
+- **What this version has and has not been through.** The automated unattended scenarios (`tests/test_unattended.py`) cover the worker and the night loop; the real unattended nights behind the 1.0 contract ran on 0.6.x, and the author's own board has run on this version since 2026-10-13. Linux is the tested home; macOS and Windows are covered by CI only.
+
 ## 1.0.0-rc.1 (2026-10-07)
 
 **The 1.0 release candidate.** What stays the same inside 1.x is written down in [docs/COMPATIBILITY.md](docs/COMPATIBILITY.md) (also in Russian and Kazakh) and checked by `tests/test_contract.py`. 1.0.0 is tagged after a real unattended night on this version.

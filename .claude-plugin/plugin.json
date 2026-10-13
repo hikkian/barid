@@ -1,6 +1,6 @@
 {
   "name": "barid",
-  "version": "1.0.0-rc.1",
+  "version": "1.0.0",
   "description": "A shared prompt board for several AI agent sessions: order, dependencies, exclusive resources and a browser panel.",
   "author": {
     "name": "hikkian",
