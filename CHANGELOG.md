@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.0.1 (2026-10-14)
+
+**Two names for one file are one scope.** Suggested in a Reddit comment: a task that names a file through a symlink and a task that names its target must not run together.
+
+- **Symlinks** were already resolved (every scope goes through the real path before the conflict check); a test now pins it down for a link to a file and for a file inside a linked folder.
+- **Hard links** have no target to resolve, so two tasks naming the two names of one file could run at the same time. They are matched by file identity now, in the conflict check and in `barid check`. Only scopes that name an existing file are looked at: a folder scope does not find a link to one of its files elsewhere.
+- **macOS** does not tell `Src/a.py` from `src/a.py` by default, but Barid compared case only on Windows; such tasks could run together. Paths are compared without case on macOS too (on a case-sensitive volume this can only add a conflict, never hide one). Protected glob patterns keep the case they were written in, since glob matches names case-sensitively there.
+
 ## 1.0.0 (2026-10-13)
 
 **The 1.0 release.** The compatibility promise from 1.0.0-rc.1 stands unchanged: the board format, the exit codes and the command names do not break inside 1.x ([docs/COMPATIBILITY.md](docs/COMPATIBILITY.md), checked by `tests/test_contract.py`). Since the release candidate:
