@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.0.2 (2026-10-14)
+
+- **"What to do now" shows what the plan puts first.** Every queued task came before every draft, so a task queued to run after the last gate of the plan was shown for a session while the draft whose turn had come (step 1 in the order of work) was not. Work that can start, or starts as soon as a running task ends, still comes first; tasks that wait for other tasks and drafts now go by the plan.
+
 ## 1.0.1 (2026-10-14)
 
 **Two names for one file are one scope.** Suggested in a Reddit comment: a task that names a file through a symlink and a task that names its target must not run together.
