@@ -2043,8 +2043,11 @@ def lane_focus(comp: list, lanes: list, steps=None) -> dict:
         if running:
             pick = ("running", running)
         else:
-            # queued tasks come before drafts: a draft whose turn has come is only the answer when the session has nothing queued
-            open_ = [c for c in mine if c["state"] in ("ready", "blocked", "waiting")] or [c for c in mine if c["status"] == "draft"]
+            # work that can start (or starts as soon as a conflict ends) comes before drafts. A queued task that waits for other
+            # tasks does not: it would hide a draft the plan puts first (a task queued "after the last gate" showed instead of
+            # the draft whose turn had come), so waiting tasks and drafts go by the plan.
+            open_ = ([c for c in mine if c["state"] in ("ready", "blocked")]
+                     or [c for c in mine if c["state"] == "waiting" or c["status"] == "draft"])
             if open_:
                 first = min(open_, key=lambda c: (order.get(c["id"], (10 ** 6, 0)), mine.index(c)))
                 if first["state"] == "ready":

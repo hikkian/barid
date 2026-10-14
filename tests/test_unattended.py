@@ -467,6 +467,22 @@ class Focus(Base):
         self.assertEqual(view["focus"]["main"]["id"], "A")                 # a draft whose turn has come is not "what to do now" while work is queued
         self.assertEqual(view["focus"]["main"]["role"], "ready")
 
+    def test_a_queued_task_waiting_for_the_end_of_the_plan_does_not_hide_the_draft_whose_turn_came(self):
+        # the live board: every next step is a draft, and the only queued tasks of the session wait for the last gate
+        self.add("DEPLOY", lane="main", text="", draft=True)
+        self.add("GATE", lane="second", text="", draft=True, needs=["DEPLOY"])
+        self.add("LATER", lane="main", needs=["GATE"])
+        view = rb.board_view(self.path)
+        self.assertEqual(view["focus"]["main"]["id"], "DEPLOY")
+        self.assertEqual(view["focus"]["main"]["role"], "turn")
+        # the plan still decides between them: once the draft is cancelled, the waiting task is what the card shows, with its reason
+        rb.mutate(self.path, lambda d: rb.op_cancel(d, HUMAN, "DEPLOY", "x"))
+        rb.mutate(self.path, lambda d: rb.op_edit(d, HUMAN, "GATE", {"needs": []}))
+        view = rb.board_view(self.path)
+        self.assertEqual(view["focus"]["main"]["id"], "LATER")
+        self.assertEqual(view["focus"]["main"]["role"], "waiting")
+        self.assertIn("GATE", view["focus"]["main"]["hint"]["ids"])         # it waits for a draft: the person has to write it
+
     def test_hint_kinds_for_time_dependencies_and_the_person(self):
         self.add("A", lane="main", not_before="+2h")
         self.add("B", lane="second")
