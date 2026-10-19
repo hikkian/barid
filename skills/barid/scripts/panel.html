@@ -98,6 +98,8 @@ body.stale #now,body.stale #flow,body.stale #inboxwrap{opacity:.55}
 .flowhead{margin-bottom:6px}
 .lanehead{display:flex;align-items:center;gap:6px;font-size:12px;font-weight:700;color:var(--mute);border-bottom:2px solid var(--lane,var(--ac));padding-bottom:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 @media (max-width:760px){#flow{--cols:1}.step{grid-template-columns:1fr;min-width:0}.step .items{grid-template-columns:1fr}.step .item{grid-column:auto!important}.flowhead{display:none}}
+/* more sessions than the window has room for: one card under another (each card names its session), not columns cut off on the right */
+#flow.stacked .step{grid-template-columns:110px minmax(0,1fr);min-width:0}#flow.stacked .step .items{grid-template-columns:minmax(0,1fr)}#flow.stacked .step .item{grid-column:auto!important}#flow.stacked .flowhead{display:none}
 .item{background:var(--panel);border:1px solid var(--line);border-top:3px solid var(--lane,var(--ac));border-radius:12px;padding:10px 12px;min-width:240px;flex:1 1 260px;max-width:420px;cursor:pointer;text-align:left}
 .item:hover{border-color:var(--ac)}
 .item.sel{outline:2px solid var(--ac)}
@@ -695,7 +697,10 @@ function itemCard(c, step1) {
 
 function renderFlow() {
   var B = S.board, box = clear($("flow")), any = false;
-  var cols = B.lanes.filter(function (l) { return !S.laneOff[l.id]; }), col = {};
+  // a session with nothing in the order gets no column: empty columns only push the others out of the window
+  var used = {};
+  B.steps.forEach(function (ids) { ids.forEach(function (id) { var c = byId(id); if (c && match(c)) used[c.lane] = true; }); });
+  var cols = B.lanes.filter(function (l) { return !S.laneOff[l.id] && used[l.id]; }), col = {};
   cols.forEach(function (l, i) { col[l.id] = i + 1; });
   box.style.setProperty("--cols", String(Math.max(1, cols.length)));
   var head = null;
@@ -714,12 +719,24 @@ function renderFlow() {
     cs.forEach(function (c) { var el = itemCard(c, n === 0); el.style.gridColumn = String(col[c.lane] || 1); el.dataset.lane = c.lane; items.appendChild(el); });
     box.appendChild(h("div", {class: "step"}, sh, items));
   });
+  fitFlow(box, cols.length);
   if (!any) {
     // every session switched off in the bar is not the same as a board without tasks (FIXSCN3)
     var allOff = B.lanes.length > 0 && B.lanes.every(function (l) { return S.laneOff[l.id]; });
     box.appendChild(h("div", {class: "empty", text: allOff ? t("all_off") : S.q ? fmt(t("nothing_found"), {q: S.q}) : t("empty_flow")}));
   }
 }
+
+function fitFlow(box, n) {
+  // the columns need 122 px for the step label and about 200 px per session; when the window is narrower, stack the cards
+  box.classList.remove("stacked");
+  if (n > 1 && box.clientWidth && box.clientWidth < 122 + n * 200) box.classList.add("stacked");
+}
+var flowFitTimer = null;
+window.addEventListener("resize", function () {
+  clearTimeout(flowFitTimer);
+  flowFitTimer = setTimeout(function () { var box = $("flow"); if (box && S.board) fitFlow(box, (box.querySelectorAll(".flowhead .lanehead") || []).length); }, 150);
+});
 
 function renderArchive() {
   var box = clear($("archive")), cs = S.board.items.filter(function (c) { return (c.state === "done" || c.state === "cancelled") && match(c); });
