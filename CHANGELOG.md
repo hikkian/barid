@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.0.3 (2026-10-20)
+
+- **The order of work fits a narrow window.** With more sessions than the window had room for, the columns on the right were cut off (a sixth session could not be seen without finding a scrollbar far below). Now a session with nothing in the order gets no column, and when the remaining columns still do not fit, the cards stack one under another; each card keeps its session's name and colour. The columns come back when the window is wide enough.
+
 ## 1.0.2 (2026-10-14)
 
 - **"What to do now" shows what the plan puts first.** Every queued task came before every draft, so a task queued to run after the last gate of the plan was shown for a session while the draft whose turn had come (step 1 in the order of work) was not. Work that can start, or starts as soon as a running task ends, still comes first; tasks that wait for other tasks and drafts now go by the plan.

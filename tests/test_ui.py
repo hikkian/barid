@@ -274,6 +274,28 @@ class PanelInBrowser(unittest.TestCase):
         self.assertLessEqual(data["pageOverflow"], 0)
         self.assertNoJsErrors()
 
+    def test_more_sessions_than_room_stack_the_cards_and_an_empty_session_gets_no_column(self):
+        for lid in "cdef":
+            barid(self.board, "lane", "add", lid, "--title", "Agent " + lid)
+        for iid, lane in (("C1", "c"), ("D1", "d"), ("E1", "e"), ("B2", "b"), ("A2", "a")):
+            barid(self.board, "add", iid, "--lane", lane, "--title", "A rather long title of " + iid, "--text", "x", "--profile", "light")
+        self.b.cmd("WebDriver:SetWindowRect", {"width": 820, "height": 1000})
+        self.addCleanup(lambda: self.b.cmd("WebDriver:SetWindowRect", {"width": 1280, "height": 900}))
+        self.open()
+        self.b.wait("document.getElementById('flow').classList.contains('stacked')", what="the cards stacked in a narrow window")
+        data = json.loads(self.b.exec("""var cards = [].slice.call(document.querySelectorAll('#flow .step .item'));
+            return JSON.stringify({cards: cards.length, past: cards.filter(function (c) { return c.getBoundingClientRect().right > window.innerWidth + 1; }).length,
+                pageOverflow: document.documentElement.scrollWidth - window.innerWidth});"""))
+        self.assertGreaterEqual(data["cards"], 5)
+        self.assertEqual(data["past"], 0, "a card runs past the right edge of the window")
+        self.assertLessEqual(data["pageOverflow"], 0)
+        self.b.cmd("WebDriver:SetWindowRect", {"width": 1700, "height": 1000})
+        self.b.wait("!document.getElementById('flow').classList.contains('stacked')", what="columns again in a wide window")
+        heads = json.loads(self.b.exec("return JSON.stringify([].map.call(document.querySelectorAll('#flow .lanehead'), function (e) { return e.dataset.lane; }));"))
+        self.assertNotIn("f", heads, "a session with no task in the order still has a column")
+        self.assertTrue({"a", "b", "c", "d", "e"} <= set(heads))
+        self.assertNoJsErrors()
+
     def row_geometry(self, frame=None):
         """The session rows of the What-to-do-now area, in the window or in a frame of the page (a frame is how a phone width is tested here)."""
         scope = (f"var f = document.getElementById('{frame}'), d = f.contentDocument, w = f.contentWindow;" if frame else "var d = document, w = window;")
