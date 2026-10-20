@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 1.1.0 (2026-10-21)
 
 - **A resource for one part of a task.** `--uses gpu@demand` declares a resource the task needs only for some steps: it blocks nothing by itself.
   `barid hold gpu --task ID` takes it while the step runs (exit 0 taken, 3 busy, `--wait N` waits), `barid drop gpu --task ID` gives it back.
