@@ -103,6 +103,8 @@ Touch only your own task. Never edit, cancel or delete other tasks. If the promp
 | connect an agent window to a session | `barid connect L` prints the first message to paste into that window |
 | scopes, protection, isolation | `barid add ID --touches P`, `barid protect add P`, `barid worktree ID`, `barid check ID` |
 | take / finish / give back | `barid claim ID`, `barid finish ID --report P --outcome complete\|partial\|failed`, `barid release ID` |
+| a GPU for one step only | declare `--uses gpu@demand` on the task; while it runs: `barid hold gpu --task ID` (exit 0 taken, 3 busy; `--wait N` waits), `barid drop gpu --task ID` when done |
+| files only read | `barid add ID --reads P` (a warning when another task changes them, never a block) |
 | note, cancel | `barid note ID "text"`, `barid cancel ID --reason ...` |
 | prompt request for a draft | `barid gen ID` |
 | person's actions | `barid approve ID`, `barid accept ID`, `barid sent ID`, `barid status ID S` (with `--human`) |

@@ -1,5 +1,19 @@
 # Changelog
 
+## 1.1.0 (2026-10-21)
+
+- **A resource for one part of a task.** `--uses gpu@demand` declares a resource the task needs only for some steps: it blocks nothing by itself.
+  `barid hold gpu --task ID` takes it while the step runs (exit 0 taken, 3 busy, `--wait N` waits), `barid drop gpu --task ID` gives it back.
+  A hold is given back when the task finishes, is released or is purged, and it lives as long as the task's lease (a heartbeat renews it).
+- **A check for resources used outside Barid.** `barid resource add gpu --check 'pgrep -x llama-server'`: a hold refuses while the check prints
+  anything. The command runs without a shell, and a check that cannot run refuses rather than freeing the resource.
+- **Reads and writes.** `--reads PATHS` lists files a task only reads. Reading what another task changes is a warning in `claim` and `explain`,
+  never a block. Two writes to the same file still block.
+- **Hints when a claim is refused.** A file or GPU conflict says what to try: `--reads` or narrower paths; `@demand` and `hold` for a GPU that is
+  needed only later.
+- **Lint.** A task that declares `gpu@demand` is no longer told that it declares nothing, or that it does not use the GPU.
+- Existing boards load unchanged: holds, demand and reads default to empty.
+
 ## 1.0.3 (2026-10-20)
 
 - **The order of work fits a narrow window.** With more sessions than the window had room for, the columns on the right were cut off (a sixth session could not be seen without finding a scrollbar far below). Now a session with nothing in the order gets no column, and when the remaining columns still do not fit, the cards stack one under another; each card keeps its session's name and colour. The columns come back when the window is wide enough.

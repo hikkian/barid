@@ -16,6 +16,7 @@ import hashlib
 import json
 import os
 import re
+import shlex
 import socket
 import socketserver
 import subprocess
@@ -28,7 +29,7 @@ import webbrowser
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
-__version__ = "1.0.3"
+__version__ = "1.1.0"
 SCHEMA = 1
 HERE = Path(__file__).resolve().parent
 STATUSES = ("draft", "proposed", "queued", "sent", "running", "review", "done", "cancelled")
@@ -295,6 +296,7 @@ def load(path: Path) -> dict:
             raise _damaged(path, f"a task is broken: {str(i)[:80]}")
     d.setdefault("events", [])
     d.setdefault("resources", {})
+    d.setdefault("holds", {})
     d.setdefault("policy", {})
     if d.get("lang") == "kz":  # people write kz; the language code is kk
         d["lang"] = "kk"
@@ -651,7 +653,7 @@ def effective(d: dict, it: dict) -> dict:
 def is_described(d: dict, it: dict) -> bool:
     """Does the task say anything about what it needs? Without that there is nothing to check, and the panel must not claim a check."""
     e = effective(d, it)
-    return bool(e["uses"] or e["quiet"] or e["noisy"] or it.get("touches") or it.get("profile"))
+    return bool(e["uses"] or it.get("demand") or e["quiet"] or e["noisy"] or it.get("touches") or it.get("reads") or it.get("profile"))
 
 
 class PairCache:
@@ -659,7 +661,7 @@ class PairCache:
     its relative scopes live in and its normalised scopes (real paths: every one of them is a few system calls)."""
 
     def __init__(self, d: dict):
-        self.d, self._eff, self._root, self._scopes, self._links = d, {}, {}, {}, {}
+        self.d, self._eff, self._root, self._scopes, self._links, self._reads = d, {}, {}, {}, {}, {}
 
     def eff(self, it):
         if it["id"] not in self._eff:
@@ -680,6 +682,11 @@ class PairCache:
         if it["id"] not in self._links:
             self._links[it["id"]] = hard_links(self.scopes(it))
         return self._links[it["id"]]
+
+    def reads(self, it):
+        if it["id"] not in self._reads:
+            self._reads[it["id"]] = [norm_scope(self.d, x, self.root(it)) for x in it.get("reads", [])]
+        return self._reads[it["id"]]
 
 
 def conflicts_between(d: dict, a: dict, b: dict, cache: "PairCache | None" = None) -> list:
@@ -714,6 +721,22 @@ def conflicts_between(d: dict, a: dict, b: dict, cache: "PairCache | None" = Non
     return out
 
 
+def path_warnings(d: dict, a: dict, b: dict, cache: "PairCache | None" = None) -> list:
+    """Reads against writes: a task that only reads a file the other task changes is a warning, not a block (write against write blocks, see
+    conflicts_between). Read against read is nothing."""
+    if a["id"] == b["id"] or not (a.get("reads") or b.get("reads")):
+        return []
+    cache = cache or PairCache(d)
+    if _case(str(cache.root(a))) != _case(str(cache.root(b))):
+        return []
+    out = []
+    for reader, writer in ((a, b), (b, a)):
+        for x in cache.reads(reader):
+            if any(scopes_overlap(x, y) for y in cache.scopes(writer)):
+                out.append({"rule": "reads", "why": "reads:" + show_scope(d, x, cache.root(reader)), "reader": reader["id"], "writer": writer["id"]})
+    return out
+
+
 def conflict_reason(d: dict, a: dict, b: dict, cache: "PairCache | None" = None):
     """Why two tasks must not run at the same time (the first reason, None if they can)."""
     c = conflicts_between(d, a, b, cache)
@@ -736,7 +759,7 @@ def lint_task(d: dict, it: dict) -> list:
     out = []
     if not is_described(d, it):
         out.append({"code": "no_marks"})
-    if "gpu" in d.get("resources", {}) and "gpu" not in e["uses"] and _GPU_RE.search(text):
+    if "gpu" in d.get("resources", {}) and "gpu" not in e["uses"] and "gpu" not in it.get("demand", []) and _GPU_RE.search(text):
         out.append({"code": "gpu_missing"})
     if not e["noisy"] and _LOAD_RE.search(text):
         out.append({"code": "load_missing"})
@@ -789,7 +812,61 @@ def explain_pair(d: dict, a: dict, b: dict) -> dict:
     else:
         verdict = "ok"
     return {"a": a["id"], "b": b["id"], "described": {a["id"]: da, b["id"]: db}, "rules": rules, "related": related, "verdict": verdict,
-            "why": found[0]["why"] if found else ""}
+            "why": found[0]["why"] if found else "", "warnings": [f"{w['why']} ({w['reader']} reads, {w['writer']} changes)" for w in path_warnings(d, a, b)]}
+
+
+DEMAND_SUFFIX = "@demand"
+
+
+def split_uses(v) -> tuple:
+    """The `--uses` list split in two: `gpu` is needed for the whole task; `gpu@demand` only while the task holds it (`barid hold`).
+    A demand resource never blocks a claim by itself, so a task that codes first and measures later does not wait for the GPU all along."""
+    items = split_list(v)
+    uses = [x for x in items if not x.endswith(DEMAND_SUFFIX)]
+    demand = [x[: -len(DEMAND_SUFFIX)] for x in items if x.endswith(DEMAND_SUFFIX)]
+    return uses, [r for r in demand if r not in uses]
+
+
+def live_holds(d: dict, now=None) -> dict:
+    """The holds that still count. A lease that ran out is kept for STALE_GRACE_SECONDS (a computer that slept renews first); after that the
+    resource is free again."""
+    now = now or now_dt()
+    out = {}
+    for res, h in (d.get("holds") or {}).items():
+        ts = parse_ts(h.get("lease_until"))
+        if ts and (now - ts).total_seconds() <= STALE_GRACE_SECONDS:
+            out[res] = h
+    return out
+
+
+def _drop_holds(d: dict, iid: str) -> None:
+    """A task that ends, is released or is removed gives back everything it holds."""
+    for res in [r for r, h in (d.get("holds") or {}).items() if h.get("task") == iid]:
+        del d["holds"][res]
+
+
+def conflict_hint(why: str) -> str:
+    """What to try when a conflict refuses a claim (the same words for every command that shows it)."""
+    if why in ("lane", "quiet"):
+        return ""
+    if why.startswith(("paths:", "reads:")):
+        return "If the other task only reads these files, declare them with --reads instead of --touches; otherwise narrow the paths."
+    return f"If this task needs {why} only in a later step, declare --uses {why}@demand and run `barid hold {why}` when that step starts."
+
+
+def _resource_check(cmd: str) -> str:
+    """What a resource's check command prints, or '' when it finds nothing. The command runs without a shell, so the check itself is not in
+    what it searches; exit code 1 with no output means 'nothing found' (as pgrep does)."""
+    try:
+        argv = shlex.split(cmd, posix=os.name != "nt")
+        if os.name == "nt":                       # non-POSIX splitting keeps the quotes: strip them so that a quoted program path runs
+            argv = [a[1:-1] if len(a) >= 2 and a[0] == a[-1] == '"' else a for a in argv]
+        r = subprocess.run(argv, capture_output=True, text=True, timeout=10)
+    except subprocess.TimeoutExpired:
+        return "the check did not finish in 10 seconds"
+    except (OSError, ValueError) as e:
+        return f"the check could not run ({e})"
+    return (r.stdout + r.stderr).strip()
 
 
 # ----------------------------------------------------------------------------- what ran next to what (a record that does not depend on the marks)
@@ -878,6 +955,7 @@ def compute(d: dict, now=None) -> list:
     now = now or now_dt()
     items = {i["id"]: i for i in d["items"]}
     cache = PairCache(d)
+    holds = live_holds(d, now)
     eff = {i["id"]: cache.eff(i) for i in d["items"]}
     closure = {}
 
@@ -916,6 +994,10 @@ def compute(d: dict, now=None) -> list:
                 r = conflict_reason(d, i, a, cache)
                 if r:
                     c["conflicts"].append({"id": a["id"], "why": r, **({"stale": True} if a["gone"] else {})})
+        for res in cache.eff(i)["uses"]:
+            h = holds.get(res)
+            if h and h.get("task") != c["id"] and h.get("task") in items:
+                c["conflicts"].append({"id": h["task"], "why": res})
         waits = i["status"] in ("queued", "sent")
         c["reasons"] = wait_reasons(d, items, i, c["waiting_on"], c["begin_in"], c["conflicts"]) if waits else []
         if i["status"] == "queued":
@@ -1107,9 +1189,9 @@ def op_add(d: dict, actor: Actor, f: dict) -> dict:
     if any(i["id"] == iid for i in d["items"]):
         raise RBError(f"task {iid} already exists", "exists", id=iid)
     lane = f.get("lane") or d["lanes"][0]["id"]
-    needs, uses = split_list(f.get("needs")), split_list(f.get("uses"))
+    needs, (uses, demand) = split_list(f.get("needs")), split_uses(f.get("uses"))
     after = [n for n in split_list(f.get("after")) if n not in needs]
-    check_refs(d, lane, needs, uses, after)
+    check_refs(d, lane, needs, uses + demand, after)
     not_before = parse_when(f.get("not_before") or "")
     timebox = parse_minutes(f.get("timebox"))
     profile = (f.get("profile") or "").strip()
@@ -1122,7 +1204,7 @@ def op_add(d: dict, actor: Actor, f: dict) -> dict:
     if not direct_allowed(d, actor):
         status = "proposed"
     item = {
-        "id": iid, "lane": lane, "title": (f.get("title") or iid).strip(), "status": status, "needs": needs, "after": after, "uses": uses,
+        "id": iid, "lane": lane, "title": (f.get("title") or iid).strip(), "status": status, "needs": needs, "after": after, "uses": uses, "demand": demand, "reads": split_list(f.get("reads")),
         "not_before": not_before, "timebox": timebox,
         "quiet": bool(f.get("quiet")), "noisy": bool(f.get("noisy")), "profile": profile, "lint_ok": lint_ok,
         "when": f.get("when") or "", "outline": f.get("outline") or "", "touches": split_list(f.get("touches")), "workdir": f.get("workdir") or "", "branch": f.get("branch") or "",
@@ -1169,11 +1251,13 @@ def op_edit(d: dict, actor: Actor, iid: str, f: dict) -> dict:
     if f.get("timebox") is not None:
         it["timebox"] = parse_minutes(f["timebox"])
     if f.get("uses") is not None:
-        uses = split_list(f["uses"])
-        check_refs(d, None, None, uses)
-        it["uses"] = uses
+        uses, demand = split_uses(f["uses"])
+        check_refs(d, None, None, uses + demand)
+        it["uses"], it["demand"] = uses, demand
     if f.get("touches") is not None:
         it["touches"] = split_list(f["touches"])
+    if f.get("reads") is not None:
+        it["reads"] = split_list(f["reads"])
     for k in ("workdir", "branch"):
         if f.get(k) is not None:
             it[k] = f[k]
@@ -1254,6 +1338,7 @@ def op_cancel(d: dict, actor: Actor, iid: str, reason: str = "") -> dict:
         raise RBError(f"{iid} is running: its owner must `release` or `finish` it first")
     it["status"] = "cancelled"
     it["claim"] = None
+    _drop_holds(d, iid)
     it["updated"] = item_stamp()
     if reason:
         it["notes"].append({"t": now_iso(), "by": actor.name, "text": f"cancelled: {reason}"})
@@ -1305,7 +1390,9 @@ def refusal_for(iid: str, reasons: list) -> RBError | None:
         ids = [x["id"] for x in reasons if x["code"] == "dependency"]
         return RBError(f"{iid} must wait for: {', '.join(ids)}", "waiting", id=iid, ids=ids, reasons=reasons)
     other = [x["id"] for x in reasons if x["code"] == "conflict"]
-    return RBError(f"refused: {other[0]} conflicts on '{r['why']}'; wait for it to finish, or ask the person", "conflict", id=iid, ids=other, reasons=reasons)
+    hint = conflict_hint(r["why"])
+    return RBError(f"refused: {other[0]} conflicts on '{r['why']}'; wait for it to finish, or ask the person" + (f". {hint}" if hint else ""),
+                   "conflict", id=iid, ids=other, reasons=reasons)
 
 
 def op_seen(d: dict, lane_id: str, by: str, state: str, task: str = "", reason: str = "") -> None:
@@ -1344,6 +1431,11 @@ def op_claim(d: dict, actor: Actor, iid: str, force: bool = False, lease_minutes
     hours = float(d.get("policy", {}).get("lease_hours", 12))
     timebox = int(it.get("timebox") or 0)
     lease = dt.timedelta(minutes=lease_minutes) if lease_minutes else dt.timedelta(hours=max(hours, (timebox + 60) / 60 if timebox else 0))
+    cache = PairCache(d)
+    for other in d["items"]:
+        if other["status"] == "running" and other["id"] != iid:
+            for w in path_warnings(d, it, other, cache):
+                warnings.append(f"{w['reader']} reads {w['why'][6:]}, which {w['writer']} changes (a warning, not a block)")
     it["status"] = "running"
     it.pop("outcome", None)
     it["claim"] = {"by": actor.name, "at": now_iso(), "lease_until": (now_dt() + lease).isoformat(), "signal": now_iso()}
@@ -1413,6 +1505,7 @@ def op_finish(d: dict, actor: Actor, iid: str, report: str = "", note: str = "",
     it["outcome"] = outcome
     it["report"] = report or it.get("report", "")
     it["claim"] = None
+    _drop_holds(d, iid)
     op_seen(d, it["lane"], actor.name, "idle", "", f"finished {iid}")
     it["updated"] = item_stamp()
     if note:
@@ -1448,8 +1541,51 @@ def op_heartbeat(d: dict, actor: Actor, iid: str, lease_minutes: int = 0) -> dic
     minutes = lease_minutes if lease_minutes else int(max(hours, (timebox + 60) / 60 if timebox else 0) * 60)
     it["claim"]["lease_until"] = (now_dt() + dt.timedelta(minutes=minutes)).isoformat()
     it["claim"]["signal"] = now_iso()
+    for h in (d.get("holds") or {}).values():          # the holds of this task live as long as its claim
+        if h.get("task") == iid:
+            h["lease_until"] = it["claim"]["lease_until"]
     op_seen(d, it["lane"], actor.name, "working", iid)
     return it
+
+
+def op_hold(d: dict, actor: Actor, iid: str, res: str, busy_outside: str = "") -> dict:
+    """A running task takes a resource it declared as NAME@demand, for as long as it needs it. Refused with a conflict (exit code 3) when another
+    running task uses the resource for the whole task, another task holds it, or the check command found something Barid did not start."""
+    it = get_item(d, iid)
+    _owner_check(it, actor, False, "hold")
+    if it["status"] != "running":
+        raise RBError(f"{iid} is {it['status']}: only a running task can hold a resource", "wrong_state", id=iid, status=it["status"])
+    if res not in d.get("resources", {}):
+        raise RBError(f"unknown resource {res!r}; define it with `barid resource add {res}`", "unknown_resource", name=res)
+    if res in effective(d, it)["uses"]:
+        return {"resource": res, "task": iid, "how": "whole task"}
+    if res not in it.get("demand", []):
+        raise RBError(f"{iid} does not declare {res}@demand: add it with `barid edit {iid} --uses {res}@demand`", "undeclared", id=iid, name=res)
+    holds = live_holds(d)
+    h = holds.get(res)
+    mine = bool(h and h.get("task") == iid)
+    if d["resources"][res].get("exclusive", True):
+        for other in d["items"]:
+            if other["id"] != iid and other["status"] == "running" and res in effective(d, other)["uses"]:
+                raise RBError(f"{res} is used by {other['id']} for the whole task: wait for it to finish", "conflict", id=iid, ids=[other["id"]], why=res)
+        if h and not mine:
+            raise RBError(f"{res} is held by {h['task']} (since {local_time(h.get('at', ''))}, by {h.get('by', '?')}): wait for it, or ask the person",
+                          "conflict", id=iid, ids=[h["task"]], why=res)
+        if busy_outside and not mine:
+            raise RBError(f"{res} is busy outside Barid: {busy_outside[:300]}. Wait for it, or ask the person to stop it", "conflict", id=iid, why=res)
+    d.setdefault("holds", {})[res] = {"task": iid, "by": actor.name, "at": now_iso(), "lease_until": it["claim"]["lease_until"]}
+    log_event(d, actor, "hold", iid, res)
+    return {"resource": res, "task": iid, "how": "demand", "until": it["claim"]["lease_until"]}
+
+
+def op_drop(d: dict, actor: Actor, iid: str, res: str) -> dict:
+    it = get_item(d, iid)
+    _owner_check(it, actor, False, "drop")
+    if (d.get("holds") or {}).get(res, {}).get("task") != iid:
+        raise RBError(f"{iid} does not hold {res}", "not_held", id=iid, name=res)
+    del d["holds"][res]
+    log_event(d, actor, "drop", iid, res)
+    return {"resource": res, "task": iid}
 
 
 def op_release(d: dict, actor: Actor, iid: str, force: bool = False) -> dict:
@@ -1460,6 +1596,7 @@ def op_release(d: dict, actor: Actor, iid: str, force: bool = False) -> dict:
     _close_run(it)
     it["status"] = "queued"
     it["claim"] = None
+    _drop_holds(d, iid)
     it["updated"] = item_stamp()
     log_event(d, actor, "release", iid)
     return it
@@ -1509,7 +1646,8 @@ def status_summary(d: dict, now=None) -> dict:
             since = parse_ts(cl.get("at"))
             row.update(by=cl.get("by", ""), **{"for": int((now - since).total_seconds()) if since else None})
         lanes.append(row)
-    return {"lanes": lanes, "stuck": sum(1 for x in lanes if x["next"] == NEXT_STUCK or x["stale"]), "to_accept": sum(1 for c in comp if c["status"] == "review"), "clean": sum(1 for c in comp if is_clean_report(c)),
+    holds = {k: {"task": v["task"], "by": v.get("by", ""), "at": v.get("at", "")} for k, v in live_holds(d, now).items()}
+    return {"holds": holds, "lanes": lanes, "stuck": sum(1 for x in lanes if x["next"] == NEXT_STUCK or x["stale"]), "to_accept": sum(1 for c in comp if c["status"] == "review"), "clean": sum(1 for c in comp if is_clean_report(c)),
             "proposals": sum(1 for c in comp if c["status"] == "proposed"), "ready": sum(1 for c in comp if c["state"] == "ready")}
 
 
@@ -1531,6 +1669,8 @@ def status_text(g: dict, brief: bool = False) -> str:
             what = {"task": f"next: {x['next_id']}", "wait": "waits for something that ends by itself", "stuck": "STUCK: needs you", "none": "nothing queued"}[x["next"]]
         sig = f"  (signal {fmt_in(x['signal_ago'])} ago)" if x["signal_ago"] is not None else ""
         out.append(f"{x['id']:<10} {x['state']:<8} {what}{sig}")
+    for res, h in (g.get("holds") or {}).items():
+        out.append(f"{res:<10} held by {h['task']} ({h.get('by', '')}, since {local_time(h.get('at', ''))})")
     out.append("Needs you: " + (", ".join(tail) if tail else "nothing") + (f"  ({g['clean']} clean: `accept-clean`)" if g["clean"] > 1 else ""))
     return "\n".join(out)
 
@@ -1654,6 +1794,7 @@ def op_purge(d: dict, actor: Actor, iid: str) -> None:
     if any(iid in deps_of(i) for i in d["items"] if i["id"] != iid):
         raise RBError(f"other tasks still need {iid}")
     d["items"].remove(it)
+    _drop_holds(d, iid)
     log_event(d, actor, "purge", iid)
 
 
@@ -2138,6 +2279,7 @@ def board_view(path: Path) -> dict:
     return {
         "version": __version__, "project": d.get("project", ""), "rev": d.get("rev", 0), "updated": d.get("updated"),
         "lang": d.get("lang", "en"), "lanes": d["lanes"], "resources": d.get("resources", {}),
+        "holds": {k: {"task": v["task"], "by": v.get("by", ""), "at": v.get("at", "")} for k, v in live_holds(d).items()},
         "policy": {k: d.get("policy", {}).get(k) for k in ("dependents_wait_for_accept", "lease_hours", "footer", "direct_agents")},
         "items": comp, "profiles": all_profiles(d), "steps": steps, "next_by_lane": now_by_lane, "focus": lane_focus(comp, d["lanes"], steps), "summary": focus_summary(lane_focus(comp, d["lanes"], steps)), "events": d.get("events", [])[-60:],
         "proposed": [c["id"] for c in comp if c["state"] == "proposed"],
@@ -2472,7 +2614,7 @@ def apply_action(board: Path, req: dict):
             f["id"] = iid
             return op_add(d, h, f)["id"]
         if a == "edit":
-            f = {k: args.get(k) for k in ("title", "lane", "needs", "after", "uses", "quiet", "noisy", "profile", "lint_ok", "when", "outline", "text", "touches",
+            f = {k: args.get(k) for k in ("title", "lane", "needs", "after", "uses", "quiet", "noisy", "profile", "lint_ok", "when", "outline", "text", "touches", "reads",
                                           "workdir", "branch", "not_before", "timebox", "seen_updated") if k in args}
             return op_edit(d, h, iid, f)["id"]
         if a == "status":
@@ -2649,7 +2791,7 @@ def cmd_add(args):
     f = {"id": args.id, "lane": args.lane, "title": args.title, "needs": args.needs, "after": args.after, "not_before": args.not_before,
          "timebox": args.timebox, "uses": args.uses, "quiet": args.quiet,
          "noisy": args.noisy, "when": args.when, "outline": args.outline, "text": read_text_arg(args), "draft": args.draft,
-         "touches": args.touches, "workdir": args.workdir, "profile": args.profile, "lint_ok": ",".join(args.lint_ok or [])}
+         "touches": args.touches, "reads": getattr(args, "reads", None), "workdir": args.workdir, "profile": args.profile, "lint_ok": ",".join(args.lint_ok or [])}
     item = mutate(board, lambda d: op_add(d, cli_actor(args), f))
     out(args, item, f"{item['id']} added as {item['status']}" + (" (waiting for the person to approve it)" if item["status"] == "proposed" else ""))
     print_lint(board, item["id"], args)
@@ -2659,7 +2801,7 @@ def cmd_edit(args):
     board = find_board(getattr(args, "board", None))
     f = {"title": args.title, "lane": args.lane, "needs": args.needs, "after": args.after, "not_before": args.not_before, "timebox": args.timebox,
          "uses": args.uses, "when": args.when, "outline": args.outline,
-         "quiet": args.quiet, "noisy": args.noisy, "text": read_text_arg(args), "touches": args.touches, "workdir": args.workdir,
+         "quiet": args.quiet, "noisy": args.noisy, "text": read_text_arg(args), "touches": args.touches, "reads": getattr(args, "reads", None), "workdir": args.workdir,
          "profile": args.profile}
     if args.lint_ok is not None:
         f["lint_ok"] = ",".join(args.lint_ok)
@@ -2709,6 +2851,8 @@ def cmd_explain(args):
         return
     for r in ex["rules"]:
         print(f"{'CONFLICT' if r['hit'] else 'ok      '} {r['rule']:<9} {r['detail']}")
+    for w in ex.get("warnings", []):
+        print(f"warning  reads     {w}")
     marks = ", ".join(f"{i}: {'described' if v else 'NOT described'}" for i, v in ex["described"].items())
     verdict = {"conflict": f"must not run together ({ex['why']})", "related": "one depends on the other, so they cannot run together anyway",
                "unchecked": "no conflict found, but not checked: at least one of them declares nothing", "ok": "can run together (checked)"}[ex["verdict"]]
@@ -3302,6 +3446,8 @@ def cmd_check(args):
     it = get_item(d, args.id)
     mine = own_scopes(d, it)
     print(f"{it['id']}: scope = {', '.join(it.get('touches', [])) or '(not declared)'}" + (f"  in {it['workdir']}" if it.get("workdir") else ""))
+    if it.get("reads"):
+        print(f"{it['id']}: reads = {', '.join(it['reads'])} (only read: a warning, never a block, when another task changes them)")
     found = 0
     for o in d["items"]:
         if o["id"] == it["id"] or o["status"] in ("done", "cancelled") or not o.get("touches"):
@@ -3359,16 +3505,59 @@ def cmd_resource(args):
     name = _add_word(args.words, "resource")
     if name is None:
         res = load(board).get("resources", {})
-        out(args, res, "\n".join(f"{k:<12} {v.get('label', k)}{'' if v.get('exclusive', True) else ' (shared)'}" for k, v in res.items()))
+        holds = live_holds(load(board))
+        lines = []
+        for k, v in res.items():
+            h = holds.get(k)
+            held = f"  held by {h['task']} since {local_time(h.get('at', ''))}" if h else ""
+            chk = f"  check: {v['check']}" if v.get("check") else ""
+            lines.append(f"{k:<12} {v.get('label', k)}{'' if v.get('exclusive', True) else ' (shared)'}{held}{chk}")
+        out(args, res, "\n".join(lines))
         return
     args.name = name
 
     def fn(d):
         require_human_or_direct(d, actor)
-        d.setdefault("resources", {})[args.name] = {"label": args.label or args.name, "exclusive": not args.shared}
+        entry = {"label": args.label or args.name, "exclusive": not args.shared}
+        old = d.setdefault("resources", {}).get(args.name, {})
+        if args.check or old.get("check"):
+            entry["check"] = args.check or old["check"]
+        d["resources"][args.name] = entry
         log_event(d, actor, "resource", args.name)
     mutate(board, fn)
     print(f"resource {args.name} saved")
+
+
+def cmd_hold(args):
+    """Take a resource a task declared as NAME@demand, while the task needs it. Exit 0 when taken; 3 when it is busy (who holds it, or what
+    the check found). With --wait SECONDS it waits for the resource instead of refusing at once."""
+    board = find_board(getattr(args, "board", None))
+    actor = cli_actor(args)
+    wait = max(0, int(getattr(args, "wait", 0) or 0))
+    started = time.monotonic()
+    last_note = -60.0
+    while True:
+        check_cmd = (load(board).get("resources", {}).get(args.resource) or {}).get("check")
+        busy = _resource_check(check_cmd) if check_cmd else ""
+        try:
+            res = mutate(board, lambda dd: op_hold(dd, actor, args.task, args.resource, busy_outside=busy))
+            break
+        except RBError as e:
+            if e.code != "conflict" or time.monotonic() - started >= wait:
+                raise
+            elapsed = time.monotonic() - started
+            if elapsed - last_note >= 60:
+                print(f"[barid] still waiting after {int(elapsed)}s: {e}", file=sys.stderr, flush=True)
+                last_note = elapsed
+            time.sleep(min(5.0, max(0.1, wait - elapsed)))
+    out(args, res, f"{args.resource} held by {args.task} ({res['how']})")
+
+
+def cmd_drop(args):
+    board = find_board(getattr(args, "board", None))
+    actor = cli_actor(args)
+    res = mutate(board, lambda dd: op_drop(dd, actor, args.task, args.resource))
+    out(args, res, f"{args.resource} given back by {args.task}")
 
 
 def cmd_context(args):
@@ -3493,12 +3682,13 @@ def build_parser() -> argparse.ArgumentParser:
     s.add_argument("--lane")
     s.add_argument("--title")
     s.add_argument("--needs", help="comma list of task ids that must be finished first")
-    s.add_argument("--uses", help="comma list of exclusive resources, e.g. gpu,user")
+    s.add_argument("--uses", help="comma list of exclusive resources, e.g. gpu,user; NAME@demand = only while the task holds it (`barid hold NAME`)")
     s.add_argument("--quiet", action="store_true", help="needs a quiet machine (no noisy task in parallel)")
     s.add_argument("--noisy", action="store_true", help="loads CPU or the desktop (blocks quiet tasks)")
     s.add_argument("--profile", help="a bundle of marks: light, dev, bench, attended or your own (`barid profile list`)")
     s.add_argument("--lint-ok", action="append", metavar="CODE", help="silence one suggestion of `barid lint` for this task (repeatable)")
     s.add_argument("--touches", help="comma list of files, folders or globs this task may change; tasks with overlapping scopes never run together")
+    s.add_argument("--reads", help="comma list of files this task only reads: a warning when another task changes them, never a block")
     s.add_argument("--workdir", help="the only checkout this task may work in (see `worktree`)")
     s.add_argument("--after", help="comma list of task ids to run after, whatever their outcome (`--needs` waits for a successful or accepted one)")
     s.add_argument("--not-before", dest="not_before", help="earliest start: 23:00 (next time it is 23:00), '2026-10-07 23:00', +90m, +3h, +1d; empty clears it")
@@ -3511,7 +3701,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     s = add("edit", cmd_edit, "change a task")
     s.add_argument("id")
-    for k in ("title", "lane", "needs", "after", "uses", "when", "outline", "text", "text-file", "touches", "workdir", "not-before", "timebox"):
+    for k in ("title", "lane", "needs", "after", "uses", "when", "outline", "text", "text-file", "touches", "reads", "workdir", "not-before", "timebox"):
         s.add_argument("--" + k)
     s.add_argument("--quiet", action=argparse.BooleanOptionalAction, default=None)
     s.add_argument("--noisy", action=argparse.BooleanOptionalAction, default=None)
@@ -3636,6 +3826,14 @@ def build_parser() -> argparse.ArgumentParser:
     s.add_argument("words", nargs="+", metavar="[add] NAME")
     s.add_argument("--label")
     s.add_argument("--shared", action="store_true", help="not exclusive")
+    s.add_argument("--check", help="a command whose output says something uses the resource outside Barid (e.g. pgrep -f llama-server): hold refuses while it prints anything")
+    s = add("hold", cmd_hold, "a running task takes a resource it declared as NAME@demand while it needs it: exit 0 when taken, 3 when busy")
+    s.add_argument("resource")
+    s.add_argument("--task", required=True, help="the running task that takes it")
+    s.add_argument("--wait", type=int, default=0, metavar="SECONDS", help="wait up to this long for the resource instead of refusing at once")
+    s = add("drop", cmd_drop, "give back a resource a running task holds")
+    s.add_argument("resource")
+    s.add_argument("--task", required=True, help="the running task that gives it back")
     s = add("context", cmd_context, "files agents should read when generating prompts")
     s.add_argument("action", choices=["add", "remove", "list"])
     s.add_argument("path", nargs="?")
