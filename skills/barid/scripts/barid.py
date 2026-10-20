@@ -859,6 +859,8 @@ def _resource_check(cmd: str) -> str:
     what it searches; exit code 1 with no output means 'nothing found' (as pgrep does)."""
     try:
         argv = shlex.split(cmd, posix=os.name != "nt")
+        if os.name == "nt":                       # non-POSIX splitting keeps the quotes: strip them so that a quoted program path runs
+            argv = [a[1:-1] if len(a) >= 2 and a[0] == a[-1] == '"' else a for a in argv]
         r = subprocess.run(argv, capture_output=True, text=True, timeout=10)
     except subprocess.TimeoutExpired:
         return "the check did not finish in 10 seconds"
