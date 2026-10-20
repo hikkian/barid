@@ -501,6 +501,11 @@ function tags(c) {
   var out = [], e = c.effective || {uses: c.uses || [], quiet: c.quiet, noisy: c.noisy};
   if (c.profile) out.push(h("span", {class: "tag", style: "color:var(--ac)", text: "◆ " + profLabel(c.profile)}));
   (e.uses || []).forEach(function (r) { out.push(h("span", {class: "tag res", text: (S.board.resources[r] && S.board.resources[r].label) || r})); });
+  (c.demand || []).forEach(function (r) {
+    var label = (S.board.resources[r] && S.board.resources[r].label) || r, hd = (S.board.holds || {})[r];
+    var mine = hd && hd.task === c.id;
+    out.push(h("span", {class: "tag res", title: hd ? "held by " + hd.by + " since " + hd.at : "needed for one step: barid hold " + r + " --task " + c.id, text: (mine ? "\u25CF " : "\u23F3 ") + label}));
+  });
   if ((c.touches || []).length) out.push(h("span", {class: "tag", title: c.touches.join(", "), text: "📁 " + c.touches[0] + (c.touches.length > 1 ? " +" + (c.touches.length - 1) : "")}));
   if (e.quiet) out.push(h("span", {class: "tag", text: "🔇 " + t("quiet")}));
   if (e.noisy) out.push(h("span", {class: "tag", text: "🔊 " + t("noisy")}));

@@ -174,6 +174,27 @@ class HoldsEndWithTheTask(unittest.TestCase):
         self.assertEqual(cm.exception.code, "not_held")
 
 
+class PanelData(unittest.TestCase):
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self._tmp.cleanup)
+        self.path = new_board(self._tmp.name)
+        add(self.path, "CODE", lane="a", uses="gpu@demand")
+        rb.claim_task(self.path, AGENT_A, "CODE")
+
+    def test_the_board_view_carries_the_holds_for_the_panel(self):
+        self.assertEqual(rb.board_view(self.path)["holds"], {})
+        rb.mutate(self.path, lambda d: rb.op_hold(d, AGENT_A, "CODE", "gpu"))
+        held = rb.board_view(self.path)["holds"]["gpu"]
+        self.assertEqual((held["task"], held["by"]), ("CODE", "agent-a"))
+        rb.mutate(self.path, lambda d: rb.op_drop(d, AGENT_A, "CODE", "gpu"))
+        self.assertEqual(rb.board_view(self.path)["holds"], {})
+
+    def test_the_panel_card_knows_the_demand_resource(self):
+        item = next(i for i in rb.board_view(self.path)["items"] if i["id"] == "CODE")
+        self.assertEqual(item["demand"], ["gpu"])
+
+
 class CheckCommand(unittest.TestCase):
     def test_nothing_printed_means_nothing_found(self):
         self.assertEqual(rb._resource_check(f'"{sys.executable}" -c pass'), "")

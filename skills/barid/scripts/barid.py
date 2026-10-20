@@ -2279,6 +2279,7 @@ def board_view(path: Path) -> dict:
     return {
         "version": __version__, "project": d.get("project", ""), "rev": d.get("rev", 0), "updated": d.get("updated"),
         "lang": d.get("lang", "en"), "lanes": d["lanes"], "resources": d.get("resources", {}),
+        "holds": {k: {"task": v["task"], "by": v.get("by", ""), "at": v.get("at", "")} for k, v in live_holds(d).items()},
         "policy": {k: d.get("policy", {}).get(k) for k in ("dependents_wait_for_accept", "lease_hours", "footer", "direct_agents")},
         "items": comp, "profiles": all_profiles(d), "steps": steps, "next_by_lane": now_by_lane, "focus": lane_focus(comp, d["lanes"], steps), "summary": focus_summary(lane_focus(comp, d["lanes"], steps)), "events": d.get("events", [])[-60:],
         "proposed": [c["id"] for c in comp if c["state"] == "proposed"],
