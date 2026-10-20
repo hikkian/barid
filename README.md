@@ -141,6 +141,28 @@ When a task finishes, Barid also asks git what changed since the claim and flags
 
 This is **detection plus convention, not a sandbox**: an agent can still write any file it has permission to write. The prompt tells it the rules, the worktree keeps its changes apart, and Barid makes violations impossible to miss. For hard guarantees combine it with OS-level permissions or containers.
 
+### A GPU for one part of a task (`@demand`, `hold`)
+
+A task that codes for an hour and measures for ten minutes should not keep the GPU all that time. Declare the resource as needed
+later, and take it when that step starts:
+
+```bash
+barid add T1 --uses gpu@demand --text "..."     # declares the GPU without holding it: it blocks nothing by itself
+barid hold gpu --task T1                          # exit 0: taken; exit 3: busy (who holds it, or what the check found)
+barid hold gpu --task T1 --wait 600               # or wait up to ten minutes for it
+barid drop gpu --task T1                          # give it back (it is also given back when the task ends)
+barid resource add gpu --check 'pgrep -x llama-server'   # the person defines it: hold refuses while anything outside Barid runs
+```
+
+A task that uses the GPU for the whole task (`--uses gpu`) still gets it for the whole task: a `hold` waits while another task uses
+the GPU that way, and a claim waits while a task holds it. A hold lasts as long as the task's lease: a heartbeat renews it, and
+when the lease has run out for longer than the grace period, the resource is free again.
+
+### Reads and writes
+
+`--reads` lists the files a task only reads. If another task changes one of them, `claim` says so and `explain` shows it: a warning,
+never a block. Two tasks that both change a file still block each other (`--touches`).
+
 ## Nights and unattended runs
 
 For work that runs while nobody watches (an overnight benchmark chain, a long queue of tasks), Barid borrows what batch schedulers settled long ago:
