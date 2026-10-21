@@ -185,7 +185,7 @@ class CoreTests(unittest.TestCase):
         rb.mutate(self.path, lambda d: rb.op_restore(d, HUMAN, "P"))
         self.assertEqual(self.state("P")["status"], "queued")
 
-    def test_edit_replace_is_exact_and_draft_becomes_queued(self):
+    def test_edit_replace_is_exact_and_first_prompt_queues_an_empty_draft(self):
         add(self.path, PLANNER, "A", lane="main", text="")
         rb.mutate(self.path, lambda d: rb.op_edit(d, PLANNER, "A", {"text": "hello world"}))
         self.assertEqual(self.state("A")["status"], "queued")
@@ -193,6 +193,37 @@ class CoreTests(unittest.TestCase):
         self.assertEqual(rb.load(self.path)["items"][0]["text"], "hello there")
         with self.assertRaises(rb.RBError):
             rb.mutate(self.path, lambda d: rb.op_edit(d, PLANNER, "A", {"replace": ["zzz", "q"]}))
+
+    def test_first_prompt_on_an_agent_draft_becomes_a_proposal(self):
+        add(self.path, AGENT, "P", lane="main", text="")
+        rb.mutate(self.path, lambda d: rb.op_set_status(d, HUMAN, "P", "draft"))
+        self.assertEqual(self.state("P")["status"], "draft")
+        rb.mutate(self.path, lambda d: rb.op_edit(d, AGENT, "P", {"text": "proposed prompt"}))
+        self.assertEqual(self.state("P")["status"], "proposed")
+
+    def test_edits_keep_an_existing_draft_parked(self):
+        add(self.path, PLANNER, "DEP", lane="main")
+        add(self.path, PLANNER, "A", lane="main", text="existing prompt")
+        rb.mutate(self.path, lambda d: rb.op_set_status(d, HUMAN, "A", "draft"))
+        edits = (
+            {"lane": "second"},
+            {"needs": "DEP"},
+            {"profile": "light"},
+            {"text": "revised prompt"},
+        )
+        for fields in edits:
+            rb.mutate(self.path, lambda d, f=fields: rb.op_edit(d, PLANNER, "A", f))
+            self.assertEqual(self.state("A")["status"], "draft", fields)
+
+    def test_explicit_approval_and_status_queue_tasks(self):
+        add(self.path, AGENT, "P", lane="main")
+        rb.mutate(self.path, lambda d: rb.op_approve(d, HUMAN, "P"))
+        self.assertEqual(self.state("P")["status"], "queued")
+
+        add(self.path, PLANNER, "A", lane="main")
+        rb.mutate(self.path, lambda d: rb.op_set_status(d, HUMAN, "A", "draft"))
+        rb.mutate(self.path, lambda d: rb.op_set_status(d, HUMAN, "A", "queued"))
+        self.assertEqual(self.state("A")["status"], "queued")
 
     def test_unknown_references_are_rejected(self):
         with self.assertRaises(rb.RBError):
@@ -806,6 +837,14 @@ class CliTests(unittest.TestCase):
         self.assertTrue(self.run_rb("gen", "T2").stdout.strip())
         doctor = self.run_rb("doctor").stdout
         self.assertNotIn("FAIL", doctor)
+
+    def test_edit_command_reports_the_actual_status_of_an_existing_draft(self):
+        self.run_rb("init", "--lanes", "main:Main")
+        self.run_rb("trust", "add", "planner", "--human")
+        self.run_rb("add", "A", "--lane", "main", "--title", "Draft", "--text", "prompt", "--by", "planner")
+        self.run_rb("status", "A", "draft", "--human")
+        result = self.run_rb("edit", "A", "--profile", "light", "--by", "planner")
+        self.assertIn("A updated (status draft)", result.stdout)
 
     def test_documented_command_forms_work(self):
         """Every command shown in the README and the skill must parse (found by a clean-room run)."""

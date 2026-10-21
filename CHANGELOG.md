@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.1.1 (2026-10-21)
+
+- Editing an existing draft no longer queues it; lane, needs, profile and prompt changes leave it a draft. Filling a blank draft with its first non-empty prompt still queues it (or proposes it for an agent), preserving the existing add/edit flow. Use `approve` or `status ... queued` to queue an existing draft.
+
 ## 1.1.0 (2026-10-21)
 
 - **A resource for one part of a task.** `--uses gpu@demand` declares a resource the task needs only for some steps: it blocks nothing by itself.
