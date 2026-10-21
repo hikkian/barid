@@ -196,6 +196,7 @@ class CoreTests(unittest.TestCase):
 
     def test_first_prompt_on_an_agent_draft_becomes_a_proposal(self):
         add(self.path, AGENT, "P", lane="main", text="")
+        rb.mutate(self.path, lambda d: rb.op_set_status(d, HUMAN, "P", "draft"))
         self.assertEqual(self.state("P")["status"], "draft")
         rb.mutate(self.path, lambda d: rb.op_edit(d, AGENT, "P", {"text": "proposed prompt"}))
         self.assertEqual(self.state("P")["status"], "proposed")
