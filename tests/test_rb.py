@@ -194,6 +194,12 @@ class CoreTests(unittest.TestCase):
         with self.assertRaises(rb.RBError):
             rb.mutate(self.path, lambda d: rb.op_edit(d, PLANNER, "A", {"replace": ["zzz", "q"]}))
 
+    def test_first_prompt_on_an_agent_draft_becomes_a_proposal(self):
+        add(self.path, AGENT, "P", lane="main", text="")
+        self.assertEqual(self.state("P")["status"], "draft")
+        rb.mutate(self.path, lambda d: rb.op_edit(d, AGENT, "P", {"text": "proposed prompt"}))
+        self.assertEqual(self.state("P")["status"], "proposed")
+
     def test_edits_keep_an_existing_draft_parked(self):
         add(self.path, PLANNER, "DEP", lane="main")
         add(self.path, PLANNER, "A", lane="main", text="existing prompt")
