@@ -2,6 +2,7 @@
 
 ## 1.1.0 (2026-10-21)
 
+- Editing an existing draft no longer queues it; lane, needs, profile and prompt changes leave it a draft. Filling a blank draft with its first non-empty prompt still queues it (or proposes it for an agent), preserving the existing add/edit flow. Use `approve` or `status ... queued` to queue an existing draft.
 - **A resource for one part of a task.** `--uses gpu@demand` declares a resource the task needs only for some steps: it blocks nothing by itself.
   `barid hold gpu --task ID` takes it while the step runs (exit 0 taken, 3 busy, `--wait N` waits), `barid drop gpu --task ID` gives it back.
   A hold is given back when the task finishes, is released or is purged, and it lives as long as the task's lease (a heartbeat renews it).

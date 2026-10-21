@@ -1220,6 +1220,7 @@ def op_add(d: dict, actor: Actor, f: dict) -> dict:
 
 def op_edit(d: dict, actor: Actor, iid: str, f: dict) -> dict:
     it = get_item(d, iid)
+    empty_draft = it["status"] == "draft" and not it["text"].strip()
     own_proposal = it["status"] in ("proposed", "draft") and it.get("created_by") == actor.name
     if not (direct_allowed(d, actor) or own_proposal):
         raise RBError(f"you cannot edit {iid}: it is not your proposal (ask the person, or leave a note)")
@@ -1277,7 +1278,9 @@ def op_edit(d: dict, actor: Actor, iid: str, f: dict) -> dict:
         it["text"] = it["text"].replace(old, new)
     if f.get("text") is not None:
         it["text"] = f["text"].strip()
-    if it["status"] == "draft" and it["text"]:
+    # Keep an existing draft parked. Supplying its first non-empty prompt is the one
+    # implicit transition retained for compatibility with the original add/edit flow.
+    if empty_draft and f.get("text") is not None and it["text"].strip():
         it["status"] = "queued" if direct_allowed(d, actor) else "proposed"
     it["updated"] = item_stamp()
     log_event(d, actor, "edit", iid)
