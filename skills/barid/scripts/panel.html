@@ -567,8 +567,9 @@ function renderNow() {
     var card = h("div", {class: "card lane-card", style: "--lane:" + laneColor(l.id)}, who, what);
     running.forEach(function (c) {
       var cl = c.claim;
-      what.appendChild(h("div", {class: "lline"}, h("span", {class: "chip s-running", text: t("running")}), h("span", {class: "ltitle", text: c.id + " · " + c.title})));
-      what.appendChild(h("div", {class: "sub", text: (cl ? fmt(t("held_by"), {name: cl.by, time: fmtTime(cl.at)}) : st(c.state)) + (c.stale ? " · ⚠ " + t("stale") : "")}));
+      var isRun = c.state === "running", waits = !isRun && c.waiting_on && c.waiting_on.length;
+      what.appendChild(h("div", {class: "lline"}, h("span", {class: "chip " + (isRun ? "s-running" : "s-sent"), text: isRun ? t("running") : st(c.state)}), h("span", {class: "ltitle", text: c.id + " · " + c.title})));
+      what.appendChild(h("div", {class: "sub", text: (cl ? fmt(t("held_by"), {name: cl.by, time: fmtTime(cl.at)}) : waits ? t("after") + " " + waitText(c) : st(c.state)) + (c.stale ? " · ⚠ " + t("stale") : "")}));
       what.appendChild(h("div", {class: "row"}, h("button", {class: "btn sm", text: t("copy"), onclick: function () { copyPrompt(c.id); }}), h("button", {class: "btn sm", text: t("release"), onclick: function (ev) { act("release", c.id, {}, null, ev.currentTarget); }}),
         h("button", {class: "btn sm", text: "…", onclick: function () { openDrawer(c.id); }})));
     });

@@ -446,7 +446,7 @@ class PanelInBrowser(unittest.TestCase):
 
     def test_mark_as_sent_changes_the_task(self):
         self.b.click_text("#now .lane-card button", "Mark as sent")
-        self.b.wait("document.querySelector('#now').textContent.indexOf('Running') >= 0 || document.querySelector('#now').textContent.indexOf('In progress') >= 0", what="the card to show the task as running")
+        self.b.wait("document.querySelector('#now .chip.s-sent') !== null", what="the card to show the task as sent")
         self.assertIn("sent", barid(self.board, "list", "--all"))
 
     def test_a_partial_report_asks_for_a_decision(self):
