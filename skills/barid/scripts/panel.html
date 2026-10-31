@@ -99,7 +99,7 @@ body.stale #now,body.stale #flow,body.stale #inboxwrap{opacity:.55}
 .lanehead{display:flex;align-items:center;gap:6px;font-size:12px;font-weight:700;color:var(--mute);border-bottom:2px solid var(--lane,var(--ac));padding-bottom:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 @media (max-width:760px){#flow{--cols:1}.step{grid-template-columns:1fr;min-width:0}.step .items{grid-template-columns:1fr}.step .item{grid-column:auto!important}.flowhead{display:none}}
 /* more sessions than the window has room for: one card under another (each card names its session), not columns cut off on the right */
-#flow.stacked .step{grid-template-columns:110px minmax(0,1fr);min-width:0}#flow.stacked .step .items{grid-template-columns:minmax(0,1fr)}#flow.stacked .step .item{grid-column:auto!important}#flow.stacked .flowhead{display:none}
+#flow.stacked .step{grid-template-columns:110px minmax(0,1fr);min-width:0}#flow.stacked .step .items{grid-template-columns:repeat(auto-fit,minmax(min(280px,100%),1fr))}#flow.stacked .step .item{grid-column:auto!important}#flow.stacked .flowhead{display:none}
 .item{background:var(--panel);border:1px solid var(--line);border-top:3px solid var(--lane,var(--ac));border-radius:12px;padding:10px 12px;min-width:240px;flex:1 1 260px;max-width:420px;cursor:pointer;text-align:left}
 .item:hover{border-color:var(--ac)}
 .item.sel{outline:2px solid var(--ac)}
