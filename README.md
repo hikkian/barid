@@ -225,6 +225,7 @@ barid explain T1 T2                           # why two tasks can or cannot run 
 barid add T4 --lane a --profile bench --uses gpu --text-file p.md   # profiles: light, dev, bench, attended (or `barid profile add`)
 barid lane edit a --title Builder --color "#7c5cff" --agent codex --human   # name, colour and agent of a session
 barid lane add tests --title Tests --agent codex --human       # a new session (or the "+" button in the panel)
+barid lane rm tests --human                    # remove an unused session; finished history keeps its lane id
 barid connect tests                          # the first message to paste into that agent's window
 barid open                                   # panel;  barid export board.html  = read-only snapshot
 ```

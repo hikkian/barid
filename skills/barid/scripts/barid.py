@@ -1791,6 +1791,22 @@ def op_lane_edit(d: dict, actor: Actor, lane_id: str, title=None, color=None, ag
     return lane
 
 
+def op_lane_rm(d: dict, actor: Actor, lane_id: str) -> None:
+    """Remove an unused lane while keeping finished task records intact."""
+    require_human(actor, "remove a lane")
+    lane = next((l for l in d["lanes"] if l["id"] == lane_id), None)
+    if lane is None:
+        raise RBError(f"no such lane: {lane_id!r}", "unknown_lane", lane=lane_id)
+    # A report awaiting the person's review still belongs to an open task. Only
+    # accepted completion and cancellation leave historical lane references.
+    open_tasks = [i for i in d["items"] if i.get("lane") == lane_id and i["status"] not in ("done", "cancelled")]
+    if open_tasks:
+        raise RBError(f"cannot remove lane {lane_id!r}: {len(open_tasks)} open task(s); move them to another lane first",
+                      "wrong_state", id=lane_id, count=len(open_tasks))
+    d["lanes"].remove(lane)
+    log_event(d, actor, "lane", lane_id, "remove")
+
+
 def op_purge(d: dict, actor: Actor, iid: str) -> None:
     require_human(actor, "purge a task for good")
     it = get_item(d, iid)
@@ -2928,6 +2944,8 @@ def cmd_next(args):
     as_json = getattr(args, "json", False)
     while True:
         d = load(board)
+        if not any(l["id"] == args.lane for l in d["lanes"]):
+            raise RBError(f"no such lane: {args.lane!r}", "unknown_lane", lane=args.lane)
         res = next_step(d, args.lane)
         if res["status"] == NEXT_TASK:
             it = get_item(d, res["id"])
@@ -3391,11 +3409,11 @@ def cmd_export(args):
 
 
 def _add_word(words, what: str):
-    """`add NAME`, `edit NAME` or just `NAME`; returns None for `list`."""
+    """`add NAME`, `edit NAME`, `rm NAME` or just `NAME`; returns None for `list`."""
     ws = list(words)
     if ws and ws[0] == "list":
         return None
-    if ws and ws[0] in ("add", "edit"):
+    if ws and ws[0] in ("add", "edit", "rm"):
         ws = ws[1:]
     if len(ws) != 1:
         raise RBError(f"usage: barid {what} add NAME [options]  or  barid {what} list")
@@ -3481,9 +3499,13 @@ def cmd_lane(args):
         out(args, lanes, "\n".join(f"{l['id']:<12} {l.get('title', ''):<24} {l.get('color', '') or '-':<8} {l.get('agent', '') or '-'}" for l in lanes))
         return
     args.lane_id = lane_id
-    editing = args.words[0] == "edit"
+    action = args.words[0] if args.words[0] in ("add", "edit", "rm") else "add"
+    editing = action == "edit"
 
     def fn(d):
+        if action == "rm":
+            op_lane_rm(d, actor, lane_id)
+            return
         require_human_or_direct(d, actor)
         exists = any(l["id"] == lane_id for l in d["lanes"])
         if editing and not exists:
@@ -3494,7 +3516,7 @@ def cmd_lane(args):
         else:
             op_lane_add(d, actor, lane_id, args.title, getattr(args, "color", None), getattr(args, "agent", None))
     mutate(board, fn)
-    print(f"lane {lane_id} {'updated' if editing else 'added'}")
+    print(f"lane {lane_id} {'removed' if action == 'rm' else 'updated' if editing else 'added'}")
 
 
 def require_human_or_direct(d, actor):
@@ -3819,7 +3841,7 @@ def build_parser() -> argparse.ArgumentParser:
     s.add_argument("--base", help="start point, default HEAD")
     s = add("check", cmd_check, "show what could collide with a task (overlapping scopes, protected paths)")
     s.add_argument("id")
-    s = add("lane", cmd_lane, "a lane is a session that receives prompts: `lane add ID --title T --color #hex --agent codex`, `lane edit ID ...`, `lane list`")
+    s = add("lane", cmd_lane, "a lane is a session that receives prompts: `lane add ID --title T --color #hex --agent codex`, `lane edit ID ...`, `lane rm ID`, `lane list`")
     s.add_argument("words", nargs="+", metavar="[add|edit] ID")
     s.add_argument("--title")
     s.add_argument("--color", help="e.g. #feb83b; empty resets to the palette default")
